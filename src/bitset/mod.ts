@@ -6,8 +6,12 @@ import {
   memory,
   or as wasmOr,
   xor as wasmXor,
-} from "./dist/bitset.wasm";
-import { type Allocation, type AllocatorStats, LinearMemoryAllocator } from "./src/allocator.ts";
+} from "./kernels.wasm";
+import {
+  type Allocation,
+  type AllocatorStats,
+  LinearMemoryAllocator,
+} from "../internal/allocator.ts";
 
 const allocator = new LinearMemoryAllocator(memory);
 

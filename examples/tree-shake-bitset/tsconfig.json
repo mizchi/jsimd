@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../bitset.ts", "src.ts"]
+  "include": ["../../src/bitset/mod.ts", "src.ts"]
 }

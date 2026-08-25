@@ -7,7 +7,7 @@ import {
   lexical_compare_prefix,
   memory,
   reverse_find_byte,
-} from "./dist/jsimd.wasm";
+} from "./kernels.wasm";
 
 let wasmBytes = new Uint8Array(memory.buffer);
 

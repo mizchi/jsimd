@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../mod.ts", "src.ts"]
+  "include": ["../../src/bytes/mod.ts", "src.ts"]
 }

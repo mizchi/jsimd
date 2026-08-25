@@ -6,9 +6,9 @@ import {
   jsonTokenStarts,
   lexicalCompare,
   reverseFindByte,
-} from "./mod.ts";
-import { FixedBitSet } from "./bitset.ts";
-import { SimdFloat32Vector } from "./f32-vector.ts";
+} from "./src/bytes/mod.ts";
+import { FixedBitSet } from "./src/bitset/mod.ts";
+import { SimdFloat32Vector } from "./src/f32-vector/mod.ts";
 
 function assertEquals(actual: unknown, expected: unknown, context: string): void {
   if (!Object.is(actual, expected)) {

@@ -1,5 +1,9 @@
-import { axpy, dot as wasmDot, memory } from "./dist/f32-vector.wasm";
-import { type Allocation, type AllocatorStats, LinearMemoryAllocator } from "./src/allocator.ts";
+import { axpy, dot as wasmDot, memory } from "./kernels.wasm";
+import {
+  type Allocation,
+  type AllocatorStats,
+  LinearMemoryAllocator,
+} from "../internal/allocator.ts";
 
 const allocator = new LinearMemoryAllocator(memory);
 

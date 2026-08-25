@@ -1,9 +1,13 @@
 {
   "name": "@mizchi/jsimd",
   "version": "0.0.0",
-  "exports": "./mod.ts",
+  "exports": {
+    ".": "./src/bytes/mod.ts",
+    "./bitset": "./src/bitset/mod.ts",
+    "./f32-vector": "./src/f32-vector/mod.ts"
+  },
   "tasks": {
-    "build": "wasm-tools parse src/kernels.wat -o dist/jsimd.wasm",
+    "build": "just build",
     "test": "deno test -A",
     "bench": "deno bench -A"
   },

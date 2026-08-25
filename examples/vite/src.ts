@@ -6,7 +6,7 @@ import {
   jsonTokenStarts,
   lexicalCompare,
   reverseFindByte,
-} from "../../mod.ts";
+} from "../../src/bytes/mod.ts";
 
 const input = new TextEncoder().encode("MoonBit + Wasm SIMD");
 document.querySelector("#app")!.textContent = JSON.stringify({

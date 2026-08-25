@@ -45,7 +45,17 @@ The package uses direct Wasm ES module imports supported by current Vite and Den
 performs initialization; exported operations are synchronous. Lazy initialization is intentionally
 deferred.
 
-The `.wasm` import is typed by the adjacent `dist/jsimd.d.wasm.ts`, following Vite's
+Each entrypoint is self-contained under `src/<name>/`, with its own TypeScript API, README, WAT
+source, Wasm type declaration, and generated Wasm binary:
+
+- [`src/bytes`](./src/bytes/README.md) — byte search, comparison, ASCII, subarray, and JSON scanning
+- [`src/bitset`](./src/bitset/README.md) — fixed-capacity SIMD bitsets
+- [`src/f32-vector`](./src/f32-vector/README.md) — resident Float32 dot product and AXPY
+
+The package is distributed as one npm package with subpath exports. The Wasm binaries remain
+separate, so bundlers only include the entrypoints that are imported.
+
+Each `.wasm` import is typed by an adjacent `kernels.d.wasm.ts`, following Vite's
 `allowArbitraryExtensions` convention. Consumers get typed Wasm exports without a generated JS
 loader. The wrapper uses `Uint8Array#indexOf` below 128 bytes; in the initial Deno benchmark the
 copy-inclusive SIMD path was about 4.7x faster for a 4 KiB miss scan (0.37 us vs 1.8 us).
@@ -112,9 +122,14 @@ with a Vite production fixture and fails unless exactly the bitset Wasm asset is
 ## Development
 
 ```sh
+pnpm install
+just build
 just test
 just bench
 ```
+
+`just build` compiles each `src/<name>/kernels.wat` into its adjacent `kernels.wasm`. Generated Wasm
+files are ignored by Git but included in the npm tarball produced after a build.
 
 Implemented kernels: fixed bitsets, forward/reverse byte search, subarray search, byte
 equality/lexicographical comparison, ASCII validation, and UTF-8 JSON token-start extraction.

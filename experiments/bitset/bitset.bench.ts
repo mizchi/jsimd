@@ -1,5 +1,5 @@
 import { bench, describe } from "vitest";
-import { FixedBitSet } from "../../bitset.ts";
+import { FixedBitSet } from "../../src/bitset/mod.ts";
 
 function popcount(word: number): number {
   word -= (word >>> 1) & 0x5555_5555;

@@ -4,17 +4,13 @@
   "description": "Prebuilt WebAssembly SIMD kernels and Wasm-resident data structures for JavaScript",
   "type": "module",
   "exports": {
-    ".": "./mod.ts",
-    "./bitset": "./bitset.ts",
-    "./f32-vector": "./f32-vector.ts"
+    ".": "./src/bytes/mod.ts",
+    "./bitset": "./src/bitset/mod.ts",
+    "./f32-vector": "./src/f32-vector/mod.ts"
   },
   "sideEffects": false,
   "files": [
-    "mod.ts",
-    "bitset.ts",
-    "f32-vector.ts",
-    "src/",
-    "dist/"
+    "src/"
   ],
   "scripts": {
     "build": "just build",
