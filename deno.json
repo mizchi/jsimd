@@ -4,6 +4,7 @@
   "exports": {
     ".": "./src/bytes/mod.ts",
     "./bitset": "./src/bitset/mod.ts",
+    "./bit-sliced-column": "./src/bit-sliced-column/mod.ts",
     "./endian": "./src/endian/mod.ts",
     "./f32-vector": "./src/f32-vector/mod.ts",
     "./flat-hash": "./src/flat-hash/mod.ts",

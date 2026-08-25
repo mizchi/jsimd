@@ -14,6 +14,7 @@ import {
   reverseFindByte,
 } from "@mizchi/jsimd";
 import { FixedBitSet } from "@mizchi/jsimd/bitset";
+import { BitSlicedColumnU8, BitSliceMask } from "@mizchi/jsimd/bit-sliced-column";
 import { decodeUint32BE } from "@mizchi/jsimd/endian";
 import { SimdFloat32Vector } from "@mizchi/jsimd/f32-vector";
 import { FlatHashMapU32U32, FlatHashSetU32 } from "@mizchi/jsimd/flat-hash";
@@ -76,6 +77,10 @@ using offsets = FlatHashMapU32U32.from([[1, 100], [3, 300]]);
 const idQueries = new Uint32Array([0, 1, 3]);
 const idPresent = new Uint8Array(idQueries.length);
 ids.lookupMany(idQueries, idPresent);
+
+using statusColumn = BitSlicedColumnU8.from(new Uint8Array([1, 4, 7, 10]), 4);
+using statusMask = new BitSliceMask(statusColumn.length);
+statusColumn.between(4, 10, statusMask);
 ```
 
 The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
@@ -87,6 +92,8 @@ source, Wasm type declaration, and generated Wasm binary:
 
 - [`src/bytes`](./src/bytes/README.md) — byte search, comparison, ASCII, and subarray scanning
 - [`src/bitset`](./src/bitset/README.md) — fixed-capacity SIMD bitsets
+- [`src/bit-sliced-column`](./src/bit-sliced-column/README.md) — nullable bit-sliced predicates and
+  resident masks
 - [`src/endian`](./src/endian/README.md) — batched endian decoding
 - [`src/f32-vector`](./src/f32-vector/README.md) — resident Float32 dot product and AXPY
 - [`src/flat-hash`](./src/flat-hash/README.md) — typed `u32` SIMD flat hash set and map
@@ -138,10 +145,9 @@ BigInt union is native and compact to write, but produces a new immutable large 
 operation mutates reusable storage. Benchmark averages include runtime variance; run
 `deno bench -A --filter bitset` on the target engine before choosing an implementation.
 
-Wasm linear memory cannot shrink, but `dispose()` returns the block to a power-of-two free list for
-reuse with bounded size-class fragmentation. `FixedBitSet.allocatorStats()` exposes live, free,
-reserved, and physical memory byte counts. Using an object after disposal throws; repeated disposal
-is safe. `using`/`Symbol.dispose` is also supported.
+Wasm linear memory cannot shrink, but leaving a `using` scope returns the block to a power-of-two
+free list for reuse with bounded size-class fragmentation. `FixedBitSet.allocatorStats()` exposes
+live, free, reserved, and physical memory byte counts. Using an object after scope disposal throws.
 
 ## SIMD Float32 vectors
 

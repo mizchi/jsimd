@@ -36,6 +36,14 @@ This first version implements the canonical array and bitmap containers and dyna
 the 4,096/4,097 boundary. Run containers and portable Roaring serialization are not implemented yet,
 so this is not currently a drop-in wire-format replacement for CRoaring or RoaringBitmap libraries.
 
+## Design source
+
+The upper-16-bit partitioning, 4,096-element array/bitmap threshold, and container-wise set algebra
+follow
+[“Roaring Bitmaps: Implementation of an Optimized Software Library”](https://arxiv.org/html/1709.07821v6).
+This first jsimd version omits run containers and portable serialization, and specializes the dense
+container kernels for Wasm `v128`.
+
 ## Benchmark
 
 Recorded with Vitest 4.1.11 / Node 24 / Apple M5. The experiment compares non-materializing
@@ -59,6 +67,12 @@ pnpm bench:roaring-uint32-set
 pnpm bench:record:roaring-uint32-set
 pnpm bench:compare:roaring-uint32-set
 ```
+
+## Standalone build size
+
+The isolated Vite fixture emits one 1.02 kB Wasm asset (0.49 kB gzip) and a 9.96 kB JS wrapper (3.63
+kB gzip). The larger wrapper contains container ownership, conversion, and high-key routing;
+tree-shaking still excludes every unrelated jsimd Wasm module.
 
 See [`experiments/roaring-uint32-set`](../../experiments/roaring-uint32-set/README.md) for recorded
 results.

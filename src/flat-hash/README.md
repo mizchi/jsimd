@@ -43,6 +43,14 @@ These types do not replace arbitrary-key JavaScript `Map` or `Set`. The useful c
 schema with batched lookup or insertion. Native collections remain faster for point operations that
 cross the JS/Wasm boundary one key at a time.
 
+## Design source
+
+The control-byte layout follows the candidate-filtering idea in the
+[Abseil Swiss Tables design notes](https://abseil.io/about/design/swisstables): one metadata byte
+per slot, a 7-bit hash fingerprint, and a 16-lane comparison before full key checks. jsimd uses
+aligned Wasm-v128 groups, a fixed `u32` avalanche hash, separate typed key/value arrays, and
+explicit bulk APIs; it is not an API or implementation port of Abseil.
+
 ## Benchmark
 
 Recorded with Vitest 4.1.11 / Node 24.12 / Apple M5. The lookup workload contains 262,144 stored
@@ -67,6 +75,12 @@ pnpm bench:flat-hash
 pnpm bench:record:flat-hash
 pnpm bench:compare:flat-hash
 ```
+
+## Standalone build size
+
+The isolated Vite fixture emits one 1.27 kB Wasm asset (0.72 kB gzip) and a 6.84 kB JS wrapper (2.66
+kB gzip). The JS size includes allocator and ownership code. `just check` rejects accidental imports
+of other jsimd kernels.
 
 See [`experiments/flat-hash`](../../experiments/flat-hash/README.md) for benchmark source and the
 committed baseline.

@@ -1,6 +1,7 @@
 build:
     wasm-tools strip -a src/bytes/kernels.wat -o src/bytes/kernels.wasm
     wasm-tools strip -a src/bitset/kernels.wat -o src/bitset/kernels.wasm
+    wasm-tools strip -a src/bit-sliced-column/kernels.wat -o src/bit-sliced-column/kernels.wasm
     wasm-tools strip -a src/endian/kernels.wat -o src/endian/kernels.wasm
     wasm-tools strip -a src/flat-hash/kernels.wat -o src/flat-hash/kernels.wasm
     wasm-tools strip -a src/f32-vector/kernels.wat -o src/f32-vector/kernels.wasm
@@ -13,6 +14,7 @@ build:
     wasm-tools strip -a src/packed-delta-uint32-list/kernels.wat -o src/packed-delta-uint32-list/kernels.wasm
     wasm-tools validate --features simd src/bytes/kernels.wasm
     wasm-tools validate --features simd src/bitset/kernels.wasm
+    wasm-tools validate --features simd src/bit-sliced-column/kernels.wasm
     wasm-tools validate --features simd src/endian/kernels.wasm
     wasm-tools validate --features simd src/flat-hash/kernels.wasm
     wasm-tools validate --features simd src/f32-vector/kernels.wasm
@@ -27,6 +29,8 @@ build:
     ! wasm-tools print src/bytes/kernels.wasm | rg -q 'byte_swap32|json_token_starts|intersection_count|\(export "dot"'
     wasm-tools print src/bitset/kernels.wasm | rg -q 'intersection_count'
     ! wasm-tools print src/bitset/kernels.wasm | rg -q 'find_byte|\(export "dot"'
+    wasm-tools print src/bit-sliced-column/kernels.wasm | rg -q 'scan_eq|scan_between|mask_count'
+    ! wasm-tools print src/bit-sliced-column/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/endian/kernels.wasm | rg -q 'byte_swap32'
     ! wasm-tools print src/endian/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|\(export "dot"'
     wasm-tools print src/flat-hash/kernels.wasm | rg -q 'lookup_many|insert_map_many|rehash_set'
@@ -84,6 +88,11 @@ check: test
     test "$(find examples/tree-shake-bitset/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-bitset/dist/assets/*.wasm | rg -q 'intersection_count'
     ! wasm-tools print examples/tree-shake-bitset/dist/assets/*.wasm | rg -q '\(export "dot"'
+    pnpm exec tsc -p examples/tree-shake-bit-sliced-column/tsconfig.json
+    pnpm exec vite build examples/tree-shake-bit-sliced-column
+    test "$(find examples/tree-shake-bit-sliced-column/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-bit-sliced-column/dist/assets/*.wasm | rg -q 'scan_eq|scan_between|mask_count'
+    ! wasm-tools print examples/tree-shake-bit-sliced-column/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
     pnpm exec tsc -p examples/tree-shake-json/tsconfig.json
     pnpm exec vite build examples/tree-shake-json
     test "$(find examples/tree-shake-json/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"

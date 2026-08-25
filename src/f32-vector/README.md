@@ -17,7 +17,7 @@ x.addScaled(y, 0.5); // x += 0.5 * y
 whole operation. SIMD reduction changes floating-point association and is not bit-identical to a
 sequential JavaScript sum.
 
-Call `dispose()` or use `using` to return the backing block to the allocator.
+Declare vectors with `using` to return the backing block to the allocator at scope exit.
 `SimdFloat32Vector.allocatorStats()` exposes allocator state for leak/plateau tests.
 
 ## Benchmark

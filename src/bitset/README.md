@@ -16,9 +16,16 @@ left.unionWith(right);
 Available operations include insertion/removal, membership, union, intersection, difference,
 symmetric difference, cardinality, and intersection cardinality.
 
-Instances own allocator blocks. Call `dispose()`, use `using`, or invoke `Symbol.dispose` to return
-storage to the power-of-two free list. `FixedBitSet.allocatorStats()` reports live, free, reserved,
-and physical memory. Wasm linear memory does not shrink, but released blocks are reused.
+Instances own allocator blocks. Declare them with `using` to return storage to the power-of-two free
+list at scope exit. `FixedBitSet.allocatorStats()` reports live, free, reserved, and physical
+memory. Wasm linear memory does not shrink, but released blocks are reused.
+
+## Design source
+
+The fixed-capacity contract and dense word-array operations are modeled after Rust's
+[`fixedbitset`](https://docs.rs/fixedbitset/latest/fixedbitset/). jsimd keeps words in Wasm linear
+memory and substitutes 128-bit logical operations and `i8x16.popcnt`; it is not wire-format
+compatible with the Rust crate.
 
 ## Benchmark
 
@@ -38,6 +45,11 @@ pnpm bench:bitset
 pnpm bench:record:bitset
 pnpm bench:compare:bitset
 ```
+
+## Standalone build size
+
+The isolated Vite fixture emits one 0.50 kB Wasm asset (0.26 kB gzip) and a 5.63 kB JS wrapper (2.33
+kB gzip). Importing only `@mizchi/jsimd/bitset` emits exactly that one Wasm file.
 
 Vitest baseline JSON and the complete benchmark source live in
 [`experiments/bitset`](../../experiments/bitset).

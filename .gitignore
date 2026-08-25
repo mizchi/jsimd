@@ -2,6 +2,7 @@ node_modules/
 coverage/
 examples/vite/dist/
 examples/tree-shake-bitset/dist/
+examples/tree-shake-bit-sliced-column/dist/
 examples/tree-shake-bytes/dist/
 examples/tree-shake-endian/dist/
 examples/tree-shake-flat-hash/dist/

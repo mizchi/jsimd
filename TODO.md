@@ -20,8 +20,10 @@ dependencies, benchmarks, and decision gates.
 - [x] `SimdFlatHashMap/Set`
   - `FlatHashSetU32` and `FlatHashMapU32U32`
   - bulk probing/insertion and allocator plateau tests
-- [ ] `BitSlicedColumn` — **next**
-- [ ] `WaveletMatrixUint32`
+- [x] `BitSlicedColumn`
+  - nullable `BitSlicedColumnU8`
+  - same-memory composable `BitSliceMask`
+- [ ] `WaveletMatrixUint32` — **next**
 
 ## Committed implementation order
 
@@ -89,21 +91,21 @@ future `StaticMPHF` rather than paying for mutable table metadata.
 
 Reference: [Abseil Swiss Tables design](https://abseil.io/about/design/swisstables)
 
-### 3. BitSlicedColumn — next
+### 3. BitSlicedColumn — initial implementation complete
 
 Build mostly-static integer columns that produce composable selection bitsets.
 
-- [ ] Start with `BitSlicedColumnU8` and an explicit bit width.
-- [ ] Add `eq`, `lt`, and `between` with reusable `FixedBitSet` output.
-- [ ] Add null-mask handling without assigning a sentinel value.
-- [ ] Compose predicates without materializing matching row IDs.
-- [ ] Compare with `Uint8Array` scalar scans and native typed-array loops.
+- [x] Start with `BitSlicedColumnU8` and an explicit bit width.
+- [x] Add `eq`, `lt`, and `between` with reusable same-memory `BitSliceMask` output.
+- [x] Add null-mask handling without assigning a sentinel value.
+- [x] Compose predicates without materializing matching row IDs.
+- [x] Compare with `Uint8Array` scalar scans and native typed-array loops.
 - [ ] Reuse the layout as one encoding inside `AdaptiveSimdPage`.
 
 The structure is for scans, not fast individual value extraction. Keep an ordinary value array when
 the workload needs both point access and repeated predicates.
 
-### 4. WaveletMatrixUint32
+### 4. WaveletMatrixUint32 — next
 
 Build the first higher-level succinct structure after rank/select and bit-sliced predicates settle.
 
@@ -212,6 +214,10 @@ References:
 - [ ] Commit Vitest baseline JSON and summarize results in the entrypoint README.
 - [ ] Compare against the best relevant JavaScript builtin or typed-array implementation.
 - [ ] Do not publish a structure whose useful workload does not beat its JavaScript alternative.
+- [ ] Document the data layout and algorithm with primary sources or reference implementations.
+- [ ] Record the isolated Vite JS/Wasm raw and gzip sizes in the entrypoint README.
+- [ ] State whether the structure consistently beats JavaScript or only wins a bounded workload;
+      document construction, memory, point-access, and boundary-cost trade-offs.
 - [ ] Develop with exploration → Red → Green → refactoring and test allocator plateau behavior.
 
 ## Longer-term generated layout

@@ -37,6 +37,13 @@ not a faster replacement for an uncompressed `Uint32Array` in every operation: n
 binary search remain substantially faster. Its useful current trade-off is compact resident storage
 plus a bulk intersection kernel that avoids full materialization.
 
+## Design source
+
+The separated control/data stream and shuffle-table decoder follow the Stream VByte family described
+in [“Techniques for Inverted Index Compression”](https://arxiv.org/html/1908.10598v2). jsimd adds
+128-value absolute checkpoints and a Wasm-v128 four-value intersection kernel. It does not implement
+every codec or block-selection strategy evaluated by that survey.
+
 ## Benchmark
 
 Recorded with Vitest 4.1.11 / Node 24.12 / Apple M5, excluding construction. Both 262,144-value
@@ -60,6 +67,11 @@ pnpm bench:packed-delta-uint32-list
 pnpm bench:record:packed-delta-uint32-list
 pnpm bench:compare:packed-delta-uint32-list
 ```
+
+## Standalone build size
+
+The isolated Vite fixture emits one 1.49 kB Wasm asset (0.88 kB gzip) and a 6.96 kB JS wrapper (2.76
+kB gzip). Importing this subpath does not emit Roaring, FlatHash, or byte-scanner Wasm.
 
 See [`experiments/packed-delta-uint32-list`](../../experiments/packed-delta-uint32-list/README.md)
 for the benchmark source and committed baseline.
