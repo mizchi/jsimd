@@ -5,12 +5,14 @@ build:
     wasm-tools strip -a src/f32-vector/kernels.wat -o src/f32-vector/kernels.wasm
     wasm-tools strip -a src/i32-array/kernels.wat -o src/i32-array/kernels.wasm
     wasm-tools strip -a src/json/kernels.wat -o src/json/kernels.wasm
+    wasm-tools strip -a src/matrix2d/kernels.wat -o src/matrix2d/kernels.wasm
     wasm-tools validate --features simd src/bytes/kernels.wasm
     wasm-tools validate --features simd src/bitset/kernels.wasm
     wasm-tools validate --features simd src/endian/kernels.wasm
     wasm-tools validate --features simd src/f32-vector/kernels.wasm
     wasm-tools validate --features simd src/i32-array/kernels.wasm
     wasm-tools validate --features simd src/json/kernels.wasm
+    wasm-tools validate --features simd src/matrix2d/kernels.wasm
     wasm-tools print src/bytes/kernels.wasm | rg -q 'find_byte'
     ! wasm-tools print src/bytes/kernels.wasm | rg -q 'byte_swap32|json_token_starts|intersection_count|\(export "dot"'
     wasm-tools print src/bitset/kernels.wasm | rg -q 'intersection_count'
@@ -23,6 +25,8 @@ build:
     ! wasm-tools print src/i32-array/kernels.wasm | rg -q 'find_byte|byte_swap32|intersection_count|\(export "dot"'
     wasm-tools print src/json/kernels.wasm | rg -q 'json_token_starts'
     ! wasm-tools print src/json/kernels.wasm | rg -q 'find_byte|intersection_count|\(export "dot"'
+    wasm-tools print src/matrix2d/kernels.wasm | rg -q 'matmul'
+    ! wasm-tools print src/matrix2d/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"'
 
 test: build
     deno test -A
@@ -60,3 +64,8 @@ check: test
     test "$(find examples/tree-shake-json/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-json/dist/assets/*.wasm | rg -q 'json_token_starts'
     ! wasm-tools print examples/tree-shake-json/dist/assets/*.wasm | rg -q 'find_byte|intersection_count|\(export "dot"'
+    pnpm exec tsc -p examples/tree-shake-matrix2d/tsconfig.json
+    pnpm exec vite build examples/tree-shake-matrix2d
+    test "$(find examples/tree-shake-matrix2d/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-matrix2d/dist/assets/*.wasm | rg -q 'matmul'
+    ! wasm-tools print examples/tree-shake-matrix2d/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"'

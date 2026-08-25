@@ -18,6 +18,7 @@ import { decodeUint32BE } from "@mizchi/jsimd/endian";
 import { SimdFloat32Vector } from "@mizchi/jsimd/f32-vector";
 import { SimdInt32Array } from "@mizchi/jsimd/i32-array";
 import { jsonTokenStarts } from "@mizchi/jsimd/json";
+import { SimdMatrix2D } from "@mizchi/jsimd/matrix2d";
 
 const bytes = new Uint8Array([1, 2, 3]);
 findByte(bytes, 2);
@@ -42,6 +43,10 @@ x.addScaled(y, 0.5); // x += 0.5 * y
 using values = SimdInt32Array.from([5, -7, 11, 13, 2]);
 values.sum(); // 24
 values.min(); // -7
+
+using matrixLeft = SimdMatrix2D.from(2, 2, [1, 2, 3, 4]);
+using matrixRight = SimdMatrix2D.from(2, 2, [5, 6, 7, 8]);
+using matrixOutput = matrixLeft.multiply(matrixRight);
 ```
 
 The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
@@ -57,6 +62,7 @@ source, Wasm type declaration, and generated Wasm binary:
 - [`src/f32-vector`](./src/f32-vector/README.md) — resident Float32 dot product and AXPY
 - [`src/i32-array`](./src/i32-array/README.md) — fixed-length resident Int32 bulk operations
 - [`src/json`](./src/json/README.md) — UTF-8 JSON token-start scanning
+- [`src/matrix2d`](./src/matrix2d/README.md) — resident row-major Float32 matrix operations
 
 The package is distributed as one npm package with subpath exports. The Wasm binaries remain
 separate, so bundlers only include the entrypoints that are imported.

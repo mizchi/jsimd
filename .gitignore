@@ -6,4 +6,5 @@ examples/tree-shake-bytes/dist/
 examples/tree-shake-endian/dist/
 examples/tree-shake-i32-array/dist/
 examples/tree-shake-json/dist/
+examples/tree-shake-matrix2d/dist/
 src/**/*.wasm
