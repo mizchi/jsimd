@@ -1,10 +1,10 @@
-# @mizchi/jsimd-bitset
+# @mizchi/jsimd/bitset experiment
 
 Experimental Wasm-SIMD fixed-capacity bitset. The backing words stay in Wasm memory so repeated set
 algebra does not copy through JavaScript.
 
 ```ts
-import { FixedBitSet } from "@mizchi/jsimd-bitset";
+import { FixedBitSet } from "@mizchi/jsimd/bitset";
 
 const left = FixedBitSet.from(1_000_000, [1, 10, 999_999]);
 const right = FixedBitSet.from(1_000_000, [10, 20]);

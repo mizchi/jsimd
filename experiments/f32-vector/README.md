@@ -1,10 +1,10 @@
-# @mizchi/jsimd-f32-vector
+# @mizchi/jsimd/f32-vector experiment
 
 Experimental Wasm-resident Float32 vectors for fused bulk operations. It does not try to replace
 ordinary JavaScript element access.
 
 ```ts
-import { SimdFloat32Vector } from "@mizchi/jsimd-f32-vector";
+import { SimdFloat32Vector } from "@mizchi/jsimd/f32-vector";
 
 const x = SimdFloat32Vector.from(new Float32Array([1, 2, 3, 4]));
 const y = SimdFloat32Vector.from(new Float32Array([2, 4, 6, 8]));
