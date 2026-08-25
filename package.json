@@ -13,7 +13,8 @@
     "./matrix2d": "./src/matrix2d/mod.ts",
     "./matrix3d": "./src/matrix3d/mod.ts",
     "./rank-select-bitvector": "./src/rank-select-bitvector/mod.ts",
-    "./roaring-uint32-set": "./src/roaring-uint32-set/mod.ts"
+    "./roaring-uint32-set": "./src/roaring-uint32-set/mod.ts",
+    "./packed-delta-uint32-list": "./src/packed-delta-uint32-list/mod.ts"
   },
   "sideEffects": false,
   "files": [
@@ -33,6 +34,7 @@
     "bench:matrix3d": "vitest bench experiments/matrix3d",
     "bench:rank-select-bitvector": "vitest bench experiments/rank-select-bitvector",
     "bench:roaring-uint32-set": "vitest bench experiments/roaring-uint32-set",
+    "bench:packed-delta-uint32-list": "vitest bench experiments/packed-delta-uint32-list",
     "bench:record:bitset": "vitest bench experiments/bitset --outputJson experiments/bitset/benchmarks/baseline.json",
     "bench:record:f32-vector": "vitest bench experiments/f32-vector --outputJson experiments/f32-vector/benchmarks/baseline.json",
     "bench:record:i32-array": "vitest bench experiments/i32-array --outputJson experiments/i32-array/benchmarks/baseline.json",
@@ -41,6 +43,7 @@
     "bench:record:matrix3d": "vitest bench experiments/matrix3d --outputJson experiments/matrix3d/benchmarks/baseline.json",
     "bench:record:rank-select-bitvector": "vitest bench experiments/rank-select-bitvector --outputJson experiments/rank-select-bitvector/benchmarks/baseline.json",
     "bench:record:roaring-uint32-set": "vitest bench experiments/roaring-uint32-set --outputJson experiments/roaring-uint32-set/benchmarks/baseline.json",
+    "bench:record:packed-delta-uint32-list": "vitest bench experiments/packed-delta-uint32-list --outputJson experiments/packed-delta-uint32-list/benchmarks/baseline.json",
     "bench:compare:bitset": "vitest bench experiments/bitset --compare experiments/bitset/benchmarks/baseline.json",
     "bench:compare:f32-vector": "vitest bench experiments/f32-vector --compare experiments/f32-vector/benchmarks/baseline.json",
     "bench:compare:i32-array": "vitest bench experiments/i32-array --compare experiments/i32-array/benchmarks/baseline.json",
@@ -48,7 +51,8 @@
     "bench:compare:matrix2d": "vitest bench experiments/matrix2d --compare experiments/matrix2d/benchmarks/baseline.json",
     "bench:compare:matrix3d": "vitest bench experiments/matrix3d --compare experiments/matrix3d/benchmarks/baseline.json",
     "bench:compare:rank-select-bitvector": "vitest bench experiments/rank-select-bitvector --compare experiments/rank-select-bitvector/benchmarks/baseline.json",
-    "bench:compare:roaring-uint32-set": "vitest bench experiments/roaring-uint32-set --compare experiments/roaring-uint32-set/benchmarks/baseline.json"
+    "bench:compare:roaring-uint32-set": "vitest bench experiments/roaring-uint32-set --compare experiments/roaring-uint32-set/benchmarks/baseline.json",
+    "bench:compare:packed-delta-uint32-list": "vitest bench experiments/packed-delta-uint32-list --compare experiments/packed-delta-uint32-list/benchmarks/baseline.json"
   },
   "license": "MIT",
   "repository": {

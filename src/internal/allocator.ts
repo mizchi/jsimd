@@ -13,13 +13,19 @@ export interface Allocation {
 
 export class LinearMemoryAllocator {
   readonly #memory: WebAssembly.Memory;
+  readonly #baseOffset: number;
   readonly #free = new Map<number, number[]>();
-  #reservedBytes = 0;
+  #reservedBytes: number;
   #liveBytes = 0;
   #liveAllocations = 0;
 
-  constructor(memory: WebAssembly.Memory) {
+  constructor(memory: WebAssembly.Memory, baseOffset = 0) {
+    if (!Number.isSafeInteger(baseOffset) || baseOffset < 0 || (baseOffset & 15) !== 0) {
+      throw new RangeError("allocator base offset must be a non-negative multiple of 16");
+    }
     this.#memory = memory;
+    this.#baseOffset = baseOffset;
+    this.#reservedBytes = baseOffset;
   }
 
   allocate(requestedBytes: number): Allocation {
@@ -52,8 +58,8 @@ export class LinearMemoryAllocator {
     return Object.freeze({
       liveAllocations: this.#liveAllocations,
       liveBytes: this.#liveBytes,
-      freeBytes: this.#reservedBytes - this.#liveBytes,
-      reservedBytes: this.#reservedBytes,
+      freeBytes: this.#reservedBytes - this.#baseOffset - this.#liveBytes,
+      reservedBytes: this.#reservedBytes - this.#baseOffset,
       memoryBytes: this.#memory.buffer.byteLength,
     });
   }

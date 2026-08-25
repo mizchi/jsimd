@@ -14,14 +14,16 @@ dependencies, benchmarks, and decision gates.
   - mutable array and bitmap containers
   - non-materializing intersection queries
   - reusable-output intersection
-- [ ] `PackedDeltaUint32List` — **next**
-- [ ] `SimdFlatHashMap/Set`
+- [x] `PackedDeltaUint32List`
+  - frozen Stream VByte control/data streams
+  - 128-value checkpoints and SIMD group intersection
+- [ ] `SimdFlatHashMap/Set` — **next**
 - [ ] `BitSlicedColumn`
 - [ ] `WaveletMatrixUint32`
 
 ## Committed implementation order
 
-### 1. PackedDeltaUint32List — next
+### 1. PackedDeltaUint32List — Stream VByte implementation complete
 
 Build an immutable representation for sorted monotone `Uint32` values. It complements resident
 `SimdInt32Array` and mutable `RoaringUint32Set` with a compressed postings/offset representation.
@@ -41,12 +43,12 @@ interface PackedDeltaUint32List {
 
 Tasks:
 
-- [ ] Define `PackedDeltaUint32ListBuilder.freeze()` and immutable ownership semantics.
-- [ ] Reject unsorted or duplicate input explicitly; do not silently normalize it.
-- [ ] Prototype Stream VByte using a separate control/data stream and `i8x16.swizzle` decoding.
+- [x] Define `PackedDeltaUint32ListBuilder.freeze()` and immutable ownership semantics.
+- [x] Reject unsorted or duplicate input explicitly; do not silently normalize it.
+- [x] Prototype Stream VByte using a separate control/data stream and `i8x16.swizzle` decoding.
 - [ ] Prototype FOR+BP128 with a block base, bit width, and packed payload.
-- [ ] Add a random-access checkpoint every 128 or 256 integers.
-- [ ] Add scalar and bulk queries; optimize `decodeInto` and `intersectInto` before point access.
+- [x] Add a random-access checkpoint every 128 or 256 integers.
+- [x] Add scalar and bulk queries; optimize `decodeInto` and `intersectInto` before point access.
 - [ ] Benchmark postings, source offsets, timestamps, adjacency lists, and dense local runs.
 - [ ] Compare compressed bytes/value, construction cost, point lookup, bulk decode, and
       intersection.
@@ -60,7 +62,7 @@ Decision gate:
 
 Reference: [Techniques for Inverted Index Compression](https://arxiv.org/html/1908.10598v2)
 
-### 2. SimdFlatHashMap/Set
+### 2. SimdFlatHashMap/Set — next
 
 Build typed-key hash tables, not replacements for JavaScript's arbitrary-key `Map` and `Set`.
 
