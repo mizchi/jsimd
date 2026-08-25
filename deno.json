@@ -8,7 +8,8 @@
     "./f32-vector": "./src/f32-vector/mod.ts",
     "./i32-array": "./src/i32-array/mod.ts",
     "./json": "./src/json/mod.ts",
-    "./matrix2d": "./src/matrix2d/mod.ts"
+    "./matrix2d": "./src/matrix2d/mod.ts",
+    "./matrix3d": "./src/matrix3d/mod.ts"
   },
   "tasks": {
     "build": "just build",
