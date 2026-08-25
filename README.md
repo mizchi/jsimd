@@ -4,6 +4,16 @@ Small prebuilt WebAssembly SIMD kernels for data-parallel JavaScript hot paths. 
 implementation is derived from the scalar/SIMD byte scanners in `moonbitlang/core` and is measured
 against MoonBit's JS backend.
 
+## Install
+
+```sh
+pnpm add @mizchi/jsimd
+```
+
+The 0.1 API targets Vite 8 and Deno 2.6 or later. It relies on direct Wasm ES module imports and
+explicit resource management (`using` / `Symbol.dispose`), so the consumer must enable the
+corresponding TypeScript syntax and use a runtime with Wasm SIMD support.
+
 ```ts
 import {
   bytesEqual,
@@ -15,6 +25,7 @@ import {
 } from "@mizchi/jsimd";
 import { AdaptiveSimdPageI32, SimdPageMask } from "@mizchi/jsimd/adaptive-simd-page-i32";
 import { BitSet, FixedBitSet } from "@mizchi/jsimd/bitset";
+import { BinaryVectorIndex } from "@mizchi/jsimd/binary-vector-index";
 import { BitSlicedColumnU8, BitSliceMask } from "@mizchi/jsimd/bit-sliced-column";
 import { decodeUint32BE } from "@mizchi/jsimd/endian";
 import { EliasFanoSequence } from "@mizchi/jsimd/elias-fano-sequence";
@@ -104,6 +115,10 @@ using staticIds = StaticMphfU32.from([10, 20, 30, 40]);
 const staticQueries = new Uint32Array([10, 99, 40]);
 const denseIds = new Int32Array(staticQueries.length);
 staticIds.lookupMany(staticQueries, denseIds); // 2
+
+using binaryIndex = BinaryVectorIndex.fromSignatures([new Uint8Array([0]), new Uint8Array([255])]);
+const hamming = new Uint32Array(binaryIndex.length);
+binaryIndex.distanceMany(new Uint8Array([0]), hamming);
 ```
 
 The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
@@ -117,6 +132,8 @@ source, Wasm type declaration, and generated Wasm binary:
 - [`src/adaptive-simd-page-i32`](./src/adaptive-simd-page-i32/README.md) — adaptive Constant,
   frame-of-reference, or Raw i32 pages with resident selection masks
 - [`src/bitset`](./src/bitset/README.md) — growable and fixed-universe SIMD bitsets
+- [`src/binary-vector-index`](./src/binary-vector-index/README.md) — resident binary signatures and
+  SIMD Hamming scans
 - [`src/bit-sliced-column`](./src/bit-sliced-column/README.md) — nullable bit-sliced predicates and
   resident masks
 - [`src/endian`](./src/endian/README.md) — batched endian decoding

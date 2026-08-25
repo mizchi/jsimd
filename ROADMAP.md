@@ -11,7 +11,8 @@ Implementation order after the initial byte, numeric, bitset, and matrix kernels
 7. ✅ `EliasFanoSequence` — compact monotone random access, rank, and predecessor
 8. ✅ `AdaptiveSimdPageI32` — Constant, FOR, or Raw page selected from local value statistics
 9. ✅ `StaticMphfU32` — frozen dense IDs with batched lookup and membership fingerprints
-10. `SuccinctTrie` — LOUDS prefix index built on rank/select and byte-tail comparison
+10. ❌ `SuccinctTrie` — prototype removed after losing exact and prefix queries to JavaScript
+11. ✅ `BinaryVectorIndex` — resident binary signatures and SIMD Hamming scans
 
 `RankSelectBitVector` is the first foundation because Roaring, bit-sliced indexes, wavelet matrices,
 and future succinct structures can reuse its block layout and query contracts. APIs should favor

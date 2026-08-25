@@ -32,6 +32,7 @@ import {
   SimdPageMask,
 } from "./src/adaptive-simd-page-i32/mod.ts";
 import { StaticMphfU32, StaticMphfU32Builder } from "./src/static-mphf-u32/mod.ts";
+import { BinaryVectorIndex } from "./src/binary-vector-index/mod.ts";
 
 function assertEquals(actual: unknown, expected: unknown, context: string): void {
   if (!Object.is(actual, expected)) {
@@ -1887,4 +1888,102 @@ Deno.test("StaticMphfU32 using lifecycle reaches an allocator plateau", () => {
       `MPHF storage did not plateau: ${before.reservedBytes} -> ${after.reservedBytes}`,
     );
   }
+});
+
+Deno.test("BinaryVectorIndex computes exact Hamming distances and top-k", () => {
+  using index = BinaryVectorIndex.fromSignatures([
+    new Uint8Array([0x00, 0x00]),
+    new Uint8Array([0xff, 0x00]),
+    new Uint8Array([0xff, 0xff]),
+    new Uint8Array([0x0f, 0x0f]),
+  ]);
+  const distances = new Uint32Array(index.length);
+  index.distanceMany(new Uint8Array([0x00, 0x00]), distances);
+  assertEquals(distances.join(","), "0,8,16,8", "distances");
+  const ids = new Uint32Array(3);
+  const topDistances = new Uint32Array(3);
+  assertEquals(index.topK(new Uint8Array([0, 0]), 3, ids, topDistances), 3, "top count");
+  assertEquals(topDistances.join(","), "0,8,8", "top distances");
+  assertEquals(ids[0], 0, "nearest ID");
+});
+
+Deno.test("BinaryVectorIndex quantizes Float32 signs", () => {
+  using index = BinaryVectorIndex.fromFloat32(
+    new Float32Array([1, -1, 0, 2, -3, 4, 5, -6, -1, -1, 1, 1, 1, 1, -1, -1]),
+    2,
+    8,
+  );
+  assertEquals(index.dimensions, 8, "dimensions");
+  const distances = new Uint32Array(2);
+  index.distanceMany(new Uint8Array([0b0110_1001]), distances);
+  assertEquals(distances.join(","), "0,4", "quantized distances");
+});
+
+Deno.test("BinaryVectorIndex preserves non-byte-aligned Float32 dimensions", () => {
+  using index = BinaryVectorIndex.fromFloat32(
+    new Float32Array([
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+    ]),
+    2,
+    10,
+  );
+  assertEquals(index.dimensions, 10, "logical dimensions");
+  const distances = new Uint32Array(2);
+  // Bits 10..15 are padding and must not contribute to the logical distance.
+  index.distanceMany(new Uint8Array([0xff, 0xff]), distances);
+  assertEquals(distances.join(","), "0,10", "padding bits ignored");
+});
+
+Deno.test("BinaryVectorIndex matches scalar distances across SIMD tails", () => {
+  for (const bytes of [1, 15, 16, 17, 31, 32, 33]) {
+    const signatures = Array.from(
+      { length: 129 },
+      (_, row) =>
+        Uint8Array.from({ length: bytes }, (_, column) => Math.imul(row + 1, column + 17) & 0xff),
+    );
+    const query = Uint8Array.from({ length: bytes }, (_, index) => Math.imul(index, 31) & 0xff);
+    using index = BinaryVectorIndex.fromSignatures(signatures);
+    const actual = new Uint32Array(signatures.length);
+    index.distanceMany(query, actual);
+    for (let row = 0; row < signatures.length; row++) {
+      let expected = 0;
+      for (let byte = 0; byte < bytes; byte++) {
+        expected += ((signatures[row]![byte]! ^ query[byte]!) >>> 0).toString(2).split("1").length -
+          1;
+      }
+      assertEquals(actual[row], expected, `bytes=${bytes}, row=${row}`);
+    }
+  }
+});
+
+Deno.test("BinaryVectorIndex using lifecycle returns storage", () => {
+  const signatures = Array.from({ length: 256 }, () => new Uint8Array(32));
+  const before = BinaryVectorIndex.allocatorStats();
+  for (let iteration = 0; iteration < 1000; iteration++) {
+    using index = BinaryVectorIndex.fromSignatures(signatures);
+    const output = new Uint32Array(index.length);
+    index.distanceMany(signatures[0]!, output);
+  }
+  const after = BinaryVectorIndex.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
 });

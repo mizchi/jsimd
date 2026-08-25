@@ -3,6 +3,7 @@ coverage/
 examples/vite/dist/
 examples/tree-shake-adaptive-simd-page-i32/dist/
 examples/tree-shake-bitset/dist/
+examples/tree-shake-binary-vector-index/dist/
 examples/tree-shake-bit-sliced-column/dist/
 examples/tree-shake-bytes/dist/
 examples/tree-shake-endian/dist/

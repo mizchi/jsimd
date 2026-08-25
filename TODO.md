@@ -38,7 +38,10 @@ dependencies, benchmarks, and decision gates.
   - hash-and-displace construction over unique Uint32 keys
   - dense IDs, 16-bit membership fingerprints, and four-query first-hash SIMD batching
   - explicit freeze-once/batch-query benchmark gate against FlatHash and `Set<number>`
-- [ ] `SuccinctTrie` — **next**
+- [x] Reject the initial `SuccinctTrie` prototype: exact lookup was about 69x slower than `Set`, and
+      prefix range was about 1.67x slower than two lower bounds over a sorted string array. Revisit
+      only if it becomes required topology for another structure or a new layout wins.
+- [x] `BinaryVectorIndex` — **0.1.0 candidate**
 
 ## Public API symmetry audit
 
@@ -170,7 +173,7 @@ the first six structures when a dependency or comparison requires it.
 | Partitioned Elias–Fano  | Per-block choice among EF, dense bitmap, and contiguous range | Add only after plain EF and PackedDelta benchmarks                     |
 | `StaticMphfU32`         | Frozen Uint32 → `[0,n)` mapping plus 16-bit fingerprint       | Initial implementation complete; batch wins, single calls do not       |
 | Byte-key `StaticMPHF`   | Hash UTF-8 slices in a frozen byte arena before MPHF routing  | Build with CompressedStringTable; do not copy each query independently |
-| `SuccinctTrie`          | LOUDS topology, exact locate, prefix range, extraction        | Depends on rank/select and byte/tail comparison kernels                |
+| `SuccinctTrie`          | LOUDS prototype rejected after JS comparison                  | No dependency needs it; redesign only with a new measured workload     |
 | `CompressedStringTable` | ID-based get/equals/hash with FSST, OnPair16, or front coding | Pair with StaticMPHF for frozen symbol tables                          |
 
 References:

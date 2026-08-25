@@ -29,7 +29,11 @@ const I32_MIN = -0x8000_0000;
 const I32_MAX = 0x7fff_ffff;
 const allocator = new LinearMemoryAllocator(memory);
 
-export const AdaptivePageEncoding = Object.freeze(
+export const AdaptivePageEncoding: Readonly<{
+  Constant: "constant";
+  FrameOfReference: "frame-of-reference";
+  Raw: "raw";
+}> = Object.freeze(
   {
     Constant: "constant",
     FrameOfReference: "frame-of-reference",

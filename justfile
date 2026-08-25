@@ -2,6 +2,7 @@ build:
     wasm-tools strip -a src/adaptive-simd-page-i32/kernels.wat -o src/adaptive-simd-page-i32/kernels.wasm
     wasm-tools strip -a src/bytes/kernels.wat -o src/bytes/kernels.wasm
     wasm-tools strip -a src/bitset/kernels.wat -o src/bitset/kernels.wasm
+    wasm-tools strip -a src/binary-vector-index/kernels.wat -o src/binary-vector-index/kernels.wasm
     wasm-tools strip -a src/bit-sliced-column/kernels.wat -o src/bit-sliced-column/kernels.wasm
     wasm-tools strip -a src/endian/kernels.wat -o src/endian/kernels.wasm
     wasm-tools strip -a src/elias-fano-sequence/kernels.wat -o src/elias-fano-sequence/kernels.wasm
@@ -19,6 +20,7 @@ build:
     wasm-tools validate --features simd src/adaptive-simd-page-i32/kernels.wasm
     wasm-tools validate --features simd src/bytes/kernels.wasm
     wasm-tools validate --features simd src/bitset/kernels.wasm
+    wasm-tools validate --features simd src/binary-vector-index/kernels.wasm
     wasm-tools validate --features simd src/bit-sliced-column/kernels.wasm
     wasm-tools validate --features simd src/endian/kernels.wasm
     wasm-tools validate --features simd src/elias-fano-sequence/kernels.wasm
@@ -39,6 +41,7 @@ build:
     ! wasm-tools print src/bytes/kernels.wasm | rg -q 'byte_swap32|json_token_starts|intersection_count|\(export "dot"'
     wasm-tools print src/bitset/kernels.wasm | rg -q 'intersection_count'
     ! wasm-tools print src/bitset/kernels.wasm | rg -q 'find_byte|\(export "dot"'
+    wasm-tools print src/binary-vector-index/kernels.wasm | rg -q 'distance_many|i8x16.popcnt'
     wasm-tools print src/bit-sliced-column/kernels.wasm | rg -q 'scan_eq|scan_between|mask_count'
     ! wasm-tools print src/bit-sliced-column/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/endian/kernels.wasm | rg -q 'byte_swap32'
@@ -77,6 +80,12 @@ bench: build
 check: test
     deno fmt --check
     deno lint
+    deno eval 'const p = JSON.parse(await Deno.readTextFile("package.json")); const d = JSON.parse(await Deno.readTextFile("deno.json")); if (p.version !== d.version || JSON.stringify(Object.keys(p.exports)) !== JSON.stringify(Object.keys(d.exports))) throw new Error("package.json and deno.json release metadata differ")'
+    pnpm exec tsc -p examples/tree-shake-binary-vector-index/tsconfig.json
+    pnpm exec vite build examples/tree-shake-binary-vector-index
+    test "$(find examples/tree-shake-binary-vector-index/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-binary-vector-index/dist/assets/*.wasm | rg -q 'distance_many|i8x16.popcnt'
+    ! wasm-tools print examples/tree-shake-binary-vector-index/dist/assets/*.wasm | rg -q 'find_byte|json_token_starts|intersection_count|lookup_many|matmul'
     pnpm exec tsc -p examples/tree-shake-adaptive-simd-page-i32/tsconfig.json
     pnpm exec vite build examples/tree-shake-adaptive-simd-page-i32
     test "$(find examples/tree-shake-adaptive-simd-page-i32/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
