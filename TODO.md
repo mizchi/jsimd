@@ -23,7 +23,11 @@ dependencies, benchmarks, and decision gates.
 - [x] `BitSlicedColumn`
   - nullable `BitSlicedColumnU8`
   - same-memory composable `BitSliceMask`
-- [ ] `WaveletMatrixUint32` — **next**
+- [x] `WaveletMatrixUint32`
+  - binary 32-level layout over the complete Uint32 domain
+  - access, rank/select, range frequency, quantile, and predecessor
+  - batch access/rank/quantile kernels
+- [ ] `EliasFanoSequence` — **next**
 
 ## Public API symmetry audit
 
@@ -123,21 +127,22 @@ Build mostly-static integer columns that produce composable selection bitsets.
 The structure is for scans, not fast individual value extraction. Keep an ordinary value array when
 the workload needs both point access and repeated predicates.
 
-### 4. WaveletMatrixUint32 — next
+### 4. WaveletMatrixUint32 — initial implementation complete
 
 Build the first higher-level succinct structure after rank/select and bit-sliced predicates settle.
 
 Public contract:
 
-- [ ] `access(index)`
-- [ ] `rank(value, end)` and `select(value, rank)`
-- [ ] `rangeFreq(left, right, min, max)`
-- [ ] `quantile(left, right, kth)`
-- [ ] `predecessor(left, right, value)`
-- [ ] batch-query variants for independent queries
+- [x] `access(index)`
+- [x] `rank(value, end)` and `select(value, rank)`
+- [x] `rangeFreq(left, right, min, max)`
+- [x] `quantile(left, right, kth)`
+- [x] `predecessor(left, right, value)`
+- [x] batch access, rank, and quantile variants for independent queries
 
-Start with a binary wavelet matrix using `RankSelectBitVector`. Evaluate a 4-ary representation only
-after the binary version provides a correctness and performance baseline.
+The implementation embeds the same 512-bit rank-index design as `RankSelectBitVector` in one
+self-contained Wasm module. Keeping all 32 levels inside a single call avoids paying the JS/Wasm
+boundary once per level. Evaluate a 4-ary representation only after the binary benchmark baseline.
 
 Reference: [Faster Wavelet Tree Queries](https://arxiv.org/html/2302.09239v2)
 

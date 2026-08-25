@@ -25,6 +25,7 @@ import { SimdMatrix3D } from "@mizchi/jsimd/matrix3d";
 import { RankSelectBitVectorBuilder } from "@mizchi/jsimd/rank-select-bitvector";
 import { RoaringUint32Set } from "@mizchi/jsimd/roaring-uint32-set";
 import { PackedDeltaUint32List } from "@mizchi/jsimd/packed-delta-uint32-list";
+import { WaveletMatrixUint32 } from "@mizchi/jsimd/wavelet-matrix-uint32";
 
 const bytes = new Uint8Array([1, 2, 3]);
 findByte(bytes, 2);
@@ -84,6 +85,9 @@ ids.lookupMany(idQueries, idPresent);
 using statusColumn = BitSlicedColumnU8.from(new Uint8Array([1, 4, 7, 10]), 4);
 using statusMask = new BitSliceMask(statusColumn.length);
 statusColumn.between(4, 10, statusMask);
+
+using orderedValues = WaveletMatrixUint32.from([3, 1, 4, 1, 5, 9]);
+orderedValues.quantile(0, orderedValues.length, 3); // 4
 ```
 
 The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
@@ -108,6 +112,8 @@ source, Wasm type declaration, and generated Wasm binary:
 - [`src/roaring-uint32-set`](./src/roaring-uint32-set/README.md) — compressed Uint32 set operations
 - [`src/packed-delta-uint32-list`](./src/packed-delta-uint32-list/README.md) — frozen compressed
   monotone Uint32 lists
+- [`src/wavelet-matrix-uint32`](./src/wavelet-matrix-uint32/README.md) — immutable Uint32 range
+  rank, frequency, quantile, and predecessor queries
 
 The package is distributed as one npm package with subpath exports. The Wasm binaries remain
 separate, so bundlers only include the entrypoints that are imported.
