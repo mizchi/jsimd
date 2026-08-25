@@ -120,8 +120,9 @@ loader.
 
 ## Development
 
-The short data-structure roadmap is in [`ROADMAP.md`](./ROADMAP.md). Concrete implementation tasks,
-dependency tracks, and benchmark gates are maintained in [`TODO.md`](./TODO.md).
+Implementation priorities, benchmark gates, and deferred candidates are maintained in
+[`TODO.md`](./TODO.md). A kernel is retained only when a documented workload justifies its Wasm
+boundary and bundle cost against the best relevant JavaScript builtin or scalar reference.
 
 ```sh
 pnpm install
@@ -136,7 +137,3 @@ files have custom sections removed with `wasm-tools strip -a`, are checked with
 payload into `dist/`: compiled JavaScript, declarations, feature documentation, WAT sources, and the
 corresponding stripped Wasm binaries. The hand-written kernels do not require Binaryen; development
 only requires `wasm-tools` on `PATH`.
-
-Implemented and planned work is tracked in [`TODO.md`](./TODO.md). A kernel is retained only when a
-documented workload justifies its Wasm boundary and bundle cost against the best relevant JavaScript
-builtin or scalar reference.
