@@ -152,6 +152,9 @@ with a Vite production fixture and fails unless exactly the bitset Wasm asset is
 
 ## Development
 
+The short data-structure roadmap is in [`ROADMAP.md`](./ROADMAP.md). Concrete implementation tasks,
+dependency tracks, and benchmark gates are maintained in [`TODO.md`](./TODO.md).
+
 ```sh
 pnpm install
 just build

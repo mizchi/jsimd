@@ -16,3 +16,6 @@ complete or batched operations over exposing SIMD lanes across the JavaScript bo
 Later candidates are `BlockedBloomFilter`, `SimdPriorityQueue`, and `SimdOrderedIndex`. They remain
 below the first six until benchmarks show a WebAssembly SIMD advantage over relevant JavaScript
 builtins or established libraries.
+
+See [`TODO.md`](./TODO.md) for concrete APIs, implementation checklists, research-derived build
+tracks, and benchmark gates.
