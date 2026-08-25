@@ -26,6 +26,11 @@ import { BitSlicedColumnU8, BitSliceMask } from "./src/bit-sliced-column/mod.ts"
 import { jsonTokenStarts } from "./src/json/mod.ts";
 import { WaveletMatrixUint32 } from "./src/wavelet-matrix-uint32/mod.ts";
 import { EliasFanoSequence, EliasFanoSequenceBuilder } from "./src/elias-fano-sequence/mod.ts";
+import {
+  AdaptivePageEncoding,
+  AdaptiveSimdPageI32,
+  SimdPageMask,
+} from "./src/adaptive-simd-page-i32/mod.ts";
 
 function assertEquals(actual: unknown, expected: unknown, context: string): void {
   if (!Object.is(actual, expected)) {
@@ -1619,6 +1624,151 @@ Deno.test("jsonTokenStarts matches MoonBit scalar lexer", () => {
       Array.from(jsonTokenStarts(input)).join(","),
       Array.from(scalarJsonTokenStarts(input)).join(","),
       `random bytes trial=${trial}`,
+    );
+  }
+});
+
+Deno.test("AdaptiveSimdPageI32 selects a physical encoding per page", () => {
+  using constant = AdaptiveSimdPageI32.from([7, 7, 7]);
+  using narrow = AdaptiveSimdPageI32.from([-100, -99, -50, -75]);
+  using wide = AdaptiveSimdPageI32.from([-0x8000_0000, 0, 0x7fff_ffff]);
+  assertEquals(constant.encoding, AdaptivePageEncoding.Constant, "constant encoding");
+  assertEquals(constant.encodedBytes, 0, "constant payload");
+  assertEquals(narrow.encoding, AdaptivePageEncoding.FrameOfReference, "FOR encoding");
+  assertEquals(narrow.bitWidth, 6, "FOR width");
+  assertEquals(wide.encoding, AdaptivePageEncoding.Raw, "raw encoding");
+});
+
+Deno.test("AdaptiveSimdPageI32 decodes, indexes, and reduces every encoding", () => {
+  const cases = [
+    [11, 11, 11, 11, 11],
+    [-1000, -999, -750, -500, -989],
+    [-0x8000_0000, 17, 0x7fff_ffff, -19, 1_000_000],
+  ];
+  for (const values of cases) {
+    using page = AdaptiveSimdPageI32.from(values);
+    const decoded = new Int32Array(values.length);
+    assertEquals(page.decodeInto(decoded), values.length, "decoded count");
+    assertEquals(decoded.join(","), values.join(","), `decode ${page.encoding}`);
+    assertEquals(page.sum(), values.reduce((sum, value) => sum + value, 0), "sum");
+    for (let index = 0; index < values.length; index++) {
+      assertEquals(page.get(index), values[index], `get ${index}`);
+    }
+  }
+});
+
+Deno.test("AdaptiveSimdPageI32 scans into composable masks and gathers", () => {
+  const values = [-3, 1, 4, 1, 5, 9, 2, 6];
+  using page = AdaptiveSimdPageI32.from(values);
+  using equal = new SimdPageMask(values.length);
+  using less = new SimdPageMask(values.length);
+  using range = new SimdPageMask(values.length);
+  assertEquals(page.scanEq(1, equal).toIndices().join(","), "1,3", "equal");
+  assertEquals(page.scanLt(4, less).toIndices().join(","), "0,1,3,6", "less");
+  assertEquals(
+    page.scanBetween(1, 6, range).toIndices().join(","),
+    "1,2,3,4,6",
+    "between",
+  );
+  equal.orAssign(less).differenceAssign(range);
+  assertEquals(equal.toIndices().join(","), "0", "mask composition");
+
+  page.scanBetween(1, 6, range);
+  const gathered = new Int32Array(range.countOnes());
+  assertEquals(page.gatherInto(range, gathered), 5, "gathered count");
+  assertEquals(gathered.join(","), "1,4,1,5,2", "gathered values");
+});
+
+Deno.test("AdaptiveSimdPageI32 matches scalar predicates across SIMD tails", () => {
+  let state = 0x6d2b_79f5;
+  const next = () => {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) | 0;
+    return state;
+  };
+  for (const length of [0, 1, 3, 4, 5, 31, 32, 33, 127, 128, 129, 255, 256]) {
+    for (const narrow of [true, false]) {
+      const values = Int32Array.from(
+        { length },
+        narrow ? () => -10_000 + (next() & 1023) : () => next(),
+      );
+      using page = AdaptiveSimdPageI32.from(values);
+      using mask = new SimdPageMask(length);
+      const decoded = new Int32Array(length);
+      page.decodeInto(decoded);
+      assertEquals(decoded.join(","), values.join(","), `decode n=${length}, narrow=${narrow}`);
+      const target = values[length >>> 1] ?? 0;
+      const expectedEqual = Array.from(values.keys()).filter((index) => values[index] === target);
+      assertEquals(
+        page.scanEq(target, mask).toIndices().join(","),
+        expectedEqual.join(","),
+        `equal n=${length}, narrow=${narrow}`,
+      );
+      const expectedLess = Array.from(values.keys()).filter((index) => values[index]! < target);
+      assertEquals(
+        page.scanLt(target, mask).toIndices().join(","),
+        expectedLess.join(","),
+        `less n=${length}, narrow=${narrow}`,
+      );
+      for (
+        const [minimum, maximum] of [
+          [-10_000, -9_500],
+          [-1, 1],
+          [-0x8000_0000, 0x8000_0000],
+        ]
+      ) {
+        const expected = Array.from(values.keys()).filter((index) =>
+          values[index]! >= minimum && values[index]! < maximum
+        );
+        assertEquals(
+          page.scanBetween(minimum, maximum, mask).toIndices().join(","),
+          expected.join(","),
+          `between n=${length}, narrow=${narrow}`,
+        );
+      }
+    }
+  }
+});
+
+Deno.test("AdaptiveSimdPageI32 validates page and mask contracts", () => {
+  let threw = false;
+  try {
+    AdaptiveSimdPageI32.from(new Int32Array(257));
+  } catch (error) {
+    threw = error instanceof RangeError;
+  }
+  assertEquals(threw, true, "page length");
+  threw = false;
+  try {
+    AdaptiveSimdPageI32.from([1.5]);
+  } catch (error) {
+    threw = error instanceof RangeError;
+  }
+  assertEquals(threw, true, "i32 values");
+
+  using page = AdaptiveSimdPageI32.from([1, 2, 3]);
+  using wrongMask = new SimdPageMask(2);
+  threw = false;
+  try {
+    page.scanEq(1, wrongMask);
+  } catch (error) {
+    threw = error instanceof RangeError;
+  }
+  assertEquals(threw, true, "mask length");
+});
+
+Deno.test("AdaptiveSimdPageI32 using lifecycle returns allocator storage", () => {
+  const before = AdaptiveSimdPageI32.allocatorStats();
+  for (let iteration = 0; iteration < 10_000; iteration++) {
+    using page = AdaptiveSimdPageI32.from(Int32Array.from({ length: 256 }, (_, i) => i));
+    using mask = new SimdPageMask(page.length);
+    assertEquals(page.scanLt(128, mask).countOnes(), 128, "live page");
+  }
+  const after = AdaptiveSimdPageI32.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+  if (after.reservedBytes > before.reservedBytes + 512) {
+    throw new Error(
+      `adaptive page storage did not plateau: ${before.reservedBytes} -> ${after.reservedBytes}`,
     );
   }
 });

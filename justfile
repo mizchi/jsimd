@@ -1,4 +1,5 @@
 build:
+    wasm-tools strip -a src/adaptive-simd-page-i32/kernels.wat -o src/adaptive-simd-page-i32/kernels.wasm
     wasm-tools strip -a src/bytes/kernels.wat -o src/bytes/kernels.wasm
     wasm-tools strip -a src/bitset/kernels.wat -o src/bitset/kernels.wasm
     wasm-tools strip -a src/bit-sliced-column/kernels.wat -o src/bit-sliced-column/kernels.wasm
@@ -14,6 +15,7 @@ build:
     wasm-tools strip -a src/roaring-uint32-set/kernels.wat -o src/roaring-uint32-set/kernels.wasm
     wasm-tools strip -a src/packed-delta-uint32-list/kernels.wat -o src/packed-delta-uint32-list/kernels.wasm
     wasm-tools strip -a src/wavelet-matrix-uint32/kernels.wat -o src/wavelet-matrix-uint32/kernels.wasm
+    wasm-tools validate --features simd src/adaptive-simd-page-i32/kernels.wasm
     wasm-tools validate --features simd src/bytes/kernels.wasm
     wasm-tools validate --features simd src/bitset/kernels.wasm
     wasm-tools validate --features simd src/bit-sliced-column/kernels.wasm
@@ -29,6 +31,8 @@ build:
     wasm-tools validate --features simd src/roaring-uint32-set/kernels.wasm
     wasm-tools validate --features simd src/packed-delta-uint32-list/kernels.wasm
     wasm-tools validate --features simd src/wavelet-matrix-uint32/kernels.wasm
+    wasm-tools print src/adaptive-simd-page-i32/kernels.wasm | rg -q 'scan_between_for|scan_between_raw|gather_for|mask_count'
+    ! wasm-tools print src/adaptive-simd-page-i32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/bytes/kernels.wasm | rg -q 'find_byte'
     ! wasm-tools print src/bytes/kernels.wasm | rg -q 'byte_swap32|json_token_starts|intersection_count|\(export "dot"'
     wasm-tools print src/bitset/kernels.wasm | rg -q 'intersection_count'
@@ -69,6 +73,11 @@ bench: build
 check: test
     deno fmt --check
     deno lint
+    pnpm exec tsc -p examples/tree-shake-adaptive-simd-page-i32/tsconfig.json
+    pnpm exec vite build examples/tree-shake-adaptive-simd-page-i32
+    test "$(find examples/tree-shake-adaptive-simd-page-i32/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-adaptive-simd-page-i32/dist/assets/*.wasm | rg -q 'scan_between_for|scan_between_raw|gather_for|mask_count'
+    ! wasm-tools print examples/tree-shake-adaptive-simd-page-i32/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     pnpm exec tsc -p examples/vite/tsconfig.json
     pnpm exec vite build examples/vite
     pnpm exec tsc -p examples/tree-shake-bytes/tsconfig.json

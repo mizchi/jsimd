@@ -13,6 +13,7 @@ import {
   lexicalCompare,
   reverseFindByte,
 } from "@mizchi/jsimd";
+import { AdaptiveSimdPageI32, SimdPageMask } from "@mizchi/jsimd/adaptive-simd-page-i32";
 import { BitSet, FixedBitSet } from "@mizchi/jsimd/bitset";
 import { BitSlicedColumnU8, BitSliceMask } from "@mizchi/jsimd/bit-sliced-column";
 import { decodeUint32BE } from "@mizchi/jsimd/endian";
@@ -92,6 +93,11 @@ orderedValues.quantile(0, orderedValues.length, 3); // 4
 
 using monotoneOffsets = EliasFanoSequence.from([1, 1, 3, 10, 100]);
 monotoneOffsets.nextGEQ(4); // 10
+
+using page = AdaptiveSimdPageI32.from([-3, 1, 4, 1, 5, 9, 2, 6]);
+using pageSelection = new SimdPageMask(page.length);
+page.scanBetween(1, 6, pageSelection);
+pageSelection.toIndices(); // [1, 2, 3, 4, 6]
 ```
 
 The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
@@ -102,6 +108,8 @@ Each entrypoint is self-contained under `src/<name>/`, with its own TypeScript A
 source, Wasm type declaration, and generated Wasm binary:
 
 - [`src/bytes`](./src/bytes/README.md) — byte search, comparison, ASCII, and subarray scanning
+- [`src/adaptive-simd-page-i32`](./src/adaptive-simd-page-i32/README.md) — adaptive Constant,
+  frame-of-reference, or Raw i32 pages with resident selection masks
 - [`src/bitset`](./src/bitset/README.md) — growable and fixed-universe SIMD bitsets
 - [`src/bit-sliced-column`](./src/bit-sliced-column/README.md) — nullable bit-sliced predicates and
   resident masks

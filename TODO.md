@@ -31,7 +31,10 @@ dependencies, benchmarks, and decision gates.
   - non-decreasing Uint32 input with duplicate preservation
   - packed lower bits and unary high-bit rank/select
   - random access, rank, nextGEQ, predecessor, batch access/rank, and bulk decode
-- [ ] `AdaptiveSimdPageI32` — **next**
+- [x] `AdaptiveSimdPageI32`
+  - up to 256 signed rows with Constant, FrameOfReference, or Raw storage
+  - ZoneMap fast paths, resident composable masks, scans, gather, decode, and sum
+- [ ] `StaticMPHF` — **next**
 
 ## Public API symmetry audit
 
@@ -179,10 +182,12 @@ classes.
 
 1. [ ] `ZoneMapU32` with page-level min/max pruning.
 2. [ ] `RangeFilterU32` only if ZoneMap false positives justify extra storage.
-3. [ ] `AdaptiveSimdPageI32` with 128 or 256 rows per page.
-4. [ ] Selection-mask operations: `scanEq`, `scanLt`, `scanBetween`.
-5. [ ] `decodeInto`, `gather`, and simple aggregates.
-6. [ ] Frozen repacking among the encodings below.
+3. [x] `AdaptiveSimdPageI32` with up to 256 rows per page.
+4. [x] Selection-mask operations: `scanEq`, `scanLt`, `scanBetween`.
+5. [x] `decodeInto`, `gatherInto`, and `sum`.
+6. [x] Initial frozen selection among Constant, FrameOfReference, and Raw.
+7. [ ] Extend frozen repacking with Delta, RLE, Dictionary, Sparse, and BitSliced only when each
+       encoding wins an end-to-end page workload.
 
 Candidate page encodings:
 
@@ -205,6 +210,19 @@ References:
 - [bloomRF](https://arxiv.org/html/2207.04789v2)
 - [MorphStore](https://arxiv.org/html/2004.09350v1)
 - [ZipFlow](https://arxiv.org/html/2602.08190v1)
+
+### Typed packed arrays and common contracts
+
+- [ ] `PackedUint32Array`: fixed-width random access for arbitrary unsigned values; benchmark each
+      width against `Uint32Array` before exposing it as a general replacement.
+- [ ] `MonotoneUint32Sequence`: a shared read-only contract or factory over Elias–Fano, PackedDelta,
+      dense bitmap, and contiguous ranges. Avoid adding a wrapper if dispatch overhead erases the
+      benefit of the selected encoding.
+- [ ] `PackedDeltaArray`: clarify whether this means signed/general delta coding or a block-adaptive
+      successor to `PackedDeltaUint32List`, then add random access, bulk decode, and intersection
+      workloads without duplicating the existing monotone type.
+- [ ] `BitMatrix`: resident dense rows, transpose, boolean multiplication, and selection-mask row
+      views; switch large sparse rows to Roaring or CSR.
 
 ### Search, spatial, graph, and statistics
 
