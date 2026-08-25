@@ -20,8 +20,14 @@ describe.each([16, 1_024, 16_384, 262_144, 4_194_304])("Float32Vector length=%i"
   const right = SimdFloat32Vector.from(rightArray);
   const scalarTarget = leftArray.slice();
 
-  bench("SIMD dot", () => left.dot(right));
-  bench("scalar Float32Array dot", () => scalarDot(leftArray, rightArray));
-  bench("SIMD AXPY", () => left.addScaled(right, 1e-8));
+  bench("SIMD dot", () => {
+    left.dot(right);
+  });
+  bench("scalar Float32Array dot", () => {
+    scalarDot(leftArray, rightArray);
+  });
+  bench("SIMD AXPY", () => {
+    left.addScaled(right, 1e-8);
+  });
   bench("scalar Float32Array AXPY", () => scalarAxpy(scalarTarget, rightArray, 1e-8));
 });

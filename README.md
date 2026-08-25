@@ -7,6 +7,7 @@ against MoonBit's JS backend.
 ```ts
 import {
   bytesEqual,
+  BytesView,
   findByte,
   findNonAscii,
   indexOfSubarray,
@@ -18,6 +19,7 @@ import { SimdFloat32Vector } from "@mizchi/jsimd/f32-vector";
 import { jsonTokenStarts } from "@mizchi/jsimd/json";
 
 const bytes = new Uint8Array([1, 2, 3]);
+new BytesView(bytes).getUint16(0, true);
 findByte(bytes, 2);
 reverseFindByte(bytes, 2);
 findNonAscii(bytes);

@@ -1,5 +1,6 @@
 import {
   bytesEqual,
+  BytesView,
   findByte,
   findNonAscii,
   indexOfSubarray,
@@ -191,6 +192,51 @@ Deno.test("findByte preserves view-relative bounds", () => {
   input[80] = 0x5a;
   assertEquals(findByte(input, 0x5a, 32, 96), 80, "bounded hit");
   assertEquals(findByte(input, 0x5a, 0, 64), -1, "bounded miss");
+});
+
+Deno.test("BytesView keeps zero-copy relative views", () => {
+  const source = new Uint8Array(256).fill(0x61);
+  source[140] = 0x5a;
+  const view = new BytesView(source, 100, 80);
+  assertEquals(view.byteLength, 80, "byte length");
+  assertEquals(view.byteOffset, source.byteOffset + 100, "absolute byte offset");
+  assertEquals(view.get(40), 0x5a, "relative get");
+  assertEquals(view.findByte(0x5a), 40, "relative SIMD search");
+
+  const nested = view.view(32, 48);
+  assertEquals(nested.byteLength, 16, "nested length");
+  assertEquals(nested.get(8), 0x5a, "nested relative get");
+  source[140] = 0x42;
+  assertEquals(nested.get(8), 0x42, "zero-copy alias");
+});
+
+Deno.test("BytesView exposes DataView-compatible typed reads", () => {
+  const source = new Uint8Array(32);
+  const data = new DataView(source.buffer);
+  data.setUint16(1, 0x1234, true);
+  data.setUint32(3, 0x89ab_cdef, false);
+  data.setBigUint64(7, 0x0123_4567_89ab_cdefn, true);
+  data.setFloat32(15, Math.PI, true);
+  data.setFloat64(19, Math.E, false);
+  const view = new BytesView(source);
+
+  assertEquals(view.getUint16(1, true), 0x1234, "u16 little endian");
+  assertEquals(view.getUint32(3), 0x89ab_cdef, "u32 big endian default");
+  assertEquals(view.getBigUint64(7, true), 0x0123_4567_89ab_cdefn, "u64 little endian");
+  assertClose(view.getFloat32(15, true), Math.PI, 1e-6, "f32 little endian");
+  assertClose(view.getFloat64(19), Math.E, 1e-12, "f64 big endian");
+});
+
+Deno.test("BytesView composes MoonBit-style byte operations", () => {
+  const encoder = new TextEncoder();
+  const view = new BytesView(encoder.encode("prefix:moonbit:suffix"));
+  const moonbit = new BytesView(encoder.encode("moonbit"));
+  assertEquals(view.find(moonbit), 7, "find view");
+  assertEquals(view.hasPrefix(encoder.encode("prefix")), true, "prefix");
+  assertEquals(view.hasSuffix(encoder.encode("suffix")), true, "suffix");
+  assertEquals(view.view(7, 14).equals(moonbit), true, "view equality");
+  assertEquals(view.view(7, 14).compare(encoder.encode("moonbyte")) < 0, true, "compare");
+  assertEquals(view.findNonAscii(), -1, "ASCII view");
 });
 
 Deno.test("reverseFindByte matches Uint8Array#lastIndexOf", () => {

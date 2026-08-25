@@ -44,6 +44,10 @@ describe.each(
   ] as const,
 )("JSON lexer %s", (_name, source) => {
   const input = encoder.encode(source);
-  bench("Wasm SIMD jsonTokenStarts", () => jsonTokenStarts(input));
-  bench("scalar JSON lexer", () => scalarJsonTokenStarts(input));
+  bench("Wasm SIMD jsonTokenStarts", () => {
+    jsonTokenStarts(input);
+  });
+  bench("scalar JSON lexer", () => {
+    scalarJsonTokenStarts(input);
+  });
 });

@@ -39,10 +39,14 @@ describe.each([16_384, 262_144, 4_194_304])("FixedBitSet capacity=%i", (capacity
   const simdTarget = left.clone();
   const scalarTarget = leftWords.slice();
 
-  bench("SIMD intersectionCount", () => left.intersectionCount(right));
+  bench("SIMD intersectionCount", () => {
+    left.intersectionCount(right);
+  });
   bench("scalar Uint32Array intersectionCount", () => {
     scalarIntersectionCount(leftWords, rightWords);
   });
-  bench("SIMD unionWith", () => simdTarget.unionWith(right));
+  bench("SIMD unionWith", () => {
+    simdTarget.unionWith(right);
+  });
   bench("scalar Uint32Array union", () => scalarUnionInto(scalarTarget, rightWords));
 });
