@@ -16,6 +16,7 @@ import {
 import { BitSet, FixedBitSet } from "@mizchi/jsimd/bitset";
 import { BitSlicedColumnU8, BitSliceMask } from "@mizchi/jsimd/bit-sliced-column";
 import { decodeUint32BE } from "@mizchi/jsimd/endian";
+import { EliasFanoSequence } from "@mizchi/jsimd/elias-fano-sequence";
 import { SimdFloat32Vector } from "@mizchi/jsimd/f32-vector";
 import { FlatHashMapU32U32, FlatHashSetU32 } from "@mizchi/jsimd/flat-hash";
 import { SimdInt32Array } from "@mizchi/jsimd/i32-array";
@@ -88,6 +89,9 @@ statusColumn.between(4, 10, statusMask);
 
 using orderedValues = WaveletMatrixUint32.from([3, 1, 4, 1, 5, 9]);
 orderedValues.quantile(0, orderedValues.length, 3); // 4
+
+using monotoneOffsets = EliasFanoSequence.from([1, 1, 3, 10, 100]);
+monotoneOffsets.nextGEQ(4); // 10
 ```
 
 The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
@@ -102,6 +106,8 @@ source, Wasm type declaration, and generated Wasm binary:
 - [`src/bit-sliced-column`](./src/bit-sliced-column/README.md) — nullable bit-sliced predicates and
   resident masks
 - [`src/endian`](./src/endian/README.md) — batched endian decoding
+- [`src/elias-fano-sequence`](./src/elias-fano-sequence/README.md) — frozen monotone Uint32 random
+  access, rank, and predecessor
 - [`src/f32-vector`](./src/f32-vector/README.md) — resident Float32 dot product and AXPY
 - [`src/flat-hash`](./src/flat-hash/README.md) — typed `u32` SIMD flat hash set and map
 - [`src/i32-array`](./src/i32-array/README.md) — fixed-length resident Int32 bulk operations

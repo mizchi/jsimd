@@ -1,0 +1,100 @@
+# EliasFanoSequence
+
+An immutable Elias–Fano encoding for non-decreasing unsigned 32-bit sequences. It preserves
+duplicates and supports point access and ordered queries without decoding the complete sequence.
+
+```ts
+import { EliasFanoSequence, EliasFanoSequenceBuilder } from "@mizchi/jsimd/elias-fano-sequence";
+
+const builder = new EliasFanoSequenceBuilder();
+builder.append(1).append(1).append(3).append(10).append(100);
+using offsets = builder.freeze();
+
+offsets.at(2); // 3
+offsets.rank(10); // 3: number of values strictly below 10
+offsets.nextGEQ(4); // 10
+offsets.predecessor(10); // 3: strict predecessor
+
+const ranks = new Uint32Array(3);
+offsets.rankMany(new Uint32Array([0, 3, 11]), ranks); // [0, 2, 4]
+
+const decoded = new Uint32Array(offsets.length);
+offsets.decodeInto(decoded);
+```
+
+`rank(value)` is the lower-bound index. `nextGEQ` returns the first stored value greater than or
+equal to the query, while `predecessor` returns the largest strictly smaller value. Both return `-1`
+when no result exists. Query bounds may use `2^32`, allowing `rank(2 ** 32)` to return the complete
+length even when the sequence contains `0xffffffff`.
+
+Inputs must already be non-decreasing. Descending input throws instead of sorting silently. The
+builder produces independent frozen snapshots. Always bind each frozen sequence with `using` so its
+high bits, lower bits, and rank-index allocations return to the free list at scope exit.
+
+## Layout and algorithm
+
+For `n` values in universe `[0, U)`, the encoding chooses `L = floor(log2(U / n))`, clamped to 0–32.
+Each value is split into:
+
+- a packed `L`-bit lower part;
+- a unary upper bit at position `(value >> L) + index`.
+
+The upper bitvector stores a cumulative one-count every 512 bits. `at` uses upper `select1` plus one
+packed lower-bit extraction. `rank` locates the matching upper bucket with indexed `select0`, then
+binary-searches only the lower bits inside that bucket. Batch access and rank keep all queries
+inside one Wasm call. `decodeInto` scans the unary upper words once rather than executing a select
+for every value.
+
+`encodedBytes` reports logical packed lower bytes, upper words, and rank prefixes. The resident
+allocator rounds its three blocks to power-of-two size classes, so allocator-reserved bytes can be
+higher. Construction builds temporary JavaScript word arrays and is intended for freeze-once,
+query-many workloads.
+
+## Design source
+
+The high-unary/low-packed representation and its use for monotone postings are described in
+[“Techniques for Inverted Index Compression”](https://arxiv.org/html/1908.10598v2). This initial
+implementation uses one global Elias–Fano choice. Partitioned Elias–Fano, which can select dense
+bitmap or contiguous-range representations for local blocks, remains a later adaptive-page
+experiment.
+
+## Benchmark
+
+Recorded with Vitest 4.1.11 / Node 24 / Apple M5 over 262,144 strict-monotone values. Each point or
+rank sample contains 1,024 queries. Construction is excluded.
+
+| workload        | EF bytes/value | PackedDelta bytes/value | EF atMany | PackedDelta at | typed access | EF rankMany | PackedDelta rank | typed lowerBound | EF decode | PackedDelta decode | typed copy |
+| :-------------- | -------------: | ----------------------: | --------: | -------------: | -----------: | ----------: | ---------------: | ---------------: | --------: | -----------------: | ---------: |
+| small deltas    |          0.457 |                   1.313 |   15.7 us |        40.0 us |       3.0 us |     36.3 us |          74.0 us |          31.8 us |    468 us |             254 us |    13.0 us |
+| variable deltas |          0.770 |                   1.313 |   16.4 us |        40.9 us |       3.1 us |     33.6 us |          74.1 us |          33.2 us |    485 us |             308 us |    13.0 us |
+
+Elias–Fano is not a universal speed replacement for `Uint32Array`. Direct typed-array access is
+about 5x faster, and native copying is about 36x faster than EF decode. Use the uncompressed array
+when 4 bytes/value is acceptable and those operations dominate.
+
+The useful trade-off is compressed random querying. These datasets used only 0.46–0.77 logical
+bytes/value, 41–65% less than PackedDelta and 81–89% less than `Uint32Array`. EF point access was
+about 2.5x faster than PackedDelta, and optimized EF rank was 2.0–2.2x faster than PackedDelta while
+landing near typed-array binary search. PackedDelta remains preferable for faster sequential decode
+and its SIMD postings intersection.
+
+```sh
+pnpm bench:elias-fano-sequence
+pnpm bench:record:elias-fano-sequence
+pnpm bench:compare:elias-fano-sequence
+```
+
+## Standalone build size
+
+The isolated Vite fixture emits one 1.64 kB Wasm asset (0.86 kB gzip) and an 8.24 kB JS wrapper
+(3.09 kB gzip). It does not emit PackedDelta or RankSelectBitVector Wasm.
+
+Vitest baseline JSON and benchmark sources live in
+[`experiments/elias-fano-sequence`](../../experiments/elias-fano-sequence).
+
+Files:
+
+- `mod.ts`: builder, encoding, public queries, and allocator ownership
+- `kernels.wat`: SIMD rank-index build, upper select, lower extraction, batch queries, and decode
+- `kernels.d.wasm.ts`: typed Wasm module contract
+- `kernels.wasm`: generated, stripped, validated, and Git-ignored

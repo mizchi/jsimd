@@ -27,7 +27,11 @@ dependencies, benchmarks, and decision gates.
   - binary 32-level layout over the complete Uint32 domain
   - access, rank/select, range frequency, quantile, and predecessor
   - batch access/rank/quantile kernels
-- [ ] `EliasFanoSequence` — **next**
+- [x] `EliasFanoSequence`
+  - non-decreasing Uint32 input with duplicate preservation
+  - packed lower bits and unary high-bit rank/select
+  - random access, rank, nextGEQ, predecessor, batch access/rank, and bulk decode
+- [ ] `AdaptiveSimdPageI32` — **next**
 
 ## Public API symmetry audit
 

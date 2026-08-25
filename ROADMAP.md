@@ -8,7 +8,8 @@ Implementation order after the initial byte, numeric, bitset, and matrix kernels
 4. ✅ `SimdFlatHashMap/Set` — typed-key SwissTable-style control groups and bulk probing
 5. ✅ `BitSlicedColumn` — mostly-static predicates producing composable resident bit masks
 6. ✅ `WaveletMatrixUint32` — static range frequency, quantile, and predecessor queries
-7. `EliasFanoSequence` — compact monotone random access, rank, and predecessor
+7. ✅ `EliasFanoSequence` — compact monotone random access, rank, and predecessor
+8. `AdaptiveSimdPageI32` — per-page physical encoding selected from local value statistics
 
 `RankSelectBitVector` is the first foundation because Roaring, bit-sliced indexes, wavelet matrices,
 and future succinct structures can reuse its block layout and query contracts. APIs should favor

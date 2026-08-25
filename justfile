@@ -3,6 +3,7 @@ build:
     wasm-tools strip -a src/bitset/kernels.wat -o src/bitset/kernels.wasm
     wasm-tools strip -a src/bit-sliced-column/kernels.wat -o src/bit-sliced-column/kernels.wasm
     wasm-tools strip -a src/endian/kernels.wat -o src/endian/kernels.wasm
+    wasm-tools strip -a src/elias-fano-sequence/kernels.wat -o src/elias-fano-sequence/kernels.wasm
     wasm-tools strip -a src/flat-hash/kernels.wat -o src/flat-hash/kernels.wasm
     wasm-tools strip -a src/f32-vector/kernels.wat -o src/f32-vector/kernels.wasm
     wasm-tools strip -a src/i32-array/kernels.wat -o src/i32-array/kernels.wasm
@@ -17,6 +18,7 @@ build:
     wasm-tools validate --features simd src/bitset/kernels.wasm
     wasm-tools validate --features simd src/bit-sliced-column/kernels.wasm
     wasm-tools validate --features simd src/endian/kernels.wasm
+    wasm-tools validate --features simd src/elias-fano-sequence/kernels.wasm
     wasm-tools validate --features simd src/flat-hash/kernels.wasm
     wasm-tools validate --features simd src/f32-vector/kernels.wasm
     wasm-tools validate --features simd src/i32-array/kernels.wasm
@@ -35,6 +37,8 @@ build:
     ! wasm-tools print src/bit-sliced-column/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/endian/kernels.wasm | rg -q 'byte_swap32'
     ! wasm-tools print src/endian/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|\(export "dot"'
+    wasm-tools print src/elias-fano-sequence/kernels.wasm | rg -q 'build_rank_index|lower_bound_many|decode_into'
+    ! wasm-tools print src/elias-fano-sequence/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|bitmap_and_count|decode_range|lookup_many|quantile_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/flat-hash/kernels.wasm | rg -q 'lookup_many|insert_map_many|rehash_set'
     ! wasm-tools print src/flat-hash/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|\(export "dot"|\(export "matmul"'
     wasm-tools print src/f32-vector/kernels.wasm | rg -q '\(export "dot"'
@@ -77,6 +81,11 @@ check: test
     test "$(find examples/tree-shake-endian/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-endian/dist/assets/*.wasm | rg -q 'byte_swap32'
     ! wasm-tools print examples/tree-shake-endian/dist/assets/*.wasm | rg -q 'find_byte|json_token_starts|intersection_count|\(export "dot"'
+    pnpm exec tsc -p examples/tree-shake-elias-fano-sequence/tsconfig.json
+    pnpm exec vite build examples/tree-shake-elias-fano-sequence
+    test "$(find examples/tree-shake-elias-fano-sequence/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-elias-fano-sequence/dist/assets/*.wasm | rg -q 'build_rank_index|lower_bound_many|decode_into'
+    ! wasm-tools print examples/tree-shake-elias-fano-sequence/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|bitmap_and_count|decode_range|lookup_many|quantile_many|\(export "dot"|\(export "matmul"'
     pnpm exec tsc -p examples/tree-shake-flat-hash/tsconfig.json
     pnpm exec vite build examples/tree-shake-flat-hash
     test "$(find examples/tree-shake-flat-hash/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
