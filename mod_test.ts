@@ -7,7 +7,7 @@ import {
   reverseFindByte,
 } from "./src/bytes/mod.ts";
 import { decodeUint32BE, decodeUint32LE } from "./src/endian/mod.ts";
-import { FixedBitSet } from "./src/bitset/mod.ts";
+import { BitSet, FixedBitSet } from "./src/bitset/mod.ts";
 import { SimdFloat32Vector } from "./src/f32-vector/mod.ts";
 import { SimdInt32Array } from "./src/i32-array/mod.ts";
 import { SimdMatrix2D } from "./src/matrix2d/mod.ts";
@@ -1038,6 +1038,45 @@ Deno.test("FixedBitSet dispose reuses storage and reports allocator state", () =
     threw = error instanceof Error && error.message.includes("disposed");
   }
   assertEquals(threw, true, "bitset use after dispose");
+});
+
+Deno.test("BitSet grows on insertion and preserves existing bits", () => {
+  using bits = BitSet.from([0, 31, 32, 129, 65_536]);
+  assertEquals(bits.has(65_536), true, "grown bit");
+  assertEquals(bits.has(1_000_000), false, "membership outside allocated capacity");
+  assertEquals(bits.countOnes(), 5, "cardinality after growth");
+  assertEquals(bits.toArray().join(","), "0,31,32,129,65536", "ordered values");
+
+  bits.remove(1_000_000).remove(32);
+  assertEquals(bits.toArray().join(","), "0,31,129,65536", "out-of-range removal is a no-op");
+});
+
+Deno.test("BitSet algebra accepts different capacities", () => {
+  using small = BitSet.from([1, 31, 130]);
+  using large = BitSet.from([31, 129, 65_536]);
+  using union = small.clone().unionWith(large);
+  using intersection = small.clone().intersectWith(large);
+  using reverseIntersection = large.clone().intersectWith(small);
+  using difference = large.clone().differenceWith(small);
+  using symmetric = small.clone().symmetricDifferenceWith(large);
+
+  assertEquals(union.toArray().join(","), "1,31,129,130,65536", "dynamic union");
+  assertEquals(intersection.toArray().join(","), "31", "dynamic intersection");
+  assertEquals(reverseIntersection.toArray().join(","), "31", "dynamic reverse intersection");
+  assertEquals(difference.toArray().join(","), "129,65536", "dynamic difference");
+  assertEquals(symmetric.toArray().join(","), "1,129,130,65536", "dynamic xor");
+  assertEquals(small.intersectionCount(large), 1, "dynamic intersection count");
+});
+
+Deno.test("BitSet using cleanup returns all resized allocations", () => {
+  const before = BitSet.allocatorStats();
+  {
+    using bits = new BitSet();
+    for (const bit of [0, 128, 4096, 65_536]) bits.insert(bit);
+  }
+  const after = BitSet.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "dynamic bitset allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "dynamic bitset bytes");
 });
 
 Deno.test("findByte matches Uint8Array#indexOf across SIMD boundaries", () => {

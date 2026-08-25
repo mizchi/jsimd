@@ -25,6 +25,24 @@ dependencies, benchmarks, and decision gates.
   - same-memory composable `BitSliceMask`
 - [ ] `WaveletMatrixUint32` — **next**
 
+## Public API symmetry audit
+
+The names describe contracts and workload families, not a requirement to mirror every scalar type
+with every operation.
+
+| API                 | Status                      | Decision                                                                                                                                                                 |
+| :------------------ | :-------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FixedBitSet`       | fixed-universe dense set    | Keep the prefix: bounds and equal-capacity algebra are part of its contract.                                                                                             |
+| `BitSet`            | growable dense set          | Implemented beside `FixedBitSet`; growth is outside SIMD bulk kernels.                                                                                                   |
+| `SimdInt32Array`    | fixed-length typed storage  | Keep `Array`: point access, reductions, equality, and element-wise mutation are its primary API. Typed arrays are already fixed-length, so a `Fixed` prefix adds little. |
+| `SimdFloat32Vector` | dot and AXPY vertical slice | The missing array operations have not been ruled out by benchmarks; this is incomplete coverage, not a performance conclusion.                                           |
+| `SimdInt32Vector`   | not implemented             | Do not add for superficial symmetry. Define i32 dot overflow/return semantics and a real integer-vector workload first.                                                  |
+
+Before the first release, benchmark Float32 `get/set/fill`, reductions, equality, and in-place add
+against `Float32Array`. If the resident bulk operations win, expand and rename the entrypoint/type
+to `f32-array` / `SimdFloat32Array`, retaining `dot` and `addScaled` as bulk methods. Since the
+package is still `0.0.0`, avoid carrying both names unless a real vector-specific contract emerges.
+
 ## Committed implementation order
 
 ### 1. PackedDeltaUint32List — Stream VByte implementation complete

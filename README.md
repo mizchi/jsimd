@@ -13,7 +13,7 @@ import {
   lexicalCompare,
   reverseFindByte,
 } from "@mizchi/jsimd";
-import { FixedBitSet } from "@mizchi/jsimd/bitset";
+import { BitSet, FixedBitSet } from "@mizchi/jsimd/bitset";
 import { BitSlicedColumnU8, BitSliceMask } from "@mizchi/jsimd/bit-sliced-column";
 import { decodeUint32BE } from "@mizchi/jsimd/endian";
 import { SimdFloat32Vector } from "@mizchi/jsimd/f32-vector";
@@ -40,6 +40,9 @@ using active = FixedBitSet.from(1_000_000, [1, 10, 999_999]);
 using selected = FixedBitSet.from(1_000_000, [10, 20]);
 active.intersectionCount(selected); // 1
 active.unionWith(selected); // mutates active without copying through JS
+
+using discovered = BitSet.from([1, 10, 999_999]);
+discovered.insert(2_000_000); // grows automatically
 
 using x = SimdFloat32Vector.from(new Float32Array([1, 2, 3, 4]));
 using y = SimdFloat32Vector.from(new Float32Array([2, 4, 6, 8]));
@@ -91,7 +94,7 @@ Each entrypoint is self-contained under `src/<name>/`, with its own TypeScript A
 source, Wasm type declaration, and generated Wasm binary:
 
 - [`src/bytes`](./src/bytes/README.md) — byte search, comparison, ASCII, and subarray scanning
-- [`src/bitset`](./src/bitset/README.md) — fixed-capacity SIMD bitsets
+- [`src/bitset`](./src/bitset/README.md) — growable and fixed-universe SIMD bitsets
 - [`src/bit-sliced-column`](./src/bit-sliced-column/README.md) — nullable bit-sliced predicates and
   resident masks
 - [`src/endian`](./src/endian/README.md) — batched endian decoding
@@ -123,7 +126,7 @@ boundary detection, and position emission inside Wasm. It was 3.5x faster on a 3
 sample (56 us vs 196 us), 3.0x on a punctuation-dense 60 KiB sample, and roughly even on a 75 KiB
 long-string sample where both implementations still walk every byte.
 
-## FixedBitSet
+## BitSet and FixedBitSet
 
 `FixedBitSet` keeps its aligned, padded backing words in Wasm memory. `unionWith`, `intersectWith`,
 `differenceWith`, and `symmetricDifferenceWith` use 128-bit operations without copying through JS.
@@ -133,6 +136,8 @@ long-string sample where both implementations still walk every byte.
 The API and workload selection follow Rust's `fixedbitset`: fixed capacity, dense backing words,
 in-place set algebra, and cardinality operations. It intentionally does not replace JavaScript's
 general-purpose `Set`; the useful case is repeated bulk operations over a fixed integer universe.
+`BitSet` shares the same storage and kernels but grows geometrically. The fixed name remains useful:
+`FixedBitSet` makes the integer universe part of the contract and rejects mismatched capacities.
 
 On Deno 2.6.4 / Apple M5 with a 4,194,304-bit universe (density 1/7 and 1/11):
 
