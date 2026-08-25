@@ -8,4 +8,5 @@ examples/tree-shake-i32-array/dist/
 examples/tree-shake-json/dist/
 examples/tree-shake-matrix2d/dist/
 examples/tree-shake-matrix3d/dist/
+examples/tree-shake-rank-select-bitvector/dist/
 src/**/*.wasm

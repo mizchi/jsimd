@@ -20,6 +20,7 @@ import { SimdInt32Array } from "@mizchi/jsimd/i32-array";
 import { jsonTokenStarts } from "@mizchi/jsimd/json";
 import { SimdMatrix2D } from "@mizchi/jsimd/matrix2d";
 import { SimdMatrix3D } from "@mizchi/jsimd/matrix3d";
+import { RankSelectBitVectorBuilder } from "@mizchi/jsimd/rank-select-bitvector";
 
 const bytes = new Uint8Array([1, 2, 3]);
 findByte(bytes, 2);
@@ -52,6 +53,11 @@ using matrixOutput = matrixLeft.multiply(matrixRight);
 using batchLeft = SimdMatrix3D.from(2, 2, 2, [1, 2, 3, 4, 2, 0, 1, 2]);
 using batchRight = SimdMatrix3D.from(2, 2, 2, [5, 6, 7, 8, 1, 3, 4, 2]);
 using batchOutput = batchLeft.batchMultiply(batchRight);
+
+const rankBuilder = new RankSelectBitVectorBuilder(1_000);
+rankBuilder.insert(1).insert(10).insert(999);
+using rankBits = rankBuilder.freeze();
+rankBits.rank1(500); // 2
 ```
 
 The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
@@ -69,6 +75,7 @@ source, Wasm type declaration, and generated Wasm binary:
 - [`src/json`](./src/json/README.md) — UTF-8 JSON token-start scanning
 - [`src/matrix2d`](./src/matrix2d/README.md) — resident row-major Float32 matrix operations
 - [`src/matrix3d`](./src/matrix3d/README.md) — resident batch-major Float32 matrix operations
+- [`src/rank-select-bitvector`](./src/rank-select-bitvector/README.md) — immutable rank/select index
 
 The package is distributed as one npm package with subpath exports. The Wasm binaries remain
 separate, so bundlers only include the entrypoints that are imported.

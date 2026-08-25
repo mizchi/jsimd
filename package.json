@@ -11,7 +11,8 @@
     "./i32-array": "./src/i32-array/mod.ts",
     "./json": "./src/json/mod.ts",
     "./matrix2d": "./src/matrix2d/mod.ts",
-    "./matrix3d": "./src/matrix3d/mod.ts"
+    "./matrix3d": "./src/matrix3d/mod.ts",
+    "./rank-select-bitvector": "./src/rank-select-bitvector/mod.ts"
   },
   "sideEffects": false,
   "files": [
@@ -29,18 +30,21 @@
     "bench:json": "vitest bench experiments/json",
     "bench:matrix2d": "vitest bench experiments/matrix2d",
     "bench:matrix3d": "vitest bench experiments/matrix3d",
+    "bench:rank-select-bitvector": "vitest bench experiments/rank-select-bitvector",
     "bench:record:bitset": "vitest bench experiments/bitset --outputJson experiments/bitset/benchmarks/baseline.json",
     "bench:record:f32-vector": "vitest bench experiments/f32-vector --outputJson experiments/f32-vector/benchmarks/baseline.json",
     "bench:record:i32-array": "vitest bench experiments/i32-array --outputJson experiments/i32-array/benchmarks/baseline.json",
     "bench:record:json": "vitest bench experiments/json --outputJson experiments/json/benchmarks/baseline.json",
     "bench:record:matrix2d": "vitest bench experiments/matrix2d --outputJson experiments/matrix2d/benchmarks/baseline.json",
     "bench:record:matrix3d": "vitest bench experiments/matrix3d --outputJson experiments/matrix3d/benchmarks/baseline.json",
+    "bench:record:rank-select-bitvector": "vitest bench experiments/rank-select-bitvector --outputJson experiments/rank-select-bitvector/benchmarks/baseline.json",
     "bench:compare:bitset": "vitest bench experiments/bitset --compare experiments/bitset/benchmarks/baseline.json",
     "bench:compare:f32-vector": "vitest bench experiments/f32-vector --compare experiments/f32-vector/benchmarks/baseline.json",
     "bench:compare:i32-array": "vitest bench experiments/i32-array --compare experiments/i32-array/benchmarks/baseline.json",
     "bench:compare:json": "vitest bench experiments/json --compare experiments/json/benchmarks/baseline.json",
     "bench:compare:matrix2d": "vitest bench experiments/matrix2d --compare experiments/matrix2d/benchmarks/baseline.json",
-    "bench:compare:matrix3d": "vitest bench experiments/matrix3d --compare experiments/matrix3d/benchmarks/baseline.json"
+    "bench:compare:matrix3d": "vitest bench experiments/matrix3d --compare experiments/matrix3d/benchmarks/baseline.json",
+    "bench:compare:rank-select-bitvector": "vitest bench experiments/rank-select-bitvector --compare experiments/rank-select-bitvector/benchmarks/baseline.json"
   },
   "license": "MIT",
   "repository": {
