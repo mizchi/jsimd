@@ -70,9 +70,9 @@ pnpm bench:compare:roaring-uint32-set
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 1.02 kB Wasm asset (0.49 kB gzip) and a 9.96 kB JS wrapper (3.63
-kB gzip). The larger wrapper contains container ownership, conversion, and high-key routing;
-tree-shaking still excludes every unrelated jsimd Wasm module.
+The isolated Vite fixture emits one 1.02 kB Wasm asset (0.49 kB gzip) and a 9.96 kB minified JS
+wrapper (3.63 kB gzip). The larger wrapper contains container ownership, conversion, and high-key
+routing; tree-shaking still excludes every unrelated jsimd Wasm module.
 
 See [`experiments/roaring-uint32-set`](../../experiments/roaring-uint32-set/README.md) for recorded
 results.

@@ -86,8 +86,8 @@ pnpm bench:compare:elias-fano-sequence
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 1.64 kB Wasm asset (0.86 kB gzip) and an 8.24 kB JS wrapper
-(3.09 kB gzip). It does not emit PackedDelta or RankSelectBitVector Wasm.
+The isolated Vite fixture emits one 1.64 kB Wasm asset (0.86 kB gzip) and an 8.24 kB minified JS
+wrapper (3.09 kB gzip). It does not emit PackedDelta or RankSelectBitVector Wasm.
 
 Vitest baseline JSON and benchmark sources live in
 [`experiments/elias-fano-sequence`](../../experiments/elias-fano-sequence).

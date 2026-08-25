@@ -84,8 +84,8 @@ pnpm bench:compare:wavelet-matrix-uint32
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 2.10 kB Wasm asset (0.97 kB gzip) and a 7.77 kB JS wrapper (2.85
-kB gzip). No other jsimd Wasm module is emitted.
+The isolated Vite fixture emits one 2.10 kB Wasm asset (0.97 kB gzip) and a 7.77 kB minified JS
+wrapper (2.85 kB gzip). No other jsimd Wasm module is emitted.
 
 Vitest baseline JSON and complete sources live in
 [`experiments/wavelet-matrix-uint32`](../../experiments/wavelet-matrix-uint32).

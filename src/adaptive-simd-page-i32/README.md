@@ -92,9 +92,9 @@ pnpm bench:compare:adaptive-simd-page-i32
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 1.84 kB Wasm asset (0.83 kB gzip) and a 10.37 kB JS wrapper
-(3.72 kB gzip). It does not emit the Wasm for `SimdInt32Array`, `BitSlicedColumn`, or any other
-entrypoint.
+The isolated Vite fixture emits one 1.84 kB Wasm asset (0.83 kB gzip) and a 10.37 kB minified JS
+wrapper (3.72 kB gzip). It does not emit the Wasm for `SimdInt32Array`, `BitSlicedColumn`, or any
+other entrypoint.
 
 Vitest baseline JSON and benchmark sources live in
 [`experiments/adaptive-simd-page-i32`](../../experiments/adaptive-simd-page-i32).

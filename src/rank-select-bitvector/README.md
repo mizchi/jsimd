@@ -78,9 +78,9 @@ pnpm bench:compare:rank-select-bitvector
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 947 B Wasm asset (0.53 kB gzip) and a 7.37 kB JS wrapper (2.69
-kB gzip). Bulk-query copying, builder code, allocator, and ownership checks are in the JS asset; no
-other jsimd Wasm is emitted.
+The isolated Vite fixture emits one 947 B Wasm asset (0.53 kB gzip) and a 7.37 kB minified JS
+wrapper (2.69 kB gzip). Bulk-query copying, builder code, allocator, and ownership checks are in the
+JS asset; no other jsimd Wasm is emitted.
 
 See [`experiments/rank-select-bitvector`](../../experiments/rank-select-bitvector/README.md) for the
 recorded results.

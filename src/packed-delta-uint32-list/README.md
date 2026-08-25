@@ -70,8 +70,9 @@ pnpm bench:compare:packed-delta-uint32-list
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 1.49 kB Wasm asset (0.88 kB gzip) and a 6.96 kB JS wrapper (2.76
-kB gzip). Importing this subpath does not emit Roaring, FlatHash, or byte-scanner Wasm.
+The isolated Vite fixture emits one 1.49 kB Wasm asset (0.88 kB gzip) and a 6.96 kB minified JS
+wrapper (2.76 kB gzip). Importing this subpath does not emit Roaring, FlatHash, or byte-scanner
+Wasm.
 
 See [`experiments/packed-delta-uint32-list`](../../experiments/packed-delta-uint32-list/README.md)
 for the benchmark source and committed baseline.

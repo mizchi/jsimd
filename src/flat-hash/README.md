@@ -78,9 +78,9 @@ pnpm bench:compare:flat-hash
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 1.27 kB Wasm asset (0.72 kB gzip) and a 6.84 kB JS wrapper (2.66
-kB gzip). The JS size includes allocator and ownership code. `just check` rejects accidental imports
-of other jsimd kernels.
+The isolated Vite fixture emits one 1.27 kB Wasm asset (0.72 kB gzip) and a 6.84 kB minified JS
+wrapper (2.66 kB gzip). The JS size includes allocator and ownership code. `just check` rejects
+accidental imports of other jsimd kernels.
 
 See [`experiments/flat-hash`](../../experiments/flat-hash/README.md) for benchmark source and the
 committed baseline.

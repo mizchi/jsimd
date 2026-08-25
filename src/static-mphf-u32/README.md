@@ -89,8 +89,8 @@ pnpm bench:compare:static-mphf-u32
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 0.68 kB Wasm asset (0.39 kB gzip) and a 7.27 kB JS wrapper (2.97
-kB gzip). It does not emit FlatHash or any other entrypoint's Wasm.
+The isolated Vite fixture emits one 0.68 kB Wasm asset (0.39 kB gzip) and a 7.27 kB minified JS
+wrapper (2.97 kB gzip). It does not emit FlatHash or any other entrypoint's Wasm.
 
 Vitest baseline JSON and benchmark sources live in
 [`experiments/static-mphf-u32`](../../experiments/static-mphf-u32).

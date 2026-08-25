@@ -87,10 +87,10 @@ pnpm bench:compare:bit-sliced-column
 
 The Vite production fixture imports only `@mizchi/jsimd/bit-sliced-column`:
 
-| asset                    |     raw |    gzip |
-| :----------------------- | ------: | ------: |
-| Wasm                     |   898 B |   430 B |
-| JS wrapper and allocator | 7.83 kB | 3.00 kB |
+| asset                             |     raw |    gzip |
+| :-------------------------------- | ------: | ------: |
+| Wasm                              |   898 B |   430 B |
+| minified JS wrapper and allocator | 7.83 kB | 3.00 kB |
 
 `just check` requires exactly one Wasm asset and rejects exports from every other jsimd kernel.
 

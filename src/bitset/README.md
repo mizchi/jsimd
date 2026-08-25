@@ -58,9 +58,9 @@ pnpm bench:compare:bitset
 
 ## Standalone build size
 
-The isolated Vite fixture importing both classes emits an 8.84 kB JS wrapper (2.80 kB gzip) and one
-0.50 kB Wasm asset (0.26 kB gzip). Both classes share that binary, so adding `BitSet` does not add a
-second Wasm module.
+The isolated Vite fixture importing both classes emits an 8.84 kB minified JS wrapper (2.80 kB gzip)
+and one 0.50 kB Wasm asset (0.26 kB gzip). Both classes share that binary, so adding `BitSet` does
+not add a second Wasm module.
 
 Vitest baseline JSON and the complete benchmark source live in
 [`experiments/bitset`](../../experiments/bitset).
