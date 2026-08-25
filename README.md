@@ -10,12 +10,12 @@ import {
   findByte,
   findNonAscii,
   indexOfSubarray,
-  jsonTokenStarts,
   lexicalCompare,
   reverseFindByte,
 } from "@mizchi/jsimd";
 import { FixedBitSet } from "@mizchi/jsimd/bitset";
 import { SimdFloat32Vector } from "@mizchi/jsimd/f32-vector";
+import { jsonTokenStarts } from "@mizchi/jsimd/json";
 
 const bytes = new Uint8Array([1, 2, 3]);
 findByte(bytes, 2);
@@ -48,9 +48,10 @@ deferred.
 Each entrypoint is self-contained under `src/<name>/`, with its own TypeScript API, README, WAT
 source, Wasm type declaration, and generated Wasm binary:
 
-- [`src/bytes`](./src/bytes/README.md) — byte search, comparison, ASCII, subarray, and JSON scanning
+- [`src/bytes`](./src/bytes/README.md) — byte search, comparison, ASCII, and subarray scanning
 - [`src/bitset`](./src/bitset/README.md) — fixed-capacity SIMD bitsets
 - [`src/f32-vector`](./src/f32-vector/README.md) — resident Float32 dot product and AXPY
+- [`src/json`](./src/json/README.md) — UTF-8 JSON token-start scanning
 
 The package is distributed as one npm package with subpath exports. The Wasm binaries remain
 separate, so bundlers only include the entrypoints that are imported.

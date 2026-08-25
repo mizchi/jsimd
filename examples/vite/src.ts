@@ -3,10 +3,10 @@ import {
   findByte,
   findNonAscii,
   indexOfSubarray,
-  jsonTokenStarts,
   lexicalCompare,
   reverseFindByte,
 } from "../../src/bytes/mod.ts";
+import { jsonTokenStarts } from "../../src/json/mod.ts";
 
 const input = new TextEncoder().encode("MoonBit + Wasm SIMD");
 document.querySelector("#app")!.textContent = JSON.stringify({

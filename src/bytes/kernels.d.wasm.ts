@@ -10,4 +10,3 @@ export function index_of_subarray(
   needle: number,
   needleLength: number,
 ): number;
-export function json_token_starts(input: number, length: number, output: number): number;

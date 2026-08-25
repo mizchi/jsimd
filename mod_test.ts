@@ -3,12 +3,12 @@ import {
   findByte,
   findNonAscii,
   indexOfSubarray,
-  jsonTokenStarts,
   lexicalCompare,
   reverseFindByte,
 } from "./src/bytes/mod.ts";
 import { FixedBitSet } from "./src/bitset/mod.ts";
 import { SimdFloat32Vector } from "./src/f32-vector/mod.ts";
+import { jsonTokenStarts } from "./src/json/mod.ts";
 
 function assertEquals(actual: unknown, expected: unknown, context: string): void {
   if (!Object.is(actual, expected)) {

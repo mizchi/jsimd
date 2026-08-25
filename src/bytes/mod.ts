@@ -3,7 +3,6 @@ import {
   find_byte,
   find_non_ascii,
   index_of_subarray,
-  json_token_starts,
   lexical_compare_prefix,
   memory,
   reverse_find_byte,
@@ -163,15 +162,4 @@ export function indexOfSubarray(input: Uint8Array, pattern: Uint8Array): number 
     pattern.length,
   );
   return found < 0 ? -1 : found + 16;
-}
-
-/** Return UTF-8 byte offsets for JSON structural tokens, quotes, and atom starts. */
-export function jsonTokenStarts(input: Uint8Array): Uint32Array {
-  if (input.length === 0) return new Uint32Array();
-  const outputPointer = (input.length + 3) & ~3;
-  const pointer = scratchPointer(outputPointer + input.length * 4);
-  wasmBytes.set(input, pointer);
-  const count = json_token_starts(pointer, input.length, pointer + outputPointer);
-  // Copy out because the shared scratch memory is overwritten by the next call.
-  return new Uint32Array(memory.buffer, pointer + outputPointer, count).slice();
 }

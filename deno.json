@@ -4,7 +4,8 @@
   "exports": {
     ".": "./src/bytes/mod.ts",
     "./bitset": "./src/bitset/mod.ts",
-    "./f32-vector": "./src/f32-vector/mod.ts"
+    "./f32-vector": "./src/f32-vector/mod.ts",
+    "./json": "./src/json/mod.ts"
   },
   "tasks": {
     "build": "just build",

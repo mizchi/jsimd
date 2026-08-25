@@ -2,4 +2,5 @@ node_modules/
 coverage/
 examples/vite/dist/
 examples/tree-shake-bitset/dist/
+examples/tree-shake-json/dist/
 src/**/*.wasm
