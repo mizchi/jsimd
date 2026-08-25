@@ -42,6 +42,11 @@ pnpm bench:compare:f32-vector
 Vitest baseline JSON and the complete benchmark source live in
 [`experiments/f32-vector`](../../experiments/f32-vector).
 
+## Standalone build size
+
+The isolated Vite fixture emits one 0.22 kB Wasm asset (0.17 kB gzip) and a 4.60 kB JS wrapper (2.04
+kB gzip). It emits no other jsimd Wasm module.
+
 Files:
 
 - `mod.ts`: public API and ownership contract

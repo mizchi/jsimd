@@ -119,6 +119,11 @@ check: test package-smoke
     test "$(find examples/tree-shake-flat-hash/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-flat-hash/dist/assets/*.wasm | rg -q 'lookup_many|insert_map_many|rehash_set'
     ! wasm-tools print examples/tree-shake-flat-hash/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|\(export "dot"|\(export "matmul"'
+    pnpm exec tsc -p examples/tree-shake-f32-vector/tsconfig.json
+    pnpm exec vite build examples/tree-shake-f32-vector
+    test "$(find examples/tree-shake-f32-vector/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-f32-vector/dist/assets/*.wasm | rg -q '\(export "dot"'
+    ! wasm-tools print examples/tree-shake-f32-vector/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|intersection_count|matmul'
     pnpm exec tsc -p examples/tree-shake-i32-array/tsconfig.json
     pnpm exec vite build examples/tree-shake-i32-array
     test "$(find examples/tree-shake-i32-array/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"

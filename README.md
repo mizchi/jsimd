@@ -1,8 +1,7 @@
 # @mizchi/jsimd
 
-Small prebuilt WebAssembly SIMD kernels for data-parallel JavaScript hot paths. The initial
-implementation is derived from the scalar/SIMD byte scanners in `moonbitlang/core` and is measured
-against MoonBit's JS backend.
+Small prebuilt WebAssembly SIMD kernels and Wasm-resident data structures for data-parallel
+JavaScript hot paths.
 
 ## Purpose
 
@@ -151,104 +150,64 @@ The package uses direct Wasm ES module imports supported by current Vite and Den
 performs initialization; exported operations are synchronous. Lazy initialization is intentionally
 deferred.
 
-Each entrypoint is self-contained under `src/<name>/`, with its own TypeScript API, README, WAT
-source, Wasm type declaration, and generated Wasm binary:
+## Implementation guide
 
-- [`src/bytes`](./src/bytes/README.md) — byte search, comparison, ASCII, and subarray scanning
-- [`src/adaptive-simd-page-i32`](./src/adaptive-simd-page-i32/README.md) — adaptive Constant,
-  frame-of-reference, or Raw i32 pages with resident selection masks
-- [`src/bitset`](./src/bitset/README.md) — growable and fixed-universe SIMD bitsets
-- [`src/binary-vector-index`](./src/binary-vector-index/README.md) — resident binary signatures and
-  SIMD Hamming scans
-- [`src/bit-sliced-column`](./src/bit-sliced-column/README.md) — nullable bit-sliced predicates and
-  resident masks
-- [`src/endian`](./src/endian/README.md) — batched endian decoding
-- [`src/elias-fano-sequence`](./src/elias-fano-sequence/README.md) — frozen monotone Uint32 random
-  access, rank, and predecessor
-- [`src/f32-vector`](./src/f32-vector/README.md) — resident Float32 dot product and AXPY
-- [`src/flat-hash`](./src/flat-hash/README.md) — typed `u32` SIMD flat hash set and map
-- [`src/i32-array`](./src/i32-array/README.md) — fixed-length resident Int32 bulk operations
-- [`src/json`](./src/json/README.md) — UTF-8 JSON token-start scanning
-- [`src/matrix2d`](./src/matrix2d/README.md) — resident row-major Float32 matrix operations
-- [`src/matrix3d`](./src/matrix3d/README.md) — resident batch-major Float32 matrix operations
-- [`src/rank-select-bitvector`](./src/rank-select-bitvector/README.md) — immutable rank/select index
-- [`src/roaring-uint32-set`](./src/roaring-uint32-set/README.md) — compressed Uint32 set operations
-- [`src/static-mphf-u32`](./src/static-mphf-u32/README.md) — frozen minimal perfect hashing with
-  batched lookup and 16-bit membership fingerprints
-- [`src/packed-delta-uint32-list`](./src/packed-delta-uint32-list/README.md) — frozen compressed
-  monotone Uint32 lists
-- [`src/wavelet-matrix-uint32`](./src/wavelet-matrix-uint32/README.md) — immutable Uint32 range
-  rank, frequency, quantile, and predecessor queries
+Each link below opens the feature README with its complete API, algorithm and literature sources,
+benchmark setup, and reproduction commands. The summary deliberately includes measured losses: this
+package does not claim that crossing the JavaScript/Wasm boundary is always faster.
 
-The package is distributed as one npm package with subpath exports. The Wasm binaries remain
-separate, so bundlers only include the entrypoints that are imported. npm releases contain compiled
-JavaScript and adjacent declaration files; consumers do not need TypeScript runtime transformation
-for files under `node_modules`.
+Owning structures keep data in Wasm linear memory and should be declared with `using`. They are a
+good fit when several bulk operations reuse resident data. Native arrays and collections usually
+remain the better choice for small inputs, one-shot work, point access, or workloads that repeatedly
+materialize complete results back into JavaScript.
 
-Each `.wasm` import is typed by an adjacent `kernels.d.wasm.ts`, following Vite's
-`allowArbitraryExtensions` convention. Consumers get typed Wasm exports without a generated JS
-loader. The wrapper uses `Uint8Array#indexOf` below 128 bytes; in the initial Deno benchmark the
-copy-inclusive SIMD path was about 4.7x faster for a 4 KiB miss scan (0.37 us vs 1.8 us).
+### Data structures
 
-Higher-level kernels amortize the boundary particularly well. On Deno 2.6.4 / Apple M5,
-`indexOfSubarray` took 0.94 us versus 17.0 us for the scalar reference on a 4 KiB miss, and
-`lexicalCompare` took 0.69 us versus 4.1 us for equal 4 KiB inputs.
+| export                                                                 | representation and intended workload                                                                                                                        | measured strength                                                                                                                     | when JavaScript or a simpler representation wins                                                                                                                    | isolated Vite output, raw (gzip)         |
+| :--------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :--------------------------------------- |
+| [`adaptive-simd-page-i32`](./src/adaptive-simd-page-i32/README.md)     | Frozen pages of at most 256 `i32` values; chooses Constant, frame-of-reference (FOR), or Raw and keeps selection masks resident.                            | Constant sum was 44x faster, Raw sum 11x, and Raw scan 1.3x than `Int32Array` loops. FOR reduces a tested page from 1,024 B to 320 B. | FOR range scan was 1.9x slower; FOR decode was about 17x slower than native typed-array copying. Keep `Int32Array` when full reads dominate.                        | JS 10.37 kB (3.72) + Wasm 1.84 kB (0.83) |
+| [`bitset`](./src/bitset/README.md)                                     | Dense mutable integer sets. `FixedBitSet` enforces one universe; `BitSet` grows geometrically. Set algebra and popcount stay resident.                      | At 4M bits, intersection count was 9.8x and in-place union 19.8x faster than scalar `Uint32Array`.                                    | Small or point-heavy sets should use `Set<number>` or BigInt. Growth copies storage, and dense allocation is wasteful for sparse universes.                         | JS 8.84 kB (2.80) + Wasm 0.50 kB (0.26)  |
+| [`binary-vector-index`](./src/binary-vector-index/README.md)           | Frozen equal-width binary signatures; exhaustive Hamming scans use XOR and popcount.                                                                        | A resident scan over 65,536 256-bit signatures was 7.82x faster than scalar JS. Signatures use 1/32 of the source Float32 payload.    | Construction and output copying erase gains for one-shot scans. Sign quantization changes recall, and `topK` currently sorts all distances in JS.                   | JS 6.33 kB (2.64) + Wasm 0.22 kB (0.18)  |
+| [`bit-sliced-column`](./src/bit-sliced-column/README.md)               | Mostly-static nullable `u8` column stored as one bitmap per bit, with composable resident selection masks.                                                  | Equality/range scans over 4M rows were 17.6–29.6x faster than scalar `Uint8Array` scans.                                              | Construction transposes all values; point reads and small scans are poor fits. At eight bits, data plus validity uses more space than `Uint8Array`.                 | JS 7.83 kB (3.00) + Wasm 0.90 kB (0.43)  |
+| [`elias-fano-sequence`](./src/elias-fano-sequence/README.md)           | Frozen non-decreasing `u32` sequence with packed lower bits and a rank-indexed unary upper vector. Supports access and ordered queries without full decode. | Used 0.46–0.77 B/value and gave about 2.5x faster point access than PackedDelta; batched rank was near typed-array binary search.     | Direct `Uint32Array` access was about 5x faster and native copy about 36x faster than full decode. PackedDelta decodes sequentially faster.                         | JS 8.24 kB (3.09) + Wasm 1.64 kB (0.86)  |
+| [`f32-vector`](./src/f32-vector/README.md)                             | Fixed Wasm-resident Float32 vectors for repeated dot product and in-place AXPY.                                                                             | Resident operations were about 2–7x faster than scalar `Float32Array` loops from 16 to 4M elements.                                   | Point access and one-shot operations should stay in JS because `from` copies the input. SIMD reduction changes floating-point association.                          | JS 4.60 kB (2.04) + Wasm 0.22 kB (0.17)  |
+| [`flat-hash`](./src/flat-hash/README.md)                               | Mutable `u32` set/map with SwissTable-style 16-byte control groups, fingerprints, tombstones, and bulk APIs.                                                | Batched lookup and rebuild workloads were 5.9–9.9x faster than JS collections in the recorded large table.                            | For 1,024 individual calls, JS `Set` was 1.63x and `Map` 3.37x faster. It does not support arbitrary JS keys or values.                                             | JS 6.84 kB (2.66) + Wasm 1.27 kB (0.72)  |
+| [`i32-array`](./src/i32-array/README.md)                               | Fixed resident signed array with bulk sum/min/max/equality and in-place addition.                                                                           | Reused arrays from 1K to 4M elements were roughly 3–7x faster than equivalent typed-array loops.                                      | Individual access is not accelerated. Below roughly 1K elements or for a one-off operation, the initial copy can dominate.                                          | JS 5.22 kB (2.21) + Wasm 0.77 kB (0.34)  |
+| [`matrix2d`](./src/matrix2d/README.md)                                 | Fixed row-major Float32 matrix with four-lane row padding, resident elementwise operations, and multiplication.                                             | Resident multiplication was about 4.6–9.5x faster than generic JS loops from 16×16 to 256×256.                                        | 4×4 was near parity. Specialized unrolled graphics code, native BLAS, and GPU workloads are outside this comparison. Construction and materialization are excluded. | JS 6.17 kB (2.51) + Wasm 0.37 kB (0.23)  |
+| [`matrix3d`](./src/matrix3d/README.md)                                 | Fixed batch-major Float32 tensor for `[B,M,K] × [B,K,N]` multiplication in one Wasm call.                                                                   | Recorded batches were 5.0–7.3x faster than equivalent generic JS loops.                                                               | Inputs and output must already be resident. It has no broadcasting and is not a replacement for BLAS or WebGPU. Point access remains a JS-array strength.           | JS 6.84 kB (2.67) + Wasm 0.45 kB (0.27)  |
+| [`packed-delta-uint32-list`](./src/packed-delta-uint32-list/README.md) | Frozen strictly increasing `u32` list using Stream VByte plus 128-value checkpoints; aimed at postings and adjacency lists.                                 | Used 1.31 B/value in the benchmark and reusable intersection was 1.40x faster than an uncompressed merge.                             | `Uint32Array` full copy was 15.7–17.1x faster and lower-bound batches 2.9–3.3x faster. Do not choose it for decode-heavy access.                                    | JS 6.96 kB (2.76) + Wasm 1.49 kB (0.88)  |
+| [`rank-select-bitvector`](./src/rank-select-bitvector/README.md)       | Frozen bitvector with a cumulative count every 512 bits; supports rank, select, and neighboring-one queries.                                                | Batches of 1,024 ranks were at least 1.51x faster and selects 1.71–3.0x faster than indexed JS. Index overhead is 0.78%.              | Single-query rank was slightly slower than JS in every measured size; single select was near parity. Batch queries are the intended API.                            | JS 7.37 kB (2.69) + Wasm 0.95 kB (0.53)  |
+| [`roaring-uint32-set`](./src/roaring-uint32-set/README.md)             | Mutable Roaring-style `u32` set: sorted `u16` array containers through 4,096 entries and 8 KiB bitmap containers above it.                                  | Dense intersection cardinality was about 175x faster than a sorted typed-array merge; sparse cases were 2.2–10.9x faster.             | Construction was excluded, and point-heavy or tiny sets need workload-specific measurement. Run containers and portable Roaring serialization are not implemented.  | JS 9.96 kB (3.63) + Wasm 1.02 kB (0.49)  |
+| [`static-mphf-u32`](./src/static-mphf-u32/README.md)                   | Frozen minimal perfect hash for a known `u32` key set; dense IDs plus 16-bit membership fingerprints.                                                       | Batched lookup was 1.75x faster than `Set` while using 3 logical B/key versus FlatHash's 10 B/key.                                    | Individual lookup was about 8x slower than `Set`; construction was about 42x slower than FlatHash. Unknown keys have a roughly `1/2^16` false-positive chance.      | JS 7.27 kB (2.97) + Wasm 0.68 kB (0.39)  |
+| [`wavelet-matrix-uint32`](./src/wavelet-matrix-uint32/README.md)       | Frozen binary wavelet matrix preserving order while answering range frequency, quantile, rank, select, and predecessor queries.                             | Batch quantile was over 100x faster than copy-and-sort; range frequency was 2.2–3.7x faster than scalar scanning.                     | Direct typed access was 100–150x faster and a dedicated positions map answered exact rank about 20x faster. Construction makes 32 passes and uses temporary memory. | JS 7.77 kB (2.85) + Wasm 2.10 kB (0.97)  |
 
-`jsonTokenStarts` performs classification, quote/backslash state transitions, string masking, atom
-boundary detection, and position emission inside Wasm. It was 3.5x faster on a 38 KiB mixed JSON
-sample (56 us vs 196 us), 3.0x on a punctuation-dense 60 KiB sample, and roughly even on a 75 KiB
-long-string sample where both implementations still walk every byte.
+### Stateless and copy-inclusive kernels
 
-## BitSet and FixedBitSet
+| export                                   | operation                                                                                                                                | measured strength                                                                        | when JavaScript wins or reaches parity                                                                                             | isolated Vite output, raw (gzip)        |
+| :--------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------- |
+| [`@mizchi/jsimd`](./src/bytes/README.md) | Byte search, reverse search, ASCII detection, equality, lexical comparison, and subarray search. Wrappers include scratch-memory copies. | On 4 KiB inputs, measured speedups ranged from 4.9x to 18.1x.                            | Copy and call overhead dominate very small inputs, so the wrappers select native JS paths below operation-specific thresholds.     | JS 2.32 kB (1.20) + Wasm 0.98 kB (0.50) |
+| [`endian`](./src/endian/README.md)       | Batched `u32` big/little-endian decoding; big-endian uses SIMD byte shuffle for larger inputs.                                           | Big-endian inputs from 512 B to 16 KiB were 1.3–2.2x faster than `DataView`.             | At 64–256 B it was at parity; little-endian uses a native typed-array path on little-endian hosts.                                 | JS 2.21 kB (1.11) + Wasm 0.21 kB (0.18) |
+| [`json`](./src/json/README.md)           | UTF-8 JSON token-start scanner with SIMD classification and an in-Wasm string/escape/atom state machine.                                 | Mixed and punctuation-dense 38–60 KiB inputs were 3.0–3.5x faster than the scalar lexer. | A 75 KiB long-string input was only 1.1x faster because both paths inspect nearly every byte; small inputs also pay copy overhead. | JS 1.95 kB (1.00) + Wasm 0.48 kB (0.28) |
 
-`FixedBitSet` keeps its aligned, padded backing words in Wasm memory. `unionWith`, `intersectWith`,
-`differenceWith`, and `symmetricDifferenceWith` use 128-bit operations without copying through JS.
-`countOnes` and `intersectionCount` use `i8x16.popcnt`. Point operations (`insert`, `remove`, and
-`has`) access the same memory directly from JavaScript.
+### How to read the numbers
 
-The API and workload selection follow Rust's `fixedbitset`: fixed capacity, dense backing words,
-in-place set algebra, and cardinality operations. It intentionally does not replace JavaScript's
-general-purpose `Set`; the useful case is repeated bulk operations over a fixed integer universe.
-`BitSet` shares the same storage and kernels but grows geometrically. The fixed name remains useful:
-`FixedBitSet` makes the integer universe part of the contract and rejects mismatched capacities.
+Performance results were recorded on Apple M5 with Node 24 or Deno 2.6 as documented by each linked
+feature README. They are workload samples, not cross-feature scores. Resident benchmarks usually
+exclude construction and final materialization; copy-inclusive kernels explicitly include boundary
+copies. Rerun the linked benchmark on the target engine and data distribution before choosing a
+representation.
 
-On Deno 2.6.4 / Apple M5 with a 4,194,304-bit universe (density 1/7 and 1/11):
+Build sizes come from isolated Vite 8.2 production fixtures. Each cell reports minified JavaScript
+and its one independently emitted Wasm asset in kB, with gzip size in parentheses. Importing a
+subpath does not pull in another feature's Wasm. A real application may share wrapper code or add
+other runtime code, so these figures are marginal fixtures rather than a prediction of total bundle
+size.
 
-| operation          | Wasm SIMD | scalar `Uint32Array` | `Set<number>` |  BigInt |
-| ------------------ | --------: | -------------------: | ------------: | ------: |
-| intersection count |   38.9 us |             380.1 us |       11.2 ms |     n/a |
-| in-place union     |   15.3 us |             302.6 us |           n/a | 48.2 us |
-
-BigInt union is native and compact to write, but produces a new immutable large integer. The SIMD
-operation mutates reusable storage. Benchmark averages include runtime variance; run
-`deno bench -A --filter bitset` on the target engine before choosing an implementation.
-
-Wasm linear memory cannot shrink, but leaving a `using` scope returns the block to a power-of-two
-free list for reuse with bounded size-class fragmentation. `FixedBitSet.allocatorStats()` exposes
-live, free, reserved, and physical memory byte counts. Using an object after scope disposal throws.
-
-## SIMD Float32 vectors
-
-`SimdFloat32Vector` is a Wasm-resident numeric vector, rather than a replacement for JavaScript
-array access. `dot` and in-place `addScaled` (AXPY) cross the JS/Wasm boundary once per complete
-operation. Input is copied once by `from`; repeated operations do not copy through JS.
-
-On Deno 2.6.4 / Apple M5:
-
-|  elements | resident SIMD dot | scalar `Float32Array` dot | resident SIMD AXPY | scalar AXPY |
-| --------: | ----------------: | ------------------------: | -----------------: | ----------: |
-|        16 |            6.1 ns |                   12.8 ns |             6.0 ns |     13.7 ns |
-|     1,024 |          151.9 ns |                  651.0 ns |           108.5 ns |    685.8 ns |
-|   262,144 |           43.5 us |                  175.8 us |            28.6 us |    186.9 us |
-| 4,194,304 |            855 us |                    3.1 ms |             531 us |      3.1 ms |
-
-These numbers model reuse of resident vectors and exclude construction. For one-shot operations, the
-copy-inclusive path must be benchmarked separately. SIMD reduction also changes floating-point
-association, so `dot` is numerically close to, but not bit-identical with, a sequential JS sum.
-
-Both stateful APIs are subpath exports backed by separate Wasm binaries. Importing only
-`@mizchi/jsimd/bitset` does not bundle the byte or Float32-vector Wasm. `just check` verifies this
-with a Vite production fixture and fails unless exactly the bitset Wasm asset is emitted.
+The package is distributed as one npm package with subpath exports. npm releases contain compiled
+JavaScript and adjacent declarations; consumers do not need TypeScript runtime transformation for
+files under `node_modules`. Each `.wasm` import is typed by an adjacent `kernels.d.wasm.ts`,
+following Vite's `allowArbitraryExtensions` convention, without a generated environment-specific
+loader.
 
 ## Development
 
@@ -269,8 +228,6 @@ payload into `dist/`: compiled JavaScript, declarations, feature documentation, 
 corresponding stripped Wasm binaries. The hand-written kernels do not require Binaryen; development
 only requires `wasm-tools` on `PATH`.
 
-Implemented kernels: fixed bitsets, forward/reverse byte search, subarray search, byte
-equality/lexicographical comparison, ASCII validation, and UTF-8 JSON token-start extraction.
-Planned kernels include UTF-16 validation. Each kernel must beat the best relevant JavaScript
-builtin or scalar reference after including JS/Wasm copy and call overhead. See `CORE_PATTERNS.md`
-for the MoonBit source mapping.
+Implemented and planned work is tracked in [`TODO.md`](./TODO.md). A kernel is retained only when a
+documented workload justifies its Wasm boundary and bundle cost against the best relevant JavaScript
+builtin or scalar reference.

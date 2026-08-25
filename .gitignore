@@ -10,6 +10,7 @@ examples/tree-shake-bytes/dist/
 examples/tree-shake-endian/dist/
 examples/tree-shake-elias-fano-sequence/dist/
 examples/tree-shake-flat-hash/dist/
+examples/tree-shake-f32-vector/dist/
 examples/tree-shake-i32-array/dist/
 examples/tree-shake-json/dist/
 examples/tree-shake-matrix2d/dist/
