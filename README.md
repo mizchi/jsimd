@@ -7,7 +7,6 @@ against MoonBit's JS backend.
 ```ts
 import {
   bytesEqual,
-  BytesView,
   findByte,
   findNonAscii,
   indexOfSubarray,
@@ -15,11 +14,11 @@ import {
   reverseFindByte,
 } from "@mizchi/jsimd";
 import { FixedBitSet } from "@mizchi/jsimd/bitset";
+import { decodeUint32BE } from "@mizchi/jsimd/endian";
 import { SimdFloat32Vector } from "@mizchi/jsimd/f32-vector";
 import { jsonTokenStarts } from "@mizchi/jsimd/json";
 
 const bytes = new Uint8Array([1, 2, 3]);
-new BytesView(bytes).getUint16(0, true);
 findByte(bytes, 2);
 reverseFindByte(bytes, 2);
 findNonAscii(bytes);
@@ -27,20 +26,17 @@ bytesEqual(bytes, bytes.slice());
 lexicalCompare(bytes, new Uint8Array([1, 2, 4]));
 indexOfSubarray(bytes, new Uint8Array([2, 3]));
 jsonTokenStarts(new TextEncoder().encode('{"ok":true}'));
+decodeUint32BE(new Uint8Array([0x01, 0x23, 0x45, 0x67]));
 
-const active = FixedBitSet.from(1_000_000, [1, 10, 999_999]);
-const selected = FixedBitSet.from(1_000_000, [10, 20]);
+using active = FixedBitSet.from(1_000_000, [1, 10, 999_999]);
+using selected = FixedBitSet.from(1_000_000, [10, 20]);
 active.intersectionCount(selected); // 1
 active.unionWith(selected); // mutates active without copying through JS
-active.dispose();
-selected.dispose();
 
-const x = SimdFloat32Vector.from(new Float32Array([1, 2, 3, 4]));
-const y = SimdFloat32Vector.from(new Float32Array([2, 4, 6, 8]));
+using x = SimdFloat32Vector.from(new Float32Array([1, 2, 3, 4]));
+using y = SimdFloat32Vector.from(new Float32Array([2, 4, 6, 8]));
 x.dot(y); // 60
 x.addScaled(y, 0.5); // x += 0.5 * y
-x.dispose();
-y.dispose();
 ```
 
 The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
@@ -52,6 +48,7 @@ source, Wasm type declaration, and generated Wasm binary:
 
 - [`src/bytes`](./src/bytes/README.md) — byte search, comparison, ASCII, and subarray scanning
 - [`src/bitset`](./src/bitset/README.md) — fixed-capacity SIMD bitsets
+- [`src/endian`](./src/endian/README.md) — batched endian decoding
 - [`src/f32-vector`](./src/f32-vector/README.md) — resident Float32 dot product and AXPY
 - [`src/json`](./src/json/README.md) — UTF-8 JSON token-start scanning
 

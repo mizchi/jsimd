@@ -6,23 +6,12 @@ package entrypoint:
 ```ts
 import {
   bytesEqual,
-  BytesView,
   findByte,
   findNonAscii,
   indexOfSubarray,
   lexicalCompare,
   reverseFindByte,
 } from "@mizchi/jsimd";
-```
-
-`BytesView` adds a zero-copy range abstraction. Typed scalar reads delegate to the engine's native
-`DataView`; bulk search and comparison methods delegate to the SIMD kernels.
-
-```ts
-const packet = new BytesView(input, 14);
-const payloadLength = packet.getUint16(2, false);
-const payload = packet.view(20, 20 + payloadLength);
-const separator = payload.findByte(0x0a);
 ```
 
 The wrappers include JavaScript-to-Wasm copies in their cost model and use native JavaScript paths
@@ -44,16 +33,6 @@ Wasm scratch memory.
 
 Very small inputs use JavaScript paths because copy and call overhead dominate.
 
-The view wrapper itself stays close to its direct counterpart:
-
-| workload                | `BytesView` | direct API | overhead |
-| ----------------------- | ----------: | ---------: | -------: |
-| `getUint32` ×4096       |      2.3 us |     2.2 us |     1.0x |
-| `findByte`, 16 KiB miss |     0.71 us |    0.70 us |     1.0x |
-
-Typed-read results are engine-dependent and come from native `DataView`, not Wasm SIMD. The purpose
-of the wrapper is to keep scalar access native while composing it with SIMD-backed bulk operations.
-
 Reproduce from the repository root:
 
 ```sh
@@ -63,7 +42,6 @@ just bench
 Files:
 
 - `mod.ts`: public exports
-- `view.ts`: zero-copy view contract and DataView-compatible reads
 - `operations.ts`: copy/scratch-memory policy and SIMD operation wrappers
 - `kernels.wat`: hand-written Wasm SIMD source
 - `kernels.d.wasm.ts`: typed Wasm module contract

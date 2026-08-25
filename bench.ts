@@ -1,12 +1,12 @@
 import {
   bytesEqual,
-  BytesView,
   findByte,
   findNonAscii,
   indexOfSubarray,
   lexicalCompare,
   reverseFindByte,
 } from "./src/bytes/mod.ts";
+import { decodeUint32BE } from "./src/endian/mod.ts";
 import { FixedBitSet } from "./src/bitset/mod.ts";
 import { SimdFloat32Vector } from "./src/f32-vector/mod.ts";
 import { jsonTokenStarts } from "./src/json/mod.ts";
@@ -24,30 +24,24 @@ for (const length of [32, 64, 128, 256, 1024, 4096, 16_384, 65_536]) {
   });
 }
 
-const bytesViewInput = Uint8Array.from({ length: 16_384 }, (_, index) => index & 0x3f);
-const bytesView = new BytesView(bytesViewInput);
-const nativeDataView = new DataView(bytesViewInput.buffer);
-const bytesViewLength = bytesViewInput.byteLength;
-Deno.bench("typed read BytesView#getUint32 x4096", () => {
-  let result = 0;
-  for (let offset = 0; offset < bytesViewLength; offset += 4) {
-    result += bytesView.getUint32(offset, true);
+function scalarDecodeUint32BE(input: Uint8Array): Uint32Array {
+  const output = new Uint32Array(input.length >>> 2);
+  const view = new DataView(input.buffer, input.byteOffset, input.byteLength);
+  for (let index = 0; index < output.length; index++) {
+    output[index] = view.getUint32(index << 2, false);
   }
-  sink ^= Math.trunc(result);
-});
-Deno.bench("typed read DataView#getUint32 x4096", () => {
-  let result = 0;
-  for (let offset = 0; offset < bytesViewLength; offset += 4) {
-    result += nativeDataView.getUint32(offset, true);
-  }
-  sink ^= Math.trunc(result);
-});
-Deno.bench("byte view search BytesView#findByte 16 KiB miss", () => {
-  sink ^= bytesView.findByte(0x5a);
-});
-Deno.bench("byte view search findByte function 16 KiB miss", () => {
-  sink ^= findByte(bytesViewInput, 0x5a);
-});
+  return output;
+}
+
+for (const length of [16, 64, 256, 512, 1024, 4096, 16_384, 65_536]) {
+  const input = Uint8Array.from({ length }, (_, index) => index & 0xff);
+  Deno.bench(`decode u32be SIMD n=${length}`, () => {
+    sink ^= decodeUint32BE(input)[0]!;
+  });
+  Deno.bench(`decode u32be DataView n=${length}`, () => {
+    sink ^= scalarDecodeUint32BE(input)[0]!;
+  });
+}
 
 function scalarPopcount(word: number): number {
   word -= (word >>> 1) & 0x5555_5555;

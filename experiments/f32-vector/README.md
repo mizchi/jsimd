@@ -6,12 +6,10 @@ ordinary JavaScript element access.
 ```ts
 import { SimdFloat32Vector } from "@mizchi/jsimd/f32-vector";
 
-const x = SimdFloat32Vector.from(new Float32Array([1, 2, 3, 4]));
-const y = SimdFloat32Vector.from(new Float32Array([2, 4, 6, 8]));
+using x = SimdFloat32Vector.from(new Float32Array([1, 2, 3, 4]));
+using y = SimdFloat32Vector.from(new Float32Array([2, 4, 6, 8]));
 x.dot(y); // 60
 x.addScaled(y, 0.5);
-x.dispose();
-y.dispose();
 ```
 
 ## Recorded result
@@ -40,5 +38,6 @@ pnpm bench:compare:f32-vector
 The committed baseline is environment-specific. Floating-point reduction order also differs from the
 scalar JavaScript loop.
 
-`dispose()` is explicit and idempotent. Allocation statistics are available through
-`SimdFloat32Vector.allocatorStats()`; stress tests verify storage reuse after 10,000 lifecycles.
+Leaving the `using` scope invokes the idempotent `Symbol.dispose` implementation. Allocation
+statistics are available through `SimdFloat32Vector.allocatorStats()`; stress tests verify storage
+reuse after 10,000 lifecycles.

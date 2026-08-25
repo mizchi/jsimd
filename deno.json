@@ -4,6 +4,7 @@
   "exports": {
     ".": "./src/bytes/mod.ts",
     "./bitset": "./src/bitset/mod.ts",
+    "./endian": "./src/endian/mod.ts",
     "./f32-vector": "./src/f32-vector/mod.ts",
     "./json": "./src/json/mod.ts"
   },
