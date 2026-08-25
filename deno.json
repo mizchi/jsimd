@@ -6,6 +6,7 @@
     "./bitset": "./src/bitset/mod.ts",
     "./endian": "./src/endian/mod.ts",
     "./f32-vector": "./src/f32-vector/mod.ts",
+    "./i32-array": "./src/i32-array/mod.ts",
     "./json": "./src/json/mod.ts"
   },
   "tasks": {

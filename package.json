@@ -8,6 +8,7 @@
     "./bitset": "./src/bitset/mod.ts",
     "./endian": "./src/endian/mod.ts",
     "./f32-vector": "./src/f32-vector/mod.ts",
+    "./i32-array": "./src/i32-array/mod.ts",
     "./json": "./src/json/mod.ts"
   },
   "sideEffects": false,
@@ -22,12 +23,15 @@
     "bench:bitset": "vitest bench experiments/bitset",
     "bench:endian": "deno bench -A bench.ts --filter 'decode u32be'",
     "bench:f32-vector": "vitest bench experiments/f32-vector",
+    "bench:i32-array": "vitest bench experiments/i32-array",
     "bench:json": "vitest bench experiments/json",
     "bench:record:bitset": "vitest bench experiments/bitset --outputJson experiments/bitset/benchmarks/baseline.json",
     "bench:record:f32-vector": "vitest bench experiments/f32-vector --outputJson experiments/f32-vector/benchmarks/baseline.json",
+    "bench:record:i32-array": "vitest bench experiments/i32-array --outputJson experiments/i32-array/benchmarks/baseline.json",
     "bench:record:json": "vitest bench experiments/json --outputJson experiments/json/benchmarks/baseline.json",
     "bench:compare:bitset": "vitest bench experiments/bitset --compare experiments/bitset/benchmarks/baseline.json",
     "bench:compare:f32-vector": "vitest bench experiments/f32-vector --compare experiments/f32-vector/benchmarks/baseline.json",
+    "bench:compare:i32-array": "vitest bench experiments/i32-array --compare experiments/i32-array/benchmarks/baseline.json",
     "bench:compare:json": "vitest bench experiments/json --compare experiments/json/benchmarks/baseline.json"
   },
   "license": "MIT",

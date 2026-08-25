@@ -1,6 +1,6 @@
 # @mizchi/jsimd
 
-Small prebuilt WebAssembly SIMD kernels for byte-heavy JavaScript hot paths. The initial
+Small prebuilt WebAssembly SIMD kernels for data-parallel JavaScript hot paths. The initial
 implementation is derived from the scalar/SIMD byte scanners in `moonbitlang/core` and is measured
 against MoonBit's JS backend.
 
@@ -16,6 +16,7 @@ import {
 import { FixedBitSet } from "@mizchi/jsimd/bitset";
 import { decodeUint32BE } from "@mizchi/jsimd/endian";
 import { SimdFloat32Vector } from "@mizchi/jsimd/f32-vector";
+import { SimdInt32Array } from "@mizchi/jsimd/i32-array";
 import { jsonTokenStarts } from "@mizchi/jsimd/json";
 
 const bytes = new Uint8Array([1, 2, 3]);
@@ -37,6 +38,10 @@ using x = SimdFloat32Vector.from(new Float32Array([1, 2, 3, 4]));
 using y = SimdFloat32Vector.from(new Float32Array([2, 4, 6, 8]));
 x.dot(y); // 60
 x.addScaled(y, 0.5); // x += 0.5 * y
+
+using values = SimdInt32Array.from([5, -7, 11, 13, 2]);
+values.sum(); // 24
+values.min(); // -7
 ```
 
 The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
@@ -50,6 +55,7 @@ source, Wasm type declaration, and generated Wasm binary:
 - [`src/bitset`](./src/bitset/README.md) — fixed-capacity SIMD bitsets
 - [`src/endian`](./src/endian/README.md) — batched endian decoding
 - [`src/f32-vector`](./src/f32-vector/README.md) — resident Float32 dot product and AXPY
+- [`src/i32-array`](./src/i32-array/README.md) — fixed-length resident Int32 bulk operations
 - [`src/json`](./src/json/README.md) — UTF-8 JSON token-start scanning
 
 The package is distributed as one npm package with subpath exports. The Wasm binaries remain
