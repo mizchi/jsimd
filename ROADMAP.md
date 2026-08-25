@@ -5,7 +5,7 @@ Implementation order after the initial byte, numeric, bitset, and matrix kernels
 1. ✅ `RankSelectBitVector` — build/freeze rank, select, and neighboring-bit foundation
 2. ✅ `RoaringUint32Set` — mutable compressed integer sets and non-materializing set queries
 3. ✅ `PackedDeltaUint32List` — frozen Stream VByte sorted integer lists and bulk intersection
-4. `SimdFlatHashMap/Set` — typed-key SwissTable-style control groups
+4. ✅ `SimdFlatHashMap/Set` — typed-key SwissTable-style control groups and bulk probing
 5. `BitSlicedColumn` — mostly-static predicates producing composable bit masks
 6. `WaveletMatrixUint32` — static range frequency, quantile, and predecessor queries
 

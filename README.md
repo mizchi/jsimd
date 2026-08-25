@@ -16,6 +16,7 @@ import {
 import { FixedBitSet } from "@mizchi/jsimd/bitset";
 import { decodeUint32BE } from "@mizchi/jsimd/endian";
 import { SimdFloat32Vector } from "@mizchi/jsimd/f32-vector";
+import { FlatHashMapU32U32, FlatHashSetU32 } from "@mizchi/jsimd/flat-hash";
 import { SimdInt32Array } from "@mizchi/jsimd/i32-array";
 import { jsonTokenStarts } from "@mizchi/jsimd/json";
 import { SimdMatrix2D } from "@mizchi/jsimd/matrix2d";
@@ -69,6 +70,12 @@ using packedLeft = PackedDeltaUint32List.from([1, 3, 9, 100, 1_000]);
 using packedRight = PackedDeltaUint32List.from([3, 10, 100, 2_000]);
 const packedIntersection = new Uint32Array(4);
 packedLeft.intersectInto(packedRight, packedIntersection); // 2: [3, 100]
+
+using ids = FlatHashSetU32.from([1, 3, 5]);
+using offsets = FlatHashMapU32U32.from([[1, 100], [3, 300]]);
+const idQueries = new Uint32Array([0, 1, 3]);
+const idPresent = new Uint8Array(idQueries.length);
+ids.lookupMany(idQueries, idPresent);
 ```
 
 The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
@@ -82,6 +89,7 @@ source, Wasm type declaration, and generated Wasm binary:
 - [`src/bitset`](./src/bitset/README.md) — fixed-capacity SIMD bitsets
 - [`src/endian`](./src/endian/README.md) — batched endian decoding
 - [`src/f32-vector`](./src/f32-vector/README.md) — resident Float32 dot product and AXPY
+- [`src/flat-hash`](./src/flat-hash/README.md) — typed `u32` SIMD flat hash set and map
 - [`src/i32-array`](./src/i32-array/README.md) — fixed-length resident Int32 bulk operations
 - [`src/json`](./src/json/README.md) — UTF-8 JSON token-start scanning
 - [`src/matrix2d`](./src/matrix2d/README.md) — resident row-major Float32 matrix operations

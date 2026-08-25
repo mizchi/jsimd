@@ -21,6 +21,7 @@ import {
   PackedDeltaUint32List,
   PackedDeltaUint32ListBuilder,
 } from "./src/packed-delta-uint32-list/mod.ts";
+import { FlatHashMapU32U32, FlatHashSetU32 } from "./src/flat-hash/mod.ts";
 import { jsonTokenStarts } from "./src/json/mod.ts";
 
 function assertEquals(actual: unknown, expected: unknown, context: string): void {
@@ -754,6 +755,118 @@ Deno.test("PackedDeltaUint32List using lifecycle returns compressed allocations"
   const after = PackedDeltaUint32List.allocatorStats();
   assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
   assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+Deno.test("FlatHashSetU32 supports Uint32 keys, tombstones, and growth", () => {
+  using set = new FlatHashSetU32(16);
+  set.insert(0).insert(0xffff_ffff).insert(42).insert(42);
+  assertEquals(set.size, 3, "deduplicated size");
+  assertEquals(set.has(0), true, "zero key");
+  assertEquals(set.has(0xffff_ffff), true, "maximum key");
+  assertEquals(set.delete(42), true, "delete existing");
+  assertEquals(set.delete(42), false, "delete missing");
+  for (let key = 1; key <= 2_000; key++) set.insert(Math.imul(key, 65_537) >>> 0);
+  assertEquals(set.size, 2_002, "size after growth");
+  for (let key = 1; key <= 2_000; key += 37) {
+    assertEquals(set.has(Math.imul(key, 65_537) >>> 0), true, `grown key ${key}`);
+  }
+  if (set.capacity < 2_002) throw new Error(`capacity did not grow: ${set.capacity}`);
+});
+
+Deno.test("FlatHashSetU32 batches inserts and reusable lookups", () => {
+  using set = FlatHashSetU32.from([1, 3, 5]);
+  set.insertMany(new Uint32Array([5, 7, 9, 0xffff_ffff]));
+  const queries = new Uint32Array([0, 1, 7, 8, 9, 0xffff_ffff]);
+  const present = new Uint8Array(queries.length);
+  assertEquals(set.lookupMany(queries, present), 4, "bulk hit count");
+  assertEquals(present.join(","), "0,1,1,0,1,1", "bulk presence");
+});
+
+Deno.test("FlatHashMapU32U32 stores and overwrites the complete Uint32 domain", () => {
+  using map = new FlatHashMapU32U32();
+  map.set(0, 0xffff_ffff).set(0xffff_ffff, 0).set(42, 10).set(42, 11);
+  assertEquals(map.size, 3, "map size");
+  assertEquals(map.get(0), 0xffff_ffff, "maximum value");
+  assertEquals(map.get(0xffff_ffff), 0, "zero value");
+  assertEquals(map.get(42), 11, "overwrite");
+  assertEquals(map.get(7), undefined, "missing value");
+  assertEquals(map.delete(42), true, "map delete");
+  assertEquals(map.has(42), false, "deleted key");
+});
+
+Deno.test("FlatHashMapU32U32 batches inserts and reusable lookups", () => {
+  using map = new FlatHashMapU32U32(16);
+  const keys = Uint32Array.from({ length: 2_000 }, (_, index) => Math.imul(index, 2_654_435_761));
+  const values = Uint32Array.from({ length: keys.length }, (_, index) => index * 3);
+  map.insertMany(keys, values);
+  const queries = new Uint32Array([keys[0]!, keys[999]!, 123, keys[1_999]!]);
+  const output = new Uint32Array(queries.length);
+  const present = new Uint8Array(queries.length);
+  assertEquals(map.lookupMany(queries, output, present), 3, "map bulk hits");
+  assertEquals(present.join(","), "1,1,0,1", "map bulk presence");
+  assertEquals(output[0], 0, "map first value");
+  assertEquals(output[1], 2_997, "map middle value");
+  assertEquals(output[3], 5_997, "map last value");
+});
+
+Deno.test("FlatHash tables match native references and release grown storage", () => {
+  const setBefore = FlatHashSetU32.allocatorStats();
+  const mapBefore = FlatHashMapU32U32.allocatorStats();
+  {
+    using set = new FlatHashSetU32();
+    using map = new FlatHashMapU32U32();
+    const referenceSet = new Set<number>();
+    const referenceMap = new Map<number, number>();
+    let state = 0xdead_beef;
+    for (let index = 0; index < 10_000; index++) {
+      state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+      const key = state;
+      state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+      const value = state;
+      set.insert(key);
+      map.set(key, value);
+      referenceSet.add(key);
+      referenceMap.set(key, value);
+      if ((index & 7) === 0) {
+        set.delete(key);
+        map.delete(key);
+        referenceSet.delete(key);
+        referenceMap.delete(key);
+      }
+    }
+    assertEquals(set.size, referenceSet.size, "random set size");
+    assertEquals(map.size, referenceMap.size, "random map size");
+    for (const key of referenceSet) assertEquals(set.has(key), true, `random set ${key}`);
+    for (const [key, value] of referenceMap) {
+      assertEquals(map.get(key), value, `random map ${key}`);
+    }
+  }
+  const setAfter = FlatHashSetU32.allocatorStats();
+  const mapAfter = FlatHashMapU32U32.allocatorStats();
+  assertEquals(setAfter.liveAllocations, setBefore.liveAllocations, "set allocations");
+  assertEquals(setAfter.liveBytes, setBefore.liveBytes, "set bytes");
+  assertEquals(mapAfter.liveAllocations, mapBefore.liveAllocations, "map allocations");
+  assertEquals(mapAfter.liveBytes, mapBefore.liveBytes, "map bytes");
+});
+
+Deno.test("FlatHash allocator reaches a reuse plateau after repeated growth", () => {
+  const exercise = () => {
+    using set = new FlatHashSetU32();
+    using map = new FlatHashMapU32U32();
+    const keys = Uint32Array.from({ length: 20_000 }, (_, index) => Math.imul(index, 0x9e37_79b1));
+    const values = Uint32Array.from(keys, (key) => key ^ 0xa5a5_a5a5);
+    set.insertMany(keys);
+    map.insertMany(keys, values);
+    set.clear().insertMany(keys);
+    map.clear().insertMany(keys, values);
+  };
+  exercise();
+  const plateau = FlatHashSetU32.allocatorStats();
+  exercise();
+  const repeated = FlatHashSetU32.allocatorStats();
+  assertEquals(repeated.liveAllocations, 0, "plateau live allocations");
+  assertEquals(repeated.liveBytes, 0, "plateau live bytes");
+  assertEquals(repeated.reservedBytes, plateau.reservedBytes, "plateau reserved bytes");
 });
 
 Deno.test("FixedBitSet handles boundaries and set algebra", () => {

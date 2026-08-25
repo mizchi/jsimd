@@ -17,8 +17,10 @@ dependencies, benchmarks, and decision gates.
 - [x] `PackedDeltaUint32List`
   - frozen Stream VByte control/data streams
   - 128-value checkpoints and SIMD group intersection
-- [ ] `SimdFlatHashMap/Set` — **next**
-- [ ] `BitSlicedColumn`
+- [x] `SimdFlatHashMap/Set`
+  - `FlatHashSetU32` and `FlatHashMapU32U32`
+  - bulk probing/insertion and allocator plateau tests
+- [ ] `BitSlicedColumn` — **next**
 - [ ] `WaveletMatrixUint32`
 
 ## Committed implementation order
@@ -62,18 +64,18 @@ Decision gate:
 
 Reference: [Techniques for Inverted Index Compression](https://arxiv.org/html/1908.10598v2)
 
-### 2. SimdFlatHashMap/Set — next
+### 2. SimdFlatHashMap/Set — initial implementation complete
 
 Build typed-key hash tables, not replacements for JavaScript's arbitrary-key `Map` and `Set`.
 
 Initial deliverables:
 
-- [ ] `FlatHashSetU32`
-- [ ] `FlatHashMapU32U32`
-- [ ] 16-byte SwissTable-style control groups and 7-bit fingerprints
-- [ ] `lookupMany`, `insertMany`, and reusable-output probing
-- [ ] growth/rehash behavior with allocator plateau tests
-- [ ] comparisons against `Set<number>`, `Map<number, number>`, and sorted arrays
+- [x] `FlatHashSetU32`
+- [x] `FlatHashMapU32U32`
+- [x] 16-byte SwissTable-style control groups and 7-bit fingerprints
+- [x] `lookupMany`, `insertMany`, and reusable-output probing
+- [x] growth/rehash behavior with allocator plateau tests
+- [x] comparisons against `Set<number>`, `Map<number, number>`, and sorted arrays
 
 Later derivatives:
 
@@ -87,7 +89,7 @@ future `StaticMPHF` rather than paying for mutable table metadata.
 
 Reference: [Abseil Swiss Tables design](https://abseil.io/about/design/swisstables)
 
-### 3. BitSlicedColumn
+### 3. BitSlicedColumn — next
 
 Build mostly-static integer columns that produce composable selection bitsets.
 
