@@ -10,7 +10,8 @@
     "./json": "./src/json/mod.ts",
     "./matrix2d": "./src/matrix2d/mod.ts",
     "./matrix3d": "./src/matrix3d/mod.ts",
-    "./rank-select-bitvector": "./src/rank-select-bitvector/mod.ts"
+    "./rank-select-bitvector": "./src/rank-select-bitvector/mod.ts",
+    "./roaring-uint32-set": "./src/roaring-uint32-set/mod.ts"
   },
   "tasks": {
     "build": "just build",

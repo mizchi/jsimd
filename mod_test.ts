@@ -16,6 +16,7 @@ import {
   RankSelectBitVector,
   RankSelectBitVectorBuilder,
 } from "./src/rank-select-bitvector/mod.ts";
+import { RoaringUint32Set } from "./src/roaring-uint32-set/mod.ts";
 import { jsonTokenStarts } from "./src/json/mod.ts";
 
 function assertEquals(actual: unknown, expected: unknown, context: string): void {
@@ -496,6 +497,138 @@ Deno.test("RankSelectBitVector using lifecycle returns allocator storage", () =>
   const after = RankSelectBitVector.allocatorStats();
   assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
   assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+Deno.test("RoaringUint32Set supports the complete Uint32 key range", () => {
+  using values = RoaringUint32Set.from([0, 1, 65_535, 65_536, 70_000, 0xffff_ffff]);
+  assertEquals(values.size, 6, "size");
+  assertEquals(values.has(0), true, "zero");
+  assertEquals(values.has(65_536), true, "second container");
+  assertEquals(values.has(0xffff_ffff), true, "uint32 max");
+  assertEquals(values.has(2), false, "missing");
+  values.insert(1).remove(70_000).remove(70_000);
+  assertEquals(values.size, 5, "idempotent mutation");
+  assertEquals(values.toUint32Array().join(","), "0,1,65535,65536,4294967295", "sorted copy");
+});
+
+Deno.test("RoaringUint32Set converts containers at the 4096 threshold", () => {
+  using values = new RoaringUint32Set();
+  for (let value = 0; value <= 4096; value++) values.insert(value);
+  assertEquals(values.size, 4097, "bitmap size");
+  for (const value of [0, 1, 4095, 4096]) assertEquals(values.has(value), true, `has ${value}`);
+  values.remove(4096);
+  assertEquals(values.size, 4096, "array size after shrinking");
+  assertEquals(values.has(4095), true, "survives bitmap to array conversion");
+});
+
+Deno.test("RoaringUint32Set computes non-materializing set queries", () => {
+  using left = RoaringUint32Set.from([1, 2, 65_535, 65_536, 65_537, 0xffff_ffff]);
+  using right = RoaringUint32Set.from([2, 65_536, 70_000, 0xffff_ffff]);
+  assertEquals(left.andCardinality(right), 3, "intersection cardinality");
+  assertEquals(left.intersects(right), true, "intersects");
+  assertClose(left.jaccard(right), 3 / 7, 1e-12, "jaccard");
+  using disjoint = RoaringUint32Set.from([100, 200]);
+  assertEquals(left.intersects(disjoint), false, "disjoint");
+  using emptyLeft = new RoaringUint32Set();
+  using emptyRight = new RoaringUint32Set();
+  assertEquals(emptyLeft.jaccard(emptyRight), 1, "empty jaccard");
+});
+
+Deno.test("RoaringUint32Set andInto reuses output without aliasing", () => {
+  using left = new RoaringUint32Set();
+  using right = new RoaringUint32Set();
+  for (let value = 0; value < 20_000; value++) {
+    if (value % 3 === 0) left.insert(value);
+    if (value % 5 === 0) right.insert(value);
+  }
+  using output = RoaringUint32Set.from([0xffff_ffff]);
+  assertEquals(left.andInto(right, output), output, "output reuse");
+  assertEquals(output.size, 1_334, "intersection size");
+  assertEquals(output.has(0), true, "first intersection");
+  assertEquals(output.has(19_995), true, "last intersection");
+  let aliased = false;
+  try {
+    left.andInto(right, left);
+  } catch (error) {
+    aliased = error instanceof RangeError;
+  }
+  assertEquals(aliased, true, "aliased output");
+});
+
+Deno.test("RoaringUint32Set retains dense bitmap intersection results", () => {
+  using left = new RoaringUint32Set();
+  using right = new RoaringUint32Set();
+  for (let value = 0; value <= 6_000; value++) left.insert(value);
+  for (let value = 1_000; value <= 7_000; value++) right.insert(value);
+  using output = left.and(right);
+  assertEquals(output.size, 5_001, "dense intersection size");
+  assertEquals(output.has(999), false, "before dense result");
+  assertEquals(output.has(1_000), true, "dense result start");
+  assertEquals(output.has(6_000), true, "dense result end");
+  assertEquals(output.has(6_001), false, "after dense result");
+  assertEquals(left.andCardinality(right), 5_001, "dense count");
+});
+
+Deno.test("RoaringUint32Set emits maximal inclusive ranges", () => {
+  using values = RoaringUint32Set.from([
+    1,
+    2,
+    3,
+    65_535,
+    65_536,
+    65_537,
+    100_000,
+    100_002,
+  ]);
+  const ranges: string[] = [];
+  values.forEachRange((start, end) => ranges.push(`${start}-${end}`));
+  assertEquals(ranges.join(","), "1-3,65535-65537,100000-100000,100002-100002", "ranges");
+});
+
+Deno.test("RoaringUint32Set matches Set on randomized operations", () => {
+  using actual = new RoaringUint32Set();
+  const expected = new Set<number>();
+  let state = 0x1234_abcd;
+  for (let operation = 0; operation < 20_000; operation++) {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    const value = operation % 3 === 0 ? state : state & 0x3ffff;
+    if ((state & 8) === 0) {
+      actual.insert(value);
+      expected.add(value);
+    } else {
+      actual.remove(value);
+      expected.delete(value);
+    }
+  }
+  const sorted = Uint32Array.from(expected).sort();
+  assertEquals(actual.size, expected.size, "random size");
+  assertEquals(actual.toUint32Array().join(","), sorted.join(","), "random contents");
+});
+
+Deno.test("RoaringUint32Set using lifecycle returns every container allocation", () => {
+  const before = RoaringUint32Set.allocatorStats();
+  {
+    using values = new RoaringUint32Set();
+    for (let value = 0; value < 200_000; value += 3) values.insert(value);
+    assertEquals(values.has(199_998), true, "live set");
+  }
+  const after = RoaringUint32Set.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+Deno.test("RoaringUint32Set releases partial construction after invalid input", () => {
+  const before = RoaringUint32Set.allocatorStats();
+  let threw = false;
+  try {
+    RoaringUint32Set.from([1, 65_536, -1]);
+  } catch (error) {
+    threw = error instanceof RangeError;
+  }
+  assertEquals(threw, true, "invalid Uint32");
+  const after = RoaringUint32Set.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "partial allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "partial bytes");
 });
 
 Deno.test("FixedBitSet handles boundaries and set algebra", () => {

@@ -21,6 +21,7 @@ import { jsonTokenStarts } from "@mizchi/jsimd/json";
 import { SimdMatrix2D } from "@mizchi/jsimd/matrix2d";
 import { SimdMatrix3D } from "@mizchi/jsimd/matrix3d";
 import { RankSelectBitVectorBuilder } from "@mizchi/jsimd/rank-select-bitvector";
+import { RoaringUint32Set } from "@mizchi/jsimd/roaring-uint32-set";
 
 const bytes = new Uint8Array([1, 2, 3]);
 findByte(bytes, 2);
@@ -58,6 +59,10 @@ const rankBuilder = new RankSelectBitVectorBuilder(1_000);
 rankBuilder.insert(1).insert(10).insert(999);
 using rankBits = rankBuilder.freeze();
 rankBits.rank1(500); // 2
+
+using roaringLeft = RoaringUint32Set.from([1, 10, 65_536]);
+using roaringRight = RoaringUint32Set.from([10, 65_536, 70_000]);
+roaringLeft.andCardinality(roaringRight); // 2
 ```
 
 The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
@@ -76,6 +81,7 @@ source, Wasm type declaration, and generated Wasm binary:
 - [`src/matrix2d`](./src/matrix2d/README.md) — resident row-major Float32 matrix operations
 - [`src/matrix3d`](./src/matrix3d/README.md) — resident batch-major Float32 matrix operations
 - [`src/rank-select-bitvector`](./src/rank-select-bitvector/README.md) — immutable rank/select index
+- [`src/roaring-uint32-set`](./src/roaring-uint32-set/README.md) — compressed Uint32 set operations
 
 The package is distributed as one npm package with subpath exports. The Wasm binaries remain
 separate, so bundlers only include the entrypoints that are imported.
