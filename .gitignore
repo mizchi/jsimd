@@ -1,4 +1,5 @@
 node_modules/
+/dist/
 coverage/
 examples/vite/dist/
 examples/tree-shake-adaptive-simd-page-i32/dist/

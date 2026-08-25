@@ -181,7 +181,9 @@ source, Wasm type declaration, and generated Wasm binary:
   rank, frequency, quantile, and predecessor queries
 
 The package is distributed as one npm package with subpath exports. The Wasm binaries remain
-separate, so bundlers only include the entrypoints that are imported.
+separate, so bundlers only include the entrypoints that are imported. npm releases contain compiled
+JavaScript and adjacent declaration files; consumers do not need TypeScript runtime transformation
+for files under `node_modules`.
 
 Each `.wasm` import is typed by an adjacent `kernels.d.wasm.ts`, following Vite's
 `allowArbitraryExtensions` convention. Consumers get typed Wasm exports without a generated JS
@@ -262,9 +264,10 @@ just bench
 
 `just build` compiles each `src/<name>/kernels.wat` into its adjacent `kernels.wasm`. Generated Wasm
 files have custom sections removed with `wasm-tools strip -a`, are checked with
-`wasm-tools validate --features simd`, ignored by Git, and included in the npm tarball produced
-after a build. The hand-written kernels do not require Binaryen; development only requires
-`wasm-tools` on `PATH`.
+`wasm-tools validate --features simd`, and are ignored by Git. `just build-package` emits the npm
+payload into `dist/`: compiled JavaScript, declarations, feature documentation, WAT sources, and the
+corresponding stripped Wasm binaries. The hand-written kernels do not require Binaryen; development
+only requires `wasm-tools` on `PATH`.
 
 Implemented kernels: fixed bitsets, forward/reverse byte search, subarray search, byte
 equality/lexicographical comparison, ASCII validation, and UTF-8 JSON token-start extraction.

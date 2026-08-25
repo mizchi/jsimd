@@ -71,13 +71,19 @@ build:
     wasm-tools print src/wavelet-matrix-uint32/kernels.wasm | rg -q 'access_many|rank_many|quantile_many|count_lt'
     ! wasm-tools print src/wavelet-matrix-uint32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
 
+build-package: build
+    deno run -A tools/build-package.ts
+
+package-smoke: build-package
+    deno run -A tools/smoke-package.ts
+
 test: build
     deno test -A
 
 bench: build
     deno bench -A
 
-check: test
+check: test package-smoke
     deno fmt --check
     deno lint
     deno eval 'const p = JSON.parse(await Deno.readTextFile("package.json")); const d = JSON.parse(await Deno.readTextFile("deno.json")); if (p.version !== d.version || JSON.stringify(Object.keys(p.exports)) !== JSON.stringify(Object.keys(d.exports))) throw new Error("package.json and deno.json release metadata differ")'
