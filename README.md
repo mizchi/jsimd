@@ -4,15 +4,41 @@ Small prebuilt WebAssembly SIMD kernels for data-parallel JavaScript hot paths. 
 implementation is derived from the scalar/SIMD byte scanners in `moonbitlang/core` and is measured
 against MoonBit's JS backend.
 
+## Purpose
+
+JavaScript does not expose a portable API for issuing explicit SIMD instructions. WebAssembly SIMD
+does, but its `v128` values cannot cross the JavaScript/WebAssembly boundary. Applications therefore
+need Wasm kernels that keep vector operations and intermediate data inside linear memory, exposing
+only scalar results or typed-array batches to JavaScript.
+
+This project provides compact data structures and bulk operations that cannot be expressed as
+concisely or optimized as predictably in JavaScript. Their hot loops are hand-assembled in WAT for
+128-bit WebAssembly SIMD, while TypeScript defines the public contracts, ownership, and `using`
+lifecycle. The goal is not to replace JavaScript builtins: an entrypoint is retained only when a
+measured workload justifies crossing the Wasm boundary.
+
+Bundle size is part of that contract. Each feature has an independent Wasm binary and package
+subpath, so importing one data structure does not pull in the others. The modules favor small,
+specialized kernels and batched APIs that amortize boundary and copy costs.
+
 ## Install
 
 ```sh
 pnpm add @mizchi/jsimd
 ```
 
-The 0.1 API targets Vite 8 and Deno 2.6 or later. It relies on direct Wasm ES module imports and
-explicit resource management (`using` / `Symbol.dispose`), so the consumer must enable the
-corresponding TypeScript syntax and use a runtime with Wasm SIMD support.
+## Runtime requirements
+
+- Node.js 24.5 or later
+- Deno 2.6 or later
+- Vite 8 or later
+- WebAssembly SIMD
+- WebAssembly ESM Integration for direct `.wasm` imports
+
+All supported environments use the same entrypoints and synchronous API. The package assumes that
+the runtime or bundler resolves and instantiates Wasm through ESM Integration; it does not include
+an environment-specific loader. Consumers must also enable explicit resource management (`using` /
+`Symbol.dispose`).
 
 ```ts
 import {
