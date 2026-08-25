@@ -129,7 +129,10 @@ just bench
 ```
 
 `just build` compiles each `src/<name>/kernels.wat` into its adjacent `kernels.wasm`. Generated Wasm
-files are ignored by Git but included in the npm tarball produced after a build.
+files have custom sections removed with `wasm-tools strip -a`, are checked with
+`wasm-tools validate --features simd`, ignored by Git, and included in the npm tarball produced
+after a build. The hand-written kernels do not require Binaryen; development only requires
+`wasm-tools` on `PATH`.
 
 Implemented kernels: fixed bitsets, forward/reverse byte search, subarray search, byte
 equality/lexicographical comparison, ASCII validation, and UTF-8 JSON token-start extraction.

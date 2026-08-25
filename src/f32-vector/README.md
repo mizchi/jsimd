@@ -25,6 +25,6 @@ Files:
 - `mod.ts`: public API and ownership contract
 - `kernels.wat`: SIMD dot-product and AXPY kernels
 - `kernels.d.wasm.ts`: typed Wasm module contract
-- `kernels.wasm`: generated and Git-ignored
+- `kernels.wasm`: generated, stripped, and validated by `just build`; Git-ignored
 
 Benchmarks and their baseline JSON live under `experiments/f32-vector`.

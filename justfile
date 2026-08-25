@@ -1,7 +1,7 @@
 build:
-    wasm-tools parse src/bytes/kernels.wat -o src/bytes/kernels.wasm
-    wasm-tools parse src/bitset/kernels.wat -o src/bitset/kernels.wasm
-    wasm-tools parse src/f32-vector/kernels.wat -o src/f32-vector/kernels.wasm
+    wasm-tools strip -a src/bytes/kernels.wat -o src/bytes/kernels.wasm
+    wasm-tools strip -a src/bitset/kernels.wat -o src/bitset/kernels.wasm
+    wasm-tools strip -a src/f32-vector/kernels.wat -o src/f32-vector/kernels.wasm
     wasm-tools validate --features simd src/bytes/kernels.wasm
     wasm-tools validate --features simd src/bitset/kernels.wasm
     wasm-tools validate --features simd src/f32-vector/kernels.wasm

@@ -25,6 +25,6 @@ Files:
 - `mod.ts`: public API, ownership contract, and allocator integration
 - `kernels.wat`: `v128` set operations and SIMD popcount
 - `kernels.d.wasm.ts`: typed Wasm module contract
-- `kernels.wasm`: generated and Git-ignored
+- `kernels.wasm`: generated, stripped, and validated by `just build`; Git-ignored
 
 Benchmarks and their baseline JSON live under `experiments/bitset`.
