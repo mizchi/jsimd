@@ -1,0 +1,49 @@
+{
+  "name": "@mizchi/jsimd",
+  "version": "0.0.0",
+  "description": "Prebuilt WebAssembly SIMD kernels and Wasm-resident data structures for JavaScript",
+  "type": "module",
+  "exports": {
+    ".": "./mod.ts",
+    "./bitset": "./bitset.ts",
+    "./f32-vector": "./f32-vector.ts"
+  },
+  "sideEffects": false,
+  "files": [
+    "mod.ts",
+    "bitset.ts",
+    "f32-vector.ts",
+    "src/",
+    "dist/"
+  ],
+  "scripts": {
+    "build": "just build",
+    "check:vite": "vite build examples/vite",
+    "test": "deno test -A",
+    "bench": "deno bench -A",
+    "bench:bitset": "vitest bench experiments/bitset",
+    "bench:f32-vector": "vitest bench experiments/f32-vector",
+    "bench:record:bitset": "vitest bench experiments/bitset --outputJson experiments/bitset/benchmarks/baseline.json",
+    "bench:record:f32-vector": "vitest bench experiments/f32-vector --outputJson experiments/f32-vector/benchmarks/baseline.json",
+    "bench:compare:bitset": "vitest bench experiments/bitset --compare experiments/bitset/benchmarks/baseline.json",
+    "bench:compare:f32-vector": "vitest bench experiments/f32-vector --compare experiments/f32-vector/benchmarks/baseline.json"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mizchi/jsimd.git"
+  },
+  "homepage": "https://github.com/mizchi/jsimd#readme",
+  "bugs": "https://github.com/mizchi/jsimd/issues",
+  "keywords": [
+    "simd",
+    "typescript",
+    "wasm",
+    "webassembly"
+  ],
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vite": "^8.0.0",
+    "vitest": "4.1.11"
+  }
+}

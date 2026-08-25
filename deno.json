@@ -1,0 +1,14 @@
+{
+  "name": "@mizchi/jsimd",
+  "version": "0.0.0",
+  "exports": "./mod.ts",
+  "tasks": {
+    "build": "wasm-tools parse src/kernels.wat -o dist/jsimd.wasm",
+    "test": "deno test -A",
+    "bench": "deno bench -A"
+  },
+  "fmt": {
+    "exclude": ["pnpm-lock.yaml"],
+    "lineWidth": 100
+  }
+}
