@@ -10,7 +10,8 @@ Implementation order after the initial byte, numeric, bitset, and matrix kernels
 6. ✅ `WaveletMatrixUint32` — static range frequency, quantile, and predecessor queries
 7. ✅ `EliasFanoSequence` — compact monotone random access, rank, and predecessor
 8. ✅ `AdaptiveSimdPageI32` — Constant, FOR, or Raw page selected from local value statistics
-9. `StaticMPHF` — frozen typed dictionaries with batched lookup and membership fingerprints
+9. ✅ `StaticMphfU32` — frozen dense IDs with batched lookup and membership fingerprints
+10. `SuccinctTrie` — LOUDS prefix index built on rank/select and byte-tail comparison
 
 `RankSelectBitVector` is the first foundation because Roaring, bit-sliced indexes, wavelet matrices,
 and future succinct structures can reuse its block layout and query contracts. APIs should favor

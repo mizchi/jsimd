@@ -26,6 +26,7 @@ import { SimdMatrix2D } from "@mizchi/jsimd/matrix2d";
 import { SimdMatrix3D } from "@mizchi/jsimd/matrix3d";
 import { RankSelectBitVectorBuilder } from "@mizchi/jsimd/rank-select-bitvector";
 import { RoaringUint32Set } from "@mizchi/jsimd/roaring-uint32-set";
+import { StaticMphfU32 } from "@mizchi/jsimd/static-mphf-u32";
 import { PackedDeltaUint32List } from "@mizchi/jsimd/packed-delta-uint32-list";
 import { WaveletMatrixUint32 } from "@mizchi/jsimd/wavelet-matrix-uint32";
 
@@ -98,6 +99,11 @@ using page = AdaptiveSimdPageI32.from([-3, 1, 4, 1, 5, 9, 2, 6]);
 using pageSelection = new SimdPageMask(page.length);
 page.scanBetween(1, 6, pageSelection);
 pageSelection.toIndices(); // [1, 2, 3, 4, 6]
+
+using staticIds = StaticMphfU32.from([10, 20, 30, 40]);
+const staticQueries = new Uint32Array([10, 99, 40]);
+const denseIds = new Int32Array(staticQueries.length);
+staticIds.lookupMany(staticQueries, denseIds); // 2
 ```
 
 The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
@@ -124,6 +130,8 @@ source, Wasm type declaration, and generated Wasm binary:
 - [`src/matrix3d`](./src/matrix3d/README.md) — resident batch-major Float32 matrix operations
 - [`src/rank-select-bitvector`](./src/rank-select-bitvector/README.md) — immutable rank/select index
 - [`src/roaring-uint32-set`](./src/roaring-uint32-set/README.md) — compressed Uint32 set operations
+- [`src/static-mphf-u32`](./src/static-mphf-u32/README.md) — frozen minimal perfect hashing with
+  batched lookup and 16-bit membership fingerprints
 - [`src/packed-delta-uint32-list`](./src/packed-delta-uint32-list/README.md) — frozen compressed
   monotone Uint32 lists
 - [`src/wavelet-matrix-uint32`](./src/wavelet-matrix-uint32/README.md) — immutable Uint32 range

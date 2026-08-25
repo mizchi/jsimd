@@ -14,6 +14,7 @@ examples/tree-shake-matrix2d/dist/
 examples/tree-shake-matrix3d/dist/
 examples/tree-shake-rank-select-bitvector/dist/
 examples/tree-shake-roaring-uint32-set/dist/
+examples/tree-shake-static-mphf-u32/dist/
 examples/tree-shake-packed-delta-uint32-list/dist/
 examples/tree-shake-wavelet-matrix-uint32/dist/
 src/**/*.wasm

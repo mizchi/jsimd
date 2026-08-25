@@ -34,7 +34,11 @@ dependencies, benchmarks, and decision gates.
 - [x] `AdaptiveSimdPageI32`
   - up to 256 signed rows with Constant, FrameOfReference, or Raw storage
   - ZoneMap fast paths, resident composable masks, scans, gather, decode, and sum
-- [ ] `StaticMPHF` — **next**
+- [x] `StaticMphfU32`
+  - hash-and-displace construction over unique Uint32 keys
+  - dense IDs, 16-bit membership fingerprints, and four-query first-hash SIMD batching
+  - explicit freeze-once/batch-query benchmark gate against FlatHash and `Set<number>`
+- [ ] `SuccinctTrie` — **next**
 
 ## Public API symmetry audit
 
@@ -160,13 +164,14 @@ the first six structures when a dependency or comparison requires it.
 
 ### Succinct and frozen indexes
 
-| Candidate               | Concrete deliverable                                          | Dependency / decision                                                 |
-| :---------------------- | :------------------------------------------------------------ | :-------------------------------------------------------------------- |
-| `EliasFanoSequence`     | `at`, `rank`, `nextGEQ`, `predecessor` over monotone `Uint32` | Build as the main PackedDelta comparison; reuse `RankSelectBitVector` |
-| Partitioned Elias–Fano  | Per-block choice among EF, dense bitmap, and contiguous range | Add only after plain EF and PackedDelta benchmarks                    |
-| `StaticMPHF`            | Frozen byte-key → `[0,n)` mapping plus 8–16-bit fingerprint   | Static counterpart to FlatHash; require `lookupMany`                  |
-| `SuccinctTrie`          | LOUDS topology, exact locate, prefix range, extraction        | Depends on rank/select and byte/tail comparison kernels               |
-| `CompressedStringTable` | ID-based get/equals/hash with FSST, OnPair16, or front coding | Pair with StaticMPHF for frozen symbol tables                         |
+| Candidate               | Concrete deliverable                                          | Dependency / decision                                                  |
+| :---------------------- | :------------------------------------------------------------ | :--------------------------------------------------------------------- |
+| `EliasFanoSequence`     | `at`, `rank`, `nextGEQ`, `predecessor` over monotone `Uint32` | Build as the main PackedDelta comparison; reuse `RankSelectBitVector`  |
+| Partitioned Elias–Fano  | Per-block choice among EF, dense bitmap, and contiguous range | Add only after plain EF and PackedDelta benchmarks                     |
+| `StaticMphfU32`         | Frozen Uint32 → `[0,n)` mapping plus 16-bit fingerprint       | Initial implementation complete; batch wins, single calls do not       |
+| Byte-key `StaticMPHF`   | Hash UTF-8 slices in a frozen byte arena before MPHF routing  | Build with CompressedStringTable; do not copy each query independently |
+| `SuccinctTrie`          | LOUDS topology, exact locate, prefix range, extraction        | Depends on rank/select and byte/tail comparison kernels                |
+| `CompressedStringTable` | ID-based get/equals/hash with FSST, OnPair16, or front coding | Pair with StaticMPHF for frozen symbol tables                          |
 
 References:
 
