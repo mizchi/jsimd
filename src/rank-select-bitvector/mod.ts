@@ -16,8 +16,8 @@ import {
 
 const allocator = new LinearMemoryAllocator(memory);
 
-/** Mutable construction state for an immutable RankSelectBitVector snapshot. */
-export class RankSelectBitVectorBuilder {
+/** Mutable construction state for an immutable BitVector snapshot. */
+export class BitVectorBuilder {
   readonly capacity: number;
   readonly #words: Uint32Array;
 
@@ -49,8 +49,8 @@ export class RankSelectBitVectorBuilder {
     return this;
   }
 
-  freeze(): RankSelectBitVector {
-    return RankSelectBitVector.fromUint32Array(this.capacity, this.#words);
+  freeze(): BitVector {
+    return BitVector.fromUint32Array(this.capacity, this.#words);
   }
 
   #checkPosition(position: number): void {
@@ -61,7 +61,7 @@ export class RankSelectBitVectorBuilder {
 }
 
 /** An immutable bit vector with a 512-bit rank index and zero-based select queries. */
-export class RankSelectBitVector {
+export class BitVector {
   readonly length: number;
   readonly countOnes: number;
   readonly #words: number;
@@ -105,14 +105,14 @@ export class RankSelectBitVector {
     }
   }
 
-  static from(capacity: number, positions: Iterable<number>): RankSelectBitVector {
-    const builder = new RankSelectBitVectorBuilder(capacity);
+  static from(capacity: number, positions: Iterable<number>): BitVector {
+    const builder = new BitVectorBuilder(capacity);
     for (const position of positions) builder.insert(position);
     return builder.freeze();
   }
 
-  static fromUint32Array(capacity: number, words: Uint32Array): RankSelectBitVector {
-    return new RankSelectBitVector(capacity, words);
+  static fromUint32Array(capacity: number, words: Uint32Array): BitVector {
+    return new BitVector(capacity, words);
   }
 
   static allocatorStats(): AllocatorStats {
@@ -255,7 +255,7 @@ export class RankSelectBitVector {
   }
 
   #assertAlive(): void {
-    if (this.#disposed) throw new Error("RankSelectBitVector has been disposed");
+    if (this.#disposed) throw new Error("BitVector has been disposed");
   }
 
   #checkPosition(position: number): void {
@@ -277,6 +277,18 @@ export class RankSelectBitVector {
     words[this.#words - 1] &= 0xffff_ffff >>> (32 - remaining);
   }
 }
+
+/** @deprecated Use `BitVectorBuilder`. */
+export { BitVectorBuilder as RankSelectBitVectorBuilder };
+
+/** @deprecated Use `BitVector`. */
+export { BitVector as RankSelectBitVector };
+
+/** Bitmap-oriented name for the same immutable rank/select representation as `BitVector`. */
+export { BitVector as RankSelectBitmap };
+
+/** Builder for `RankSelectBitmap`; identical to `BitVectorBuilder`. */
+export { BitVectorBuilder as RankSelectBitmapBuilder };
 
 function validateCapacity(capacity: number): void {
   if (!Number.isSafeInteger(capacity) || capacity < 0 || capacity > 0x7fff_ffff) {

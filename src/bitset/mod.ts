@@ -94,18 +94,18 @@ function toArray(storage: BitSetStorage): number[] {
   return result;
 }
 
-/** A fixed-universe dense bit set. Operations between sets require identical capacities. */
-export class FixedBitSet {
+/** A fixed-universe dense bitmap. Operations between bitmaps require identical capacities. */
+export class DenseBitmap {
   readonly capacity: number;
   readonly #storage: BitSetStorage;
 
   constructor(capacity: number) {
-    this.#storage = new BitSetStorage(capacity, "FixedBitSet");
+    this.#storage = new BitSetStorage(capacity, "DenseBitmap");
     this.capacity = capacity;
   }
 
-  static from(capacity: number, bits: Iterable<number>): FixedBitSet {
-    const result = new FixedBitSet(capacity);
+  static from(capacity: number, bits: Iterable<number>): DenseBitmap {
+    const result = new DenseBitmap(capacity);
     try {
       for (const bit of bits) result.insert(bit);
       return result;
@@ -126,7 +126,7 @@ export class FixedBitSet {
     }
   }
 
-  #checkOther(other: FixedBitSet): void {
+  #checkOther(other: DenseBitmap): void {
     this.#storage.assertAlive();
     other.#storage.assertAlive();
     if (this.capacity !== other.capacity) throw new RangeError("bitset capacities must match");
@@ -154,13 +154,13 @@ export class FixedBitSet {
     return this;
   }
 
-  clone(): FixedBitSet {
-    const result = new FixedBitSet(this.capacity);
+  clone(): DenseBitmap {
+    const result = new DenseBitmap(this.capacity);
     result.#storage.view().set(this.#storage.view());
     return result;
   }
 
-  unionWith(other: FixedBitSet): this {
+  unionWith(other: DenseBitmap): this {
     this.#checkOther(other);
     wasmOr(
       this.#storage.allocation.pointer,
@@ -171,7 +171,7 @@ export class FixedBitSet {
     return this;
   }
 
-  intersectWith(other: FixedBitSet): this {
+  intersectWith(other: DenseBitmap): this {
     this.#checkOther(other);
     wasmAnd(
       this.#storage.allocation.pointer,
@@ -182,7 +182,7 @@ export class FixedBitSet {
     return this;
   }
 
-  differenceWith(other: FixedBitSet): this {
+  differenceWith(other: DenseBitmap): this {
     this.#checkOther(other);
     wasmAndNot(
       this.#storage.allocation.pointer,
@@ -193,7 +193,7 @@ export class FixedBitSet {
     return this;
   }
 
-  symmetricDifferenceWith(other: FixedBitSet): this {
+  symmetricDifferenceWith(other: DenseBitmap): this {
     this.#checkOther(other);
     wasmXor(
       this.#storage.allocation.pointer,
@@ -209,7 +209,7 @@ export class FixedBitSet {
     return wasmCount(this.#storage.allocation.pointer, this.#storage.paddedWords);
   }
 
-  intersectionCount(other: FixedBitSet): number {
+  intersectionCount(other: DenseBitmap): number {
     this.#checkOther(other);
     return wasmIntersectionCount(
       this.#storage.allocation.pointer,
@@ -218,7 +218,7 @@ export class FixedBitSet {
     );
   }
 
-  isDisjoint(other: FixedBitSet): boolean {
+  isDisjoint(other: DenseBitmap): boolean {
     return this.intersectionCount(other) === 0;
   }
 
@@ -235,16 +235,16 @@ export class FixedBitSet {
   }
 }
 
-/** A growable dense bit set. Growth happens only on insertion, outside SIMD bulk operations. */
-export class BitSet {
+/** A growable dense bitmap. Growth happens only on insertion, outside SIMD bulk operations. */
+export class Bitmap {
   readonly #storage: BitSetStorage;
 
   constructor(initialCapacity = 0) {
-    this.#storage = new BitSetStorage(initialCapacity, "BitSet");
+    this.#storage = new BitSetStorage(initialCapacity, "Bitmap");
   }
 
-  static from(bits: Iterable<number>): BitSet {
-    const result = new BitSet();
+  static from(bits: Iterable<number>): Bitmap {
+    const result = new Bitmap();
     try {
       for (const bit of bits) result.insert(bit);
       return result;
@@ -299,13 +299,13 @@ export class BitSet {
     return this;
   }
 
-  clone(): BitSet {
-    const result = new BitSet(this.#storage.capacity);
+  clone(): Bitmap {
+    const result = new Bitmap(this.#storage.capacity);
     result.#storage.view().set(this.#storage.view());
     return result;
   }
 
-  unionWith(other: BitSet): this {
+  unionWith(other: Bitmap): this {
     this.#storage.assertAlive();
     other.#storage.assertAlive();
     this.#ensureCapacity(other.#storage.capacity);
@@ -318,7 +318,7 @@ export class BitSet {
     return this;
   }
 
-  intersectWith(other: BitSet): this {
+  intersectWith(other: Bitmap): this {
     this.#storage.assertAlive();
     other.#storage.assertAlive();
     const commonWords = Math.min(this.#storage.paddedWords, other.#storage.paddedWords);
@@ -332,7 +332,7 @@ export class BitSet {
     return this;
   }
 
-  differenceWith(other: BitSet): this {
+  differenceWith(other: Bitmap): this {
     this.#storage.assertAlive();
     other.#storage.assertAlive();
     const commonWords = Math.min(this.#storage.paddedWords, other.#storage.paddedWords);
@@ -345,7 +345,7 @@ export class BitSet {
     return this;
   }
 
-  symmetricDifferenceWith(other: BitSet): this {
+  symmetricDifferenceWith(other: Bitmap): this {
     this.#storage.assertAlive();
     other.#storage.assertAlive();
     this.#ensureCapacity(other.#storage.capacity);
@@ -363,7 +363,7 @@ export class BitSet {
     return wasmCount(this.#storage.allocation.pointer, this.#storage.paddedWords);
   }
 
-  intersectionCount(other: BitSet): number {
+  intersectionCount(other: Bitmap): number {
     this.#storage.assertAlive();
     other.#storage.assertAlive();
     return wasmIntersectionCount(
@@ -373,7 +373,7 @@ export class BitSet {
     );
   }
 
-  isDisjoint(other: BitSet): boolean {
+  isDisjoint(other: Bitmap): boolean {
     return this.intersectionCount(other) === 0;
   }
 
@@ -389,3 +389,9 @@ export class BitSet {
     this.dispose();
   }
 }
+
+/** @deprecated Use `DenseBitmap`. */
+export { DenseBitmap as FixedBitSet };
+
+/** @deprecated Use `Bitmap`. */
+export { Bitmap as BitSet };

@@ -1,13 +1,13 @@
-# @mizchi/jsimd/bitset experiment
+# @mizchi/jsimd/bitmap experiment
 
 Experimental Wasm-SIMD fixed-capacity bitset. The backing words stay in Wasm memory so repeated set
 algebra does not copy through JavaScript.
 
 ```ts
-import { FixedBitSet } from "@mizchi/jsimd/bitset";
+import { DenseBitmap } from "@mizchi/jsimd/bitmap";
 
-using left = FixedBitSet.from(1_000_000, [1, 10, 999_999]);
-using right = FixedBitSet.from(1_000_000, [10, 20]);
+using left = DenseBitmap.from(1_000_000, [1, 10, 999_999]);
+using right = DenseBitmap.from(1_000_000, [10, 20]);
 left.intersectionCount(right); // 1
 left.unionWith(right);
 ```

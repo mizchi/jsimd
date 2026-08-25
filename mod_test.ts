@@ -7,16 +7,20 @@ import {
   reverseFindByte,
 } from "./src/bytes/mod.ts";
 import { decodeUint32BE, decodeUint32LE } from "./src/endian/mod.ts";
-import { BitSet, FixedBitSet } from "./src/bitset/mod.ts";
+import { Bitmap, BitSet, DenseBitmap, FixedBitSet } from "./src/bitset/mod.ts";
 import { SimdFloat32Vector } from "./src/f32-vector/mod.ts";
 import { SimdInt32Array } from "./src/i32-array/mod.ts";
 import { SimdMatrix2D } from "./src/matrix2d/mod.ts";
 import { SimdMatrix3D } from "./src/matrix3d/mod.ts";
 import {
+  BitVector,
+  BitVectorBuilder,
+  RankSelectBitmap,
+  RankSelectBitmapBuilder,
   RankSelectBitVector,
   RankSelectBitVectorBuilder,
 } from "./src/rank-select-bitvector/mod.ts";
-import { RoaringUint32Set } from "./src/roaring-uint32-set/mod.ts";
+import { RoaringBitmap, RoaringUint32Set } from "./src/roaring-uint32-set/mod.ts";
 import {
   PackedDeltaUint32List,
   PackedDeltaUint32ListBuilder,
@@ -33,6 +37,10 @@ import {
 } from "./src/adaptive-simd-page-i32/mod.ts";
 import { StaticMphfU32, StaticMphfU32Builder } from "./src/static-mphf-u32/mod.ts";
 import { BinaryVectorIndex } from "./src/binary-vector-index/mod.ts";
+import { BitMatrix } from "./src/bit-matrix/mod.ts";
+import { FingerprintGroup16, FingerprintTable16 } from "./src/fingerprint-group16/mod.ts";
+import { FlatHashMapFixed16U32, FlatHashSetFixed16 } from "./src/flat-hash-fixed16/mod.ts";
+import { ByteKeyFlatHashMapU32 } from "./src/byte-key-flat-hash/mod.ts";
 
 function assertEquals(actual: unknown, expected: unknown, context: string): void {
   if (!Object.is(actual, expected)) {
@@ -429,6 +437,26 @@ Deno.test("RankSelectBitVector defines rank and select boundary semantics", () =
   assertEquals(bits.select1(-1), -1, "negative rank");
 });
 
+Deno.test("BitVector is the canonical frozen rank/select API", () => {
+  assertEquals(BitVector, RankSelectBitVector, "legacy vector constructor alias");
+  assertEquals(BitVectorBuilder, RankSelectBitVectorBuilder, "legacy builder constructor alias");
+  const builder = new BitVectorBuilder(96);
+  builder.insert(1).insert(32).insert(95);
+  using bits = builder.freeze();
+  assertEquals(bits instanceof BitVector, true, "canonical runtime type");
+  assertEquals(bits.rank1(33), 2, "rank");
+  assertEquals(bits.select1(2), 95, "select");
+});
+
+Deno.test("RankSelectBitmap is the bitmap-oriented BitVector name", () => {
+  assertEquals(RankSelectBitmap, BitVector, "same frozen representation");
+  assertEquals(RankSelectBitmapBuilder, BitVectorBuilder, "same builder representation");
+  const builder = new RankSelectBitmapBuilder(64).insert(2).insert(63);
+  using bitmap = builder.freeze();
+  assertEquals(bitmap.rank1(64), 2, "rank");
+  assertEquals(bitmap.select1(1), 63, "select");
+});
+
 Deno.test("RankSelectBitVector finds neighboring bits inclusively", () => {
   using bits = RankSelectBitVector.from(20, [0, 4, 9, 19]);
   assertEquals(bits.next1(0), 0, "next exact");
@@ -524,6 +552,12 @@ Deno.test("RoaringUint32Set supports the complete Uint32 key range", () => {
   values.insert(1).remove(70_000).remove(70_000);
   assertEquals(values.size, 5, "idempotent mutation");
   assertEquals(values.toUint32Array().join(","), "0,1,65535,65536,4294967295", "sorted copy");
+});
+
+Deno.test("RoaringBitmap is the canonical adaptive-container API", () => {
+  using bitmap = RoaringBitmap.from([1, 65_536, 0xffff_ffff]);
+  assertEquals(bitmap instanceof RoaringBitmap, true, "canonical runtime type");
+  assertEquals(bitmap.has(65_536), true, "membership");
 });
 
 Deno.test("RoaringUint32Set converts containers at the 4096 threshold", () => {
@@ -879,6 +913,240 @@ Deno.test("FlatHash allocator reaches a reuse plateau after repeated growth", ()
   assertEquals(repeated.reservedBytes, plateau.reservedBytes, "plateau reserved bytes");
 });
 
+Deno.test("FingerprintGroup16 returns SwissTable control masks", () => {
+  using group = FingerprintGroup16.from(
+    Uint8Array.of(7, 1, 7, 0x80, 0xfe, 7, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
+  );
+  assertEquals(group.matchMask(7), 0b0000_0100_0010_0101, "fingerprint mask");
+  assertEquals(group.emptyMask(), 1 << 3, "empty mask");
+  assertEquals(group.deletedMask(), 1 << 4, "deleted mask");
+  assertEquals(group.availableMask(), (1 << 3) | (1 << 4), "available mask");
+  assertEquals(group.firstMatch(7), 0, "first match");
+  assertEquals(group.firstMatch(127), -1, "missing match");
+});
+
+Deno.test("FingerprintGroup16 batches probes into reusable Uint16 output", () => {
+  using group = FingerprintGroup16.from(
+    Uint8Array.from({ length: 16 }, (_, index) => index & 3),
+  );
+  const output = new Uint16Array(6);
+  group.matchMany(Uint8Array.of(0, 1, 2, 3, 4, 127), output);
+  assertEquals(output.join(","), "4369,8738,17476,34952,0,0", "batch masks");
+});
+
+Deno.test("FingerprintGroup16 validates controls and releases using-owned storage", () => {
+  const before = FingerprintGroup16.allocatorStats();
+  for (let iteration = 0; iteration < 1_000; iteration++) {
+    using group = FingerprintGroup16.empty();
+    assertEquals(group.emptyMask(), 0xffff, "all empty");
+  }
+  const after = FingerprintGroup16.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+Deno.test("FingerprintTable16 stores and probes multiple aligned groups", () => {
+  using table = new FingerprintTable16(64);
+  table.setControl(1, 7).setControl(18, 7).setControl(19, 3).setControl(33, 7);
+  assertEquals(table.matchMask(0, 7), 1 << 1, "group zero");
+  assertEquals(table.matchMask(1, 7), 1 << 2, "group one");
+  assertEquals(table.matchMask(2, 7), 1 << 1, "group two");
+  assertEquals(table.emptyMask(1), 0xffff ^ ((1 << 2) | (1 << 3)), "group empties");
+  table.delete(18);
+  assertEquals(table.deletedMask(1), 1 << 2, "deleted lane");
+});
+
+Deno.test("FingerprintTable16 batches primary group and fingerprint masks", () => {
+  using table = new FingerprintTable16(64);
+  table.setControl(1, 7).setControl(18, 7).setControl(19, 3).setControl(33, 7);
+  const hashes = Uint32Array.of((7 << 25) | 1, (7 << 25) | 18, (3 << 25) | 19, (9 << 25) | 33);
+  const groups = new Uint32Array(hashes.length);
+  const matches = new Uint16Array(hashes.length);
+  const empty = new Uint16Array(hashes.length);
+  const deleted = new Uint16Array(hashes.length);
+  table.probeMany(hashes, groups, matches, empty, deleted);
+  assertEquals(groups.join(","), "0,16,16,32", "group offsets");
+  assertEquals(matches.join(","), "2,4,8,0", "candidate masks");
+  assertEquals(deleted.join(","), "0,0,0,0", "deleted masks");
+  assertEquals(empty[0], 0xfffd, "empty group zero");
+});
+
+function fixed16(seed: number): Uint8Array {
+  const key = new Uint8Array(16);
+  new DataView(key.buffer).setUint32(0, seed, true);
+  let state = seed >>> 0;
+  for (let index = 4; index < 16; index++) {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    key[index] = state >>> 24;
+  }
+  return key;
+}
+
+Deno.test("FlatHashMapFixed16U32 compares complete 16-byte keys", () => {
+  using map = new FlatHashMapFixed16U32();
+  const first = fixed16(1);
+  const second = first.slice();
+  second[15] ^= 1;
+  map.set(first, 10).set(second, 20).set(first, 30);
+  assertEquals(map.size, 2, "map size");
+  assertEquals(map.get(first), 30, "overwrite");
+  assertEquals(map.get(second), 20, "tail distinguishes key");
+  assertEquals(map.get(fixed16(99)), undefined, "missing");
+  assertEquals(map.delete(first), true, "delete existing");
+  assertEquals(map.has(first), false, "deleted missing");
+});
+
+Deno.test("FlatHashMapFixed16U32 batches insertion and lookup", () => {
+  const count = 2_000;
+  const keys = new Uint8Array(count * 16);
+  const values = new Uint32Array(count);
+  for (let index = 0; index < count; index++) {
+    keys.set(fixed16(index), index * 16);
+    values[index] = index * 3;
+  }
+  using map = new FlatHashMapFixed16U32(16);
+  map.insertMany(keys, values);
+  const queries = new Uint8Array(4 * 16);
+  queries.set(keys.subarray(0, 16), 0);
+  queries.set(keys.subarray(999 * 16, 1_000 * 16), 16);
+  queries.set(fixed16(99_999), 32);
+  queries.set(keys.subarray(1_999 * 16, 2_000 * 16), 48);
+  const output = new Uint32Array(4);
+  const present = new Uint8Array(4);
+  assertEquals(map.lookupMany(queries, output, present), 3, "bulk hits");
+  assertEquals(present.join(","), "1,1,0,1", "presence");
+  assertEquals(output.join(","), "0,2997,0,5997", "values");
+});
+
+Deno.test("FlatHashSetFixed16 derives set operations from the fixed-key table", () => {
+  using set = FlatHashSetFixed16.from([fixed16(1), fixed16(2), fixed16(1)]);
+  assertEquals(set.size, 2, "deduplicated size");
+  assertEquals(set.has(fixed16(2)), true, "present key");
+  assertEquals(set.delete(fixed16(2)), true, "delete");
+  assertEquals(set.has(fixed16(2)), false, "deleted key");
+  const queries = new Uint8Array(3 * 16);
+  queries.set(fixed16(1), 0);
+  queries.set(fixed16(2), 16);
+  queries.set(fixed16(3), 32);
+  const present = new Uint8Array(3);
+  assertEquals(set.lookupMany(queries, present), 1, "set batch hits");
+  assertEquals(present.join(","), "1,0,0", "set batch presence");
+});
+
+Deno.test("fixed16 hash tables release grown storage with using", () => {
+  const before = FlatHashMapFixed16U32.allocatorStats();
+  {
+    using map = new FlatHashMapFixed16U32();
+    for (let index = 0; index < 5_000; index++) map.set(fixed16(index), index);
+    assertEquals(map.size, 5_000, "grown size");
+  }
+  const after = FlatHashMapFixed16U32.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+function byteKey(...values: number[]): Uint8Array {
+  return Uint8Array.from(values);
+}
+
+Deno.test("ByteKeyFlatHashMapU32 distinguishes arbitrary byte keys", () => {
+  using map = new ByteKeyFlatHashMapU32();
+  const prefix = new Uint8Array(33).fill(0x61);
+  const left = prefix.slice();
+  const right = prefix.slice();
+  right[32] = 0x62;
+  map.set(new Uint8Array(), 1).set(byteKey(0, 1, 0, 2), 2).set(left, 3).set(right, 4);
+  map.set(left, 30);
+  assertEquals(map.size, 4, "map size");
+  assertEquals(map.get(new Uint8Array()), 1, "empty key");
+  assertEquals(map.get(byteKey(0, 1, 0, 2)), 2, "embedded zeros");
+  assertEquals(map.get(left), 30, "overwrite");
+  assertEquals(map.get(right), 4, "tail distinguishes key");
+  assertEquals(map.get(byteKey(9)), undefined, "missing");
+});
+
+Deno.test("ByteKeyFlatHashMapU32 batches concatenated keys with offsets", () => {
+  const keys = byteKey(1, 2, 3, 4, 5, 6, 7, 8, 9);
+  const offsets = Uint32Array.of(0, 0, 1, 4, 9);
+  const values = Uint32Array.of(10, 20, 30, 40);
+  using map = new ByteKeyFlatHashMapU32(16);
+  map.insertMany(keys, offsets, values);
+  const queries = byteKey(2, 3, 4, 99, 1, 5, 6, 7, 8, 9);
+  const queryOffsets = Uint32Array.of(0, 3, 4, 5, 10);
+  const output = new Uint32Array(4);
+  const present = new Uint8Array(4);
+  assertEquals(map.lookupMany(queries, queryOffsets, output, present), 3, "bulk hits");
+  assertEquals(present.join(","), "1,0,1,1", "bulk presence");
+  assertEquals(output.join(","), "30,0,20,40", "bulk values");
+});
+
+Deno.test("ByteKeyFlatHashMapU32 grows, deletes, clears, and releases using-owned storage", () => {
+  const before = ByteKeyFlatHashMapU32.allocatorStats();
+  {
+    using map = new ByteKeyFlatHashMapU32(16);
+    for (let index = 0; index < 5_000; index++) {
+      const key = new Uint8Array(12);
+      new DataView(key.buffer).setUint32(0, index, true);
+      key.fill(index & 0xff, 4);
+      map.set(key, index);
+    }
+    assertEquals(map.size, 5_000, "grown size");
+    const key = new Uint8Array(12);
+    new DataView(key.buffer).setUint32(0, 4_999, true);
+    key.fill(4_999 & 0xff, 4);
+    assertEquals(map.get(key), 4_999, "grown lookup");
+    assertEquals(map.delete(key), true, "delete existing");
+    assertEquals(map.has(key), false, "deleted missing");
+    map.clear();
+    assertEquals(map.size, 0, "clear size");
+  }
+  const after = ByteKeyFlatHashMapU32.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+Deno.test("ByteKeyFlatHashMapU32 matches Map for randomized variable-length batches", () => {
+  let state = 0x8bad_f00d;
+  const chunks: Uint8Array[] = [];
+  const offsets = new Uint32Array(2_001);
+  const values = new Uint32Array(2_000);
+  const expected = new Map<string, number>();
+  let byteLength = 0;
+  for (let index = 0; index < values.length; index++) {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    const key = new Uint8Array(state % 65);
+    for (let byte = 0; byte < key.length; byte++) {
+      state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+      key[byte] = state >>> 24;
+    }
+    chunks.push(key);
+    byteLength += key.length;
+    offsets[index + 1] = byteLength;
+    values[index] = Math.imul(index, 17) >>> 0;
+    expected.set(Array.from(key).join(","), values[index]!);
+  }
+  const bytes = new Uint8Array(byteLength);
+  let cursor = 0;
+  for (const key of chunks) {
+    bytes.set(key, cursor);
+    cursor += key.length;
+  }
+  using map = new ByteKeyFlatHashMapU32(16);
+  map.insertMany(bytes, offsets, values);
+  assertEquals(map.size, expected.size, "deduplicated randomized size");
+  const output = new Uint32Array(values.length);
+  const present = new Uint8Array(values.length);
+  assertEquals(map.lookupMany(bytes, offsets, output, present), values.length, "all batch hits");
+  for (let index = 0; index < values.length; index++) {
+    assertEquals(present[index], 1, `present ${index}`);
+    assertEquals(
+      output[index],
+      expected.get(Array.from(chunks[index]!).join(",")),
+      `value ${index}`,
+    );
+  }
+});
+
 Deno.test("BitSlicedColumnU8 scans equality and unsigned ranges", () => {
   using column = BitSlicedColumnU8.from(new Uint8Array([0, 1, 2, 3, 7, 15, 16, 31]), 5);
   using mask = new BitSliceMask(column.length);
@@ -972,6 +1240,19 @@ Deno.test("FixedBitSet handles boundaries and set algebra", () => {
   assertEquals(symmetric.toArray().join(","), "0,1,32,64,65,129", "symmetric difference");
 });
 
+Deno.test("Bitmap and DenseBitmap expose growable and fixed-universe contracts", () => {
+  assertEquals(Bitmap, BitSet, "legacy growable constructor alias");
+  assertEquals(DenseBitmap, FixedBitSet, "legacy fixed constructor alias");
+  using growable = Bitmap.from([1, 130]);
+  growable.insert(10_000);
+  assertEquals(growable.has(10_000), true, "growable bitmap");
+
+  using left = DenseBitmap.from(256, [1, 3, 130]);
+  using right = DenseBitmap.from(256, [3, 4, 130]);
+  left.intersectWith(right);
+  assertEquals(left.toArray().join(","), "3,130", "fixed dense intersection");
+});
+
 Deno.test("FixedBitSet validates capacity and ignores padded tail bits", () => {
   const bits = new FixedBitSet(33).insert(32);
   assertEquals(bits.countOnes(), 1, "tail cardinality");
@@ -1047,6 +1328,91 @@ Deno.test("FixedBitSet dispose reuses storage and reports allocator state", () =
     threw = error instanceof Error && error.message.includes("disposed");
   }
   assertEquals(threw, true, "bitset use after dispose");
+});
+
+Deno.test("BitMatrix stores dense rows and exposes non-owning row views", () => {
+  using matrix = new BitMatrix(3, 130);
+  matrix.set(0, 0).set(0, 129).set(2, 64);
+  assertEquals(matrix.has(0, 0), true, "first bit");
+  assertEquals(matrix.has(0, 129), true, "tail bit");
+  assertEquals(matrix.has(1, 0), false, "empty row");
+  assertEquals(matrix.row(0).countOnes(), 2, "row count");
+  assertEquals(matrix.row(0).toArray().join(","), "0,129", "row values");
+  matrix.set(0, 129, false);
+  assertEquals(matrix.row(0).toArray().join(","), "0", "row mutation");
+});
+
+Deno.test("BitMatrix transposes non-aligned rectangular matrices", () => {
+  using matrix = BitMatrix.fromEdges(3, 5, [[0, 1], [0, 4], [2, 0], [2, 4]]);
+  using transposed = matrix.transpose();
+  assertEquals(transposed.rows, 5, "transposed rows");
+  assertEquals(transposed.columns, 3, "transposed columns");
+  assertEquals(transposed.row(0).toArray().join(","), "2", "column zero");
+  assertEquals(transposed.row(4).toArray().join(","), "0,2", "column four");
+});
+
+Deno.test("BitMatrix multiplies over the Boolean semiring", () => {
+  using left = BitMatrix.fromEdges(3, 4, [[0, 0], [0, 2], [1, 1], [2, 3]]);
+  using right = BitMatrix.fromEdges(4, 3, [[0, 1], [1, 0], [2, 1], [2, 2], [3, 2]]);
+  using product = left.multiply(right);
+  assertEquals(product.row(0).toArray().join(","), "1,2", "product row zero");
+  assertEquals(product.row(1).toArray().join(","), "0", "product row one");
+  assertEquals(product.row(2).toArray().join(","), "2", "product row two");
+});
+
+Deno.test("BitMatrix multiply matches scalar rectangular matrices across SIMD tails", () => {
+  let state = 0x55aa_1234;
+  for (const [rows, shared, columns] of [[1, 1, 1], [3, 33, 5], [7, 129, 11]]) {
+    const leftEdges: Array<readonly [number, number]> = [];
+    const rightEdges: Array<readonly [number, number]> = [];
+    for (let row = 0; row < rows; row++) {
+      for (let column = 0; column < shared; column++) {
+        state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+        if ((state & 15) === 0) leftEdges.push([row, column]);
+      }
+    }
+    for (let row = 0; row < shared; row++) {
+      for (let column = 0; column < columns; column++) {
+        state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+        if ((state & 15) === 0) rightEdges.push([row, column]);
+      }
+    }
+    using left = BitMatrix.fromEdges(rows, shared, leftEdges);
+    using right = BitMatrix.fromEdges(shared, columns, rightEdges);
+    using product = left.multiply(right);
+    for (let row = 0; row < rows; row++) {
+      for (let column = 0; column < columns; column++) {
+        let expected = false;
+        for (let inner = 0; inner < shared; inner++) {
+          if (left.has(row, inner) && right.has(inner, column)) {
+            expected = true;
+            break;
+          }
+        }
+        assertEquals(product.has(row, column), expected, `${rows}x${shared}x${columns}`);
+      }
+    }
+  }
+});
+
+Deno.test("BitMatrix using lifecycle returns storage and invalidates views", () => {
+  const before = BitMatrix.allocatorStats();
+  let view: ReturnType<BitMatrix["row"]>;
+  {
+    using matrix = BitMatrix.fromEdges(128, 128, [[0, 0], [127, 127]]);
+    view = matrix.row(127);
+    assertEquals(view.countOnes(), 1, "live view");
+  }
+  let disposed = false;
+  try {
+    view!.countOnes();
+  } catch (error) {
+    disposed = error instanceof Error && error.message.includes("disposed");
+  }
+  assertEquals(disposed, true, "view follows parent lifetime");
+  const after = BitMatrix.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
 });
 
 Deno.test("BitSet grows on insertion and preserves existing bits", () => {

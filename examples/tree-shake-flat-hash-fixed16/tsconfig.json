@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "allowArbitraryExtensions": true,
+    "allowImportingTsExtensions": true,
+    "lib": ["DOM", "ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "strict": true,
+    "target": "ESNext"
+  },
+  "include": ["../../src/flat-hash-fixed16/mod.ts", "src.ts"]
+}

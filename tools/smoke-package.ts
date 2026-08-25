@@ -19,21 +19,29 @@ try {
   );
 
   const expression =
-    `import { FixedBitSet } from "${metadata.name}/bitset"; using bits = FixedBitSet.from(128, [1, 10]); if (bits.countOnes() !== 2) throw new Error("unexpected SIMD result");`;
+    `import { DenseBitmap } from "${metadata.name}/bitmap"; import { RankSelectBitmap } from "${metadata.name}/rank-select-bitmap"; import { RoaringBitmap } from "${metadata.name}/roaring-bitmap"; using bits = DenseBitmap.from(128, [1, 10]); using ranked = RankSelectBitmap.from(128, [1, 10]); using roaring = RoaringBitmap.from([1, 10]); if (bits.countOnes() !== 2 || ranked.rank1(128) !== 2 || roaring.size !== 2) throw new Error("unexpected SIMD result");`;
   await run("node", ["--input-type=module", "--eval", expression], temporaryDirectory);
 
   const installedModule = `${temporaryDirectory}/node_modules/${metadata.name}/dist/bitset/mod.js`;
-  const denoExpression = `import { FixedBitSet } from ${
+  const denoExpression = `import { DenseBitmap } from ${
     JSON.stringify(installedModule)
-  }; using bits = FixedBitSet.from(128, [1, 10]); if (bits.countOnes() !== 2) throw new Error("unexpected SIMD result");`;
+  }; using bits = DenseBitmap.from(128, [1, 10]); if (bits.countOnes() !== 2) throw new Error("unexpected SIMD result");`;
   await run("deno", ["eval", denoExpression], temporaryDirectory);
 
   await Deno.writeTextFile(
     `${temporaryDirectory}/consumer.ts`,
-    `import { FixedBitSet } from "${metadata.name}/bitset";
-using bits = FixedBitSet.from(128, [1, 10]);
+    `import { DenseBitmap } from "${metadata.name}/bitmap";
+import { RankSelectBitmap } from "${metadata.name}/rank-select-bitmap";
+import { RoaringBitmap } from "${metadata.name}/roaring-bitmap";
+using bits = DenseBitmap.from(128, [1, 10]);
+using ranked = RankSelectBitmap.from(128, [1, 10]);
+using roaring = RoaringBitmap.from([1, 10]);
 const count: number = bits.countOnes();
+const rank: number = ranked.rank1(128);
+const roaringCount: number = roaring.size;
 void count;
+void rank;
+void roaringCount;
 `,
   );
   await run(

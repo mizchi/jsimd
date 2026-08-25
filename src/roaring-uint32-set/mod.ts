@@ -39,13 +39,13 @@ interface BitmapContainer {
 type Container = ArrayContainer | BitmapContainer;
 
 /** A mutable Roaring-style set for unsigned 32-bit integer keys. */
-export class RoaringUint32Set {
+export class RoaringBitmap {
   readonly #containers: Container[] = [];
   #size = 0;
   #disposed = false;
 
-  static from(values: Iterable<number>): RoaringUint32Set {
-    const result = new RoaringUint32Set();
+  static from(values: Iterable<number>): RoaringBitmap {
+    const result = new RoaringBitmap();
     try {
       for (const value of values) result.insert(value);
       return result;
@@ -171,7 +171,7 @@ export class RoaringUint32Set {
     return this;
   }
 
-  andCardinality(other: RoaringUint32Set): number {
+  andCardinality(other: RoaringBitmap): number {
     this.#checkOther(other);
     let leftIndex = 0;
     let rightIndex = 0;
@@ -190,7 +190,7 @@ export class RoaringUint32Set {
     return count;
   }
 
-  intersects(other: RoaringUint32Set): boolean {
+  intersects(other: RoaringBitmap): boolean {
     this.#checkOther(other);
     let leftIndex = 0;
     let rightIndex = 0;
@@ -208,15 +208,15 @@ export class RoaringUint32Set {
     return false;
   }
 
-  jaccard(other: RoaringUint32Set): number {
+  jaccard(other: RoaringBitmap): number {
     this.#checkOther(other);
     const intersection = this.andCardinality(other);
     const union = this.#size + other.#size - intersection;
     return union === 0 ? 1 : intersection / union;
   }
 
-  and(other: RoaringUint32Set): RoaringUint32Set {
-    const output = new RoaringUint32Set();
+  and(other: RoaringBitmap): RoaringBitmap {
+    const output = new RoaringBitmap();
     try {
       return this.andInto(other, output);
     } catch (error) {
@@ -225,7 +225,7 @@ export class RoaringUint32Set {
     }
   }
 
-  andInto(other: RoaringUint32Set, output: RoaringUint32Set): RoaringUint32Set {
+  andInto(other: RoaringBitmap, output: RoaringBitmap): RoaringBitmap {
     this.#checkOther(other);
     output.#assertAlive();
     if (output === this || output === other) {
@@ -294,10 +294,10 @@ export class RoaringUint32Set {
   }
 
   #assertAlive(): void {
-    if (this.#disposed) throw new Error("RoaringUint32Set has been disposed");
+    if (this.#disposed) throw new Error("RoaringBitmap has been disposed");
   }
 
-  #checkOther(other: RoaringUint32Set): void {
+  #checkOther(other: RoaringBitmap): void {
     this.#assertAlive();
     other.#assertAlive();
   }
@@ -495,6 +495,9 @@ export class RoaringUint32Set {
     this.#size = 0;
   }
 }
+
+/** @deprecated Use `RoaringBitmap`. */
+export { RoaringBitmap as RoaringUint32Set };
 
 function lowerBound(values: Uint16Array, length: number, target: number): number {
   let low = 0;

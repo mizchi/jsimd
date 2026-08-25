@@ -1,12 +1,12 @@
-# RankSelectBitVector
+# BitVector / RankSelectBitmap
 
 An immutable, Wasm-resident bit vector with rank, select, and neighboring-bit queries. Build a
 mutable bit pattern, freeze it, and release the frozen snapshot automatically with `using`:
 
 ```ts
-import { RankSelectBitVectorBuilder } from "@mizchi/jsimd/rank-select-bitvector";
+import { BitVectorBuilder } from "@mizchi/jsimd/bit-vector";
 
-const builder = new RankSelectBitVectorBuilder(1_000_000);
+const builder = new BitVectorBuilder(1_000_000);
 builder.insert(1).insert(10).insert(999_999);
 
 using bits = builder.freeze();
@@ -25,15 +25,22 @@ bits.rank1Many(ends, ranks); // reuses ranks and crosses the Wasm boundary once
 For data that is already available as positions or packed words:
 
 ```ts
-import { RankSelectBitVector } from "@mizchi/jsimd/rank-select-bitvector";
+import { BitVector } from "@mizchi/jsimd/bit-vector";
 
-using positions = RankSelectBitVector.from(128, [1, 7, 64]);
-using packed = RankSelectBitVector.fromUint32Array(64, new Uint32Array([0b1010, 0]));
+using positions = BitVector.from(128, [1, 7, 64]);
+using packed = BitVector.fromUint32Array(64, new Uint32Array([0b1010, 0]));
 ```
 
 `rank1(end)` and `rank0(end)` use half-open `[0, end)` semantics. `select1(rank)` is zero-based and
 returns `-1` when that one does not exist. `next1` and `prev1` are inclusive and return `-1` when no
 matching bit exists. The frozen snapshot is immutable; later builder changes do not affect it.
+
+`RankSelectBitVector` and `RankSelectBitVectorBuilder` remain deprecated compatibility names. They
+refer to the same constructors and do not add another wrapper or Wasm asset.
+
+`RankSelectBitmap` and `RankSelectBitmapBuilder` are non-deprecated bitmap-oriented names for the
+same immutable representation. Use `BitVector` when sequence semantics matter and `RankSelectBitmap`
+when it is used as a set of positions; their runtime and storage are identical.
 
 For query batches, prefer `rank1Many(ends, output)` and `select1Many(ranks, output)`. They copy one
 packed query array into temporary Wasm storage, execute the complete batch in one call, copy into
@@ -78,8 +85,8 @@ pnpm bench:compare:rank-select-bitvector
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 947 B Wasm asset (0.53 kB gzip) and a 7.37 kB minified JS
-wrapper (2.69 kB gzip). Bulk-query copying, builder code, allocator, and ownership checks are in the
+The isolated Vite fixture emits one 947 B Wasm asset (0.53 kB gzip) and a 7.36 kB minified JS
+wrapper (2.68 kB gzip). Bulk-query copying, builder code, allocator, and ownership checks are in the
 JS asset; no other jsimd Wasm is emitted.
 
 See [`experiments/rank-select-bitvector`](../../experiments/rank-select-bitvector/README.md) for the

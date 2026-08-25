@@ -1,12 +1,12 @@
 # @mizchi/jsimd/rank-select-bitvector experiment
 
-Compares `RankSelectBitVector` with JavaScript functions using the same 512-bit cumulative index.
-The benchmark includes the public call boundary and executes 1,024 pseudo-random queries per sample.
+Compares `BitVector` with JavaScript functions using the same 512-bit cumulative index. The
+benchmark includes the public call boundary and executes 1,024 pseudo-random queries per sample.
 
 ```ts
-import { RankSelectBitVectorBuilder } from "@mizchi/jsimd/rank-select-bitvector";
+import { BitVectorBuilder } from "@mizchi/jsimd/bit-vector";
 
-const builder = new RankSelectBitVectorBuilder(1_000_000);
+const builder = new BitVectorBuilder(1_000_000);
 builder.insert(1).insert(10).insert(999_999);
 using bits = builder.freeze();
 bits.rank1(11);

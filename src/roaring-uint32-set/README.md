@@ -1,21 +1,21 @@
-# RoaringUint32Set
+# RoaringBitmap
 
 A mutable, Wasm-resident Roaring-style set for unsigned 32-bit integers. The high 16 bits select a
 container. The low 16 bits use a sorted `Uint16` array through 4,096 values and an 8 KiB bitmap from
 4,097 values onward.
 
 ```ts
-import { RoaringUint32Set } from "@mizchi/jsimd/roaring-uint32-set";
+import { RoaringBitmap } from "@mizchi/jsimd/roaring-bitmap";
 
-using active = RoaringUint32Set.from([1, 10, 65_536, 0xffff_ffff]);
-using selected = RoaringUint32Set.from([10, 65_536, 70_000]);
+using active = RoaringBitmap.from([1, 10, 65_536, 0xffff_ffff]);
+using selected = RoaringBitmap.from([10, 65_536, 70_000]);
 
 active.has(0xffff_ffff); // true
 active.andCardinality(selected); // 2, without creating an intersection
 active.intersects(selected); // true, stops at the first matching value
 active.jaccard(selected); // 2 / 5
 
-using intersection = new RoaringUint32Set();
+using intersection = new RoaringBitmap();
 active.andInto(selected, intersection);
 intersection.toUint32Array(); // [10, 65536]
 ```
@@ -31,6 +31,8 @@ active.forEachRange((start, end) => {
 
 The output of `andInto` must not alias either input. Every owning set should be declared with
 `using`; scope exit returns all of its array and bitmap container allocations via `Symbol.dispose`.
+
+`RoaringUint32Set` remains a deprecated compatibility name for the same constructor.
 
 This first version implements the canonical array and bitmap containers and dynamically converts at
 the 4,096/4,097 boundary. Run containers and portable Roaring serialization are not implemented yet,

@@ -1,15 +1,15 @@
-# @mizchi/jsimd/roaring-uint32-set experiment
+# @mizchi/jsimd/roaring-bitmap experiment
 
-Compares `RoaringUint32Set` intersection operations with sorted `Uint32Array` merge loops and native
+Compares `RoaringBitmap` intersection operations with sorted `Uint32Array` merge loops and native
 `Set<number>` lookup loops. Dense data exercises SIMD bitmap containers; sparse data exercises many
 sorted array containers.
 
 ```ts
-import { RoaringUint32Set } from "@mizchi/jsimd/roaring-uint32-set";
+import { RoaringBitmap } from "@mizchi/jsimd/roaring-bitmap";
 
-using left = RoaringUint32Set.from([1, 2, 65_536]);
-using right = RoaringUint32Set.from([2, 65_536, 70_000]);
-using output = new RoaringUint32Set();
+using left = RoaringBitmap.from([1, 2, 65_536]);
+using right = RoaringBitmap.from([2, 65_536, 70_000]);
+using output = new RoaringBitmap();
 left.andInto(right, output);
 ```
 
