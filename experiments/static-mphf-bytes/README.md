@@ -1,4 +1,9 @@
-# StaticMphfBytes experiment
+# StaticMphfBytes rejected experiment
+
+This prototype is archived under [`prototype/`](./prototype/) and is not part of the package
+exports, production build, validation, memory profile, or published `dist/`. The benchmark commands
+generate and validate its ignored Wasm binary before running, so the rejection remains reproducible
+without adding its cost to users' installations.
 
 The lookup suite uses 65,536 unique variable-length byte keys and 4,096 mixed exact hit/miss
 queries. Native `Set<string>` receives pre-encoded hex strings, so encoding cost is excluded for the
@@ -12,4 +17,11 @@ versus 0.3361 ms for the pre-encoded set.
 pnpm bench:static-mphf-bytes
 pnpm bench:record:static-mphf-bytes
 pnpm bench:compare:static-mphf-bytes
+
+# Optional prototype correctness and allocator checks
+pnpm test:prototype:static-mphf-bytes
+
+# Optional archived bundle-size fixture (after either command above generated Wasm)
+pnpm exec tsc -p experiments/static-mphf-bytes/tree-shake-fixture/tsconfig.json
+pnpm exec vite build experiments/static-mphf-bytes/tree-shake-fixture
 ```

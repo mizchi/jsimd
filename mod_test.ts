@@ -19,6 +19,7 @@ import { BitSlicedColumnU8, BitSliceMask } from "./src/bit-sliced-column/mod.ts"
 import { jsonTokenStarts } from "./src/json/mod.ts";
 import { WaveletMatrixUint32 } from "./src/wavelet-matrix-uint32/mod.ts";
 import { WaveletMatrixUint8 } from "./src/wavelet-matrix-uint8/mod.ts";
+import { WaveletMatrixUint16 } from "./src/wavelet-matrix-uint16/mod.ts";
 import { FmIndexBytes } from "./src/fm-index-bytes/mod.ts";
 import { CompressedStringTable } from "./src/compressed-string-table/mod.ts";
 import {
@@ -37,11 +38,6 @@ import {
 } from "./src/adaptive-simd-page-i32/mod.ts";
 import { StaticMphfU32, StaticMphfU32Builder } from "./src/static-mphf-u32/mod.ts";
 import {
-  FrozenByteMapU32,
-  StaticMphfBytes,
-  StaticMphfBytesBuilder,
-} from "./src/static-mphf-bytes/mod.ts";
-import {
   BinaryVectorIndex,
   BinaryVectorIndexWithRerank,
   PdxFloat32Index,
@@ -58,6 +54,7 @@ import {
 } from "./src/columnar/mod.ts";
 import { BlockedBloomFilterU32 } from "./src/blocked-bloom-filter/mod.ts";
 import { BlockedVectorArray } from "./src/blocked-vector-array/mod.ts";
+import { BitHistogram32, bitHistogram32 } from "./src/bit-histogram32/mod.ts";
 
 function assertEquals(actual: unknown, expected: unknown, context: string): void {
   if (!Object.is(actual, expected)) {
@@ -100,6 +97,22 @@ Deno.test("SimdFloat32Vector performs in-place AXPY without exposing padding", (
   for (let index = 0; index < expected.length; index++) {
     assertClose(actual[index]!, expected[index]!, 1e-6, `lane=${index}`);
   }
+});
+
+Deno.test("SimdFloat32Vector computes resident distance, norm, and cosine", () => {
+  using left = SimdFloat32Vector.from(new Float32Array([1, 2, 3, 4, 5]));
+  using right = SimdFloat32Vector.from(new Float32Array([5, 4, 3, 2, 1]));
+  assertClose(left.squaredDistance(right), 40, 1e-5, "squared distance");
+  assertClose(left.norm(), Math.sqrt(55), 1e-5, "norm");
+  assertClose(left.cosineSimilarity(right), 35 / 55, 1e-5, "cosine");
+});
+
+Deno.test("SimdFloat32Vector defines zero-norm cosine as NaN", () => {
+  using zero = SimdFloat32Vector.from(new Float32Array(5));
+  using value = SimdFloat32Vector.from(new Float32Array([1, 2, 3, 4, 5]));
+  assertEquals(zero.norm(), 0, "zero norm");
+  assertEquals(Number.isNaN(zero.cosineSimilarity(value)), true, "left zero cosine");
+  assertEquals(Number.isNaN(value.cosineSimilarity(zero)), true, "right zero cosine");
 });
 
 Deno.test("SimdFloat32Vector dispose reuses storage and rejects later access", () => {
@@ -1765,6 +1778,84 @@ Deno.test("WaveletMatrixUint8 matches scalar randomized byte queries", () => {
   }
 });
 
+Deno.test("WaveletMatrixUint16 supports the complete code-unit domain", () => {
+  const values = Uint16Array.of(0xffff, 0, 0x8000, 97, 0xffff, 97, 0x1234);
+  using matrix = WaveletMatrixUint16.from(values);
+  assertEquals(matrix.length, values.length, "length");
+  assertEquals(matrix.levels, 16, "levels");
+  assertEquals(matrix.access(0), 0xffff, "maximum access");
+  assertEquals(matrix.rank(97, values.length), 2, "rank");
+  assertEquals(matrix.select(0xffff, 1), 4, "select");
+  assertEquals(matrix.rangeFreq(0, values.length, 0x8000, 0x1_0000), 3, "upper range");
+  assertEquals(matrix.quantile(0, values.length, 0), 0, "minimum");
+  assertEquals(matrix.predecessor(0, values.length, 0x1_0000), 0xffff, "maximum predecessor");
+});
+
+Deno.test("WaveletMatrixUint16 batches access, rank, and quantile", () => {
+  using matrix = WaveletMatrixUint16.from(Uint16Array.of(900, 1, 700, 1, 500, 1, 300));
+  assertEquals(matrix.accessMany(Uint32Array.of(6, 0, 3)).join(","), "300,900,1", "accessMany");
+  assertEquals(
+    matrix.rankMany(Uint16Array.of(1, 700, 900), Uint32Array.of(7, 4, 1)).join(","),
+    "3,1,1",
+    "rankMany",
+  );
+  assertEquals(
+    matrix.quantileMany(
+      Uint32Array.of(0, 1),
+      Uint32Array.of(7, 6),
+      Uint32Array.of(3, 2),
+    ).join(","),
+    "300,1",
+    "quantileMany",
+  );
+});
+
+Deno.test("WaveletMatrixUint16 validates values and returns allocator storage", () => {
+  const before = WaveletMatrixUint16.allocatorStats();
+  {
+    using matrix = WaveletMatrixUint16.from(new Uint16Array(10_000));
+    assertEquals(matrix.rank(0, matrix.length), matrix.length, "resident query");
+  }
+  let threw = false;
+  try {
+    WaveletMatrixUint16.from([0x1_0000]);
+  } catch (error) {
+    threw = error instanceof RangeError;
+  }
+  assertEquals(threw, true, "invalid Uint16 input");
+  const after = WaveletMatrixUint16.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+Deno.test("WaveletMatrixUint16 matches randomized scalar range queries and snapshots", () => {
+  let state = 0x9e37_79b9;
+  const values = Uint16Array.from({ length: 2_057 }, () => {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    return state >>> 16;
+  });
+  let snapshot: Uint8Array;
+  {
+    using matrix = WaveletMatrixUint16.from(values);
+    snapshot = matrix.serialize();
+  }
+  using matrix = WaveletMatrixUint16.fromSnapshot(snapshot);
+  for (let query = 0; query < 200; query++) {
+    state = (Math.imul(state, 1_103_515_245) + 12_345) >>> 0;
+    const left = state % values.length;
+    state = (Math.imul(state, 1_103_515_245) + 12_345) >>> 0;
+    const right = left + 1 + (state % (values.length - left));
+    const sorted = values.slice(left, right).sort();
+    const kth = state % sorted.length;
+    assertEquals(matrix.quantile(left, right, kth), sorted[kth], `quantile ${query}`);
+
+    const bound = state >>> 16;
+    let expected = 0;
+    for (let index = left; index < right; index++) expected += Number(values[index]! < bound);
+    assertEquals(matrix.rangeFreq(left, right, 0, bound), expected, `rangeFreq ${query}`);
+  }
+});
+
 Deno.test("FmIndexBytes counts overlapping arbitrary-byte patterns", () => {
   const encoder = new TextEncoder();
   using index = FmIndexBytes.from(encoder.encode("banana"));
@@ -2462,6 +2553,155 @@ Deno.test("AdaptiveSimdPageI32 selects a physical encoding per page", () => {
   assertEquals(wide.encoding, AdaptivePageEncoding.Raw, "raw encoding");
 });
 
+Deno.test("AdaptiveSimdPageI32 selects and queries run-length pages", () => {
+  const values = Int32Array.from({ length: 128 }, (_, index) => {
+    if (index < 32) return -0x8000_0000;
+    if (index < 64) return 7;
+    if (index < 96) return 1_000_000;
+    return 0x7fff_ffff;
+  });
+  using page = AdaptiveSimdPageI32.from(values);
+  using mask = new SimdPageMask(values.length);
+  assertEquals(page.encoding, AdaptivePageEncoding.RunLength, "RLE encoding");
+  assertEquals(page.encodedBytes, 32, "four value/end pairs");
+  assertEquals(page.toInt32Array().join(","), values.join(","), "RLE decode");
+  assertEquals(page.get(31), -0x8000_0000, "RLE get before boundary");
+  assertEquals(page.get(32), 7, "RLE get after boundary");
+  assertEquals(
+    page.sum(),
+    values.reduce((sum, value) => sum + value, 0),
+    "RLE sum",
+  );
+  assertEquals(page.scanEq(7, mask).countOnes(), 32, "RLE eq");
+  assertEquals(page.scanLt(8, mask).countOnes(), 64, "RLE lt");
+  assertEquals(page.scanBetween(0, 2_000_000, mask).countOnes(), 64, "RLE between");
+  const gathered = new Int32Array(mask.countOnes());
+  assertEquals(page.gatherInto(mask, gathered), 64, "RLE gather count");
+  assertEquals(gathered[0], 7, "RLE gather first run");
+  assertEquals(gathered[63], 1_000_000, "RLE gather last run");
+});
+
+Deno.test("AdaptiveSimdPageI32 selects and queries dictionary pages", () => {
+  const dictionary = [-0x8000_0000, 7, 1_000_000, 0x7fff_ffff];
+  const values = Int32Array.from(
+    { length: 256 },
+    (_, index) => dictionary[Math.imul(index, 5) & 3]!,
+  );
+  using page = AdaptiveSimdPageI32.from(values);
+  using mask = new SimdPageMask(values.length);
+  assertEquals(page.encoding, AdaptivePageEncoding.Dictionary, "Dictionary encoding");
+  assertEquals(page.encodedBytes, 288, "four value/count pairs and byte codes");
+  assertEquals(page.toInt32Array().join(","), values.join(","), "Dictionary decode");
+  assertEquals(page.get(0), -0x8000_0000, "Dictionary get first");
+  assertEquals(page.get(3), 0x7fff_ffff, "Dictionary get fourth");
+  assertEquals(
+    page.sum(),
+    values.reduce((sum, value) => sum + value, 0),
+    "Dictionary sum",
+  );
+  assertEquals(page.scanEq(1_000_000, mask).countOnes(), 64, "Dictionary eq");
+  assertEquals(page.scanLt(8, mask).countOnes(), 128, "Dictionary lt");
+  assertEquals(page.scanBetween(0, 2_000_000, mask).countOnes(), 128, "Dictionary between");
+  const gathered = new Int32Array(mask.countOnes());
+  assertEquals(page.gatherInto(mask, gathered), 128, "Dictionary gather count");
+  assertEquals(gathered[0], 7, "Dictionary gather first code");
+  assertEquals(gathered[127], 1_000_000, "Dictionary gather last code");
+});
+
+Deno.test("AdaptiveSimdPageI32 dictionary SIMD masks match scalar tails", () => {
+  const dictionary = [-0x8000_0000, -7, 1_000_000, 0x7fff_ffff];
+  for (const length of [17, 31, 32, 33, 127, 129, 255]) {
+    const values = Int32Array.from(
+      { length },
+      (_, index) => dictionary[(Math.imul(index, 13) ^ (index >>> 2)) & 3]!,
+    );
+    using page = AdaptiveSimdPageI32.from(values);
+    using mask = new SimdPageMask(length);
+    assertEquals(page.encoding, AdaptivePageEncoding.Dictionary, `encoding n=${length}`);
+    for (
+      const [minimum, maximum] of [
+        [-0x8000_0000, -6],
+        [-7, 2_000_000],
+        [0, 0x8000_0000],
+      ]
+    ) {
+      const expected = Array.from(values.keys()).filter((index) =>
+        values[index]! >= minimum && values[index]! < maximum
+      );
+      assertEquals(
+        page.scanBetween(minimum, maximum, mask).toIndices().join(","),
+        expected.join(","),
+        `between n=${length}`,
+      );
+    }
+  }
+});
+
+Deno.test("AdaptiveSimdPageI32 selects and queries sparse-default pages", () => {
+  const values = Int32Array.from(
+    { length: 256 },
+    (_, index) => (index & 7) === 0 ? Math.imul(index + 1, 0x6d2b_79f5) | 0 : -7,
+  );
+  using page = AdaptiveSimdPageI32.from(values);
+  using mask = new SimdPageMask(values.length);
+  assertEquals(page.encoding, AdaptivePageEncoding.Sparse, "Sparse encoding");
+  assertEquals(page.encodedBytes, 160, "32 positions and 32 i32 exceptions");
+  assertEquals(page.toInt32Array().join(","), values.join(","), "Sparse decode");
+  assertEquals(page.get(1), -7, "Sparse default get");
+  assertEquals(page.get(8), values[8], "Sparse exception get");
+  assertEquals(page.sum(), values.reduce((sum, value) => sum + value, 0), "Sparse sum");
+  for (
+    const [minimum, maximum] of [
+      [-7, -6],
+      [-0x8000_0000, 0],
+      [0, 0x8000_0000],
+    ]
+  ) {
+    const expected = Array.from(values.keys()).filter((index) =>
+      values[index]! >= minimum && values[index]! < maximum
+    );
+    assertEquals(
+      page.scanBetween(minimum, maximum, mask).toIndices().join(","),
+      expected.join(","),
+      `Sparse between ${minimum}`,
+    );
+  }
+  const expectedEqual = Array.from(values.keys()).filter((index) => values[index] === -7);
+  assertEquals(
+    page.scanEq(-7, mask).toIndices().join(","),
+    expectedEqual.join(","),
+    "Sparse eq default",
+  );
+  const gathered = new Int32Array(mask.countOnes());
+  assertEquals(page.gatherInto(mask, gathered), expectedEqual.length, "Sparse gather count");
+  assertEquals(gathered.every((value) => value === -7), true, "Sparse gathered defaults");
+});
+
+Deno.test("AdaptiveSimdPageI32 sparse masks match scalar tails", () => {
+  for (const length of [17, 31, 32, 33, 127, 129, 255]) {
+    const values = Int32Array.from(
+      { length },
+      (_, index) => (index & 7) === 0 ? Math.imul(index + 1, 0x6d2b_79f5) | 0 : -7,
+    );
+    using page = AdaptiveSimdPageI32.from(values);
+    using mask = new SimdPageMask(length);
+    assertEquals(page.encoding, AdaptivePageEncoding.Sparse, `encoding n=${length}`);
+    const target = values[0]!;
+    const expectedEqual = Array.from(values.keys()).filter((index) => values[index] === target);
+    assertEquals(
+      page.scanEq(target, mask).toIndices().join(","),
+      expectedEqual.join(","),
+      `equal n=${length}`,
+    );
+    const expectedLess = Array.from(values.keys()).filter((index) => values[index]! < 0);
+    assertEquals(
+      page.scanLt(0, mask).toIndices().join(","),
+      expectedLess.join(","),
+      `less n=${length}`,
+    );
+  }
+});
+
 Deno.test("AdaptiveSimdPageI32 decodes, indexes, and reduces every encoding", () => {
   const cases = [
     [11, 11, 11, 11, 11],
@@ -2608,15 +2848,16 @@ Deno.test("AdaptiveSimdPageI32 using lifecycle returns allocator storage", () =>
 });
 
 Deno.test("AdaptiveSimdColumnI32 partitions values into independently encoded pages", () => {
-  const values = Int32Array.from({ length: 600 }, (_, index) => {
+  const values = Int32Array.from({ length: 856 }, (_, index) => {
     if (index < 256) return 7;
     if (index < 512) return -1000 + (index & 63);
-    return index % 2 === 0 ? -0x8000_0000 : 0x7fff_ffff;
+    if (index < 768) return index % 2 === 0 ? -0x8000_0000 : 0x7fff_ffff;
+    return Math.imul(index + 1, 0x6d2b_79f5) | 0;
   });
   using column = AdaptiveSimdColumnI32.from(values);
-  assertEquals(column.length, 600, "length");
+  assertEquals(column.length, 856, "length");
   assertEquals(column.pageSize, 256, "page size");
-  assertEquals(column.pageCount, 3, "page count");
+  assertEquals(column.pageCount, 4, "page count");
   assertEquals(column.get(255), 7, "get before boundary");
   assertEquals(column.get(256), -1000, "get after boundary");
   assertEquals(column.min, -0x8000_0000, "minimum");
@@ -2629,8 +2870,20 @@ Deno.test("AdaptiveSimdColumnI32 partitions values into independently encoded pa
   );
   const encodings = column.encodingCounts();
   assertEquals(encodings.constant, 1, "constant pages");
+  assertEquals(encodings.dictionary, 1, "Dictionary pages");
   assertEquals(encodings.frameOfReference, 1, "FOR pages");
+  assertEquals(encodings.runLength, 0, "RLE pages");
+  assertEquals(encodings.sparse, 0, "Sparse pages");
   assertEquals(encodings.raw, 1, "raw pages");
+});
+
+Deno.test("AdaptiveSimdColumnI32 reports run-length pages", () => {
+  const values = Int32Array.from(
+    { length: 128 },
+    (_, index) => index < 32 ? -0x8000_0000 : index < 96 ? 1_000_000 : 0x7fff_ffff,
+  );
+  using column = AdaptiveSimdColumnI32.from(values, 128);
+  assertEquals(column.encodingCounts().runLength, 1, "RLE pages");
 });
 
 Deno.test("AdaptiveSimdColumnI32 scans, composes masks, and gathers across pages", () => {
@@ -2934,113 +3187,6 @@ Deno.test("StaticMphfU32 maps every known key to a unique dense ID", () => {
   assertEquals(ids.size, keys.length, "unique IDs");
   assertEquals(index.has(123_456_789), false, "unknown key");
   assertEquals(index.fingerprintBits, 16, "fingerprint bits");
-});
-
-Deno.test("StaticMphfBytes maps arbitrary known keys to exact dense IDs", () => {
-  const prefix = new Uint8Array(40).fill(0x61);
-  const tail = prefix.slice();
-  tail[39] = 0x62;
-  using mphf = StaticMphfBytes.from([
-    new Uint8Array(),
-    byteKey(0, 1, 0, 2),
-    prefix,
-    tail,
-  ]);
-  const ids = [
-    mphf.lookup(new Uint8Array()),
-    mphf.lookup(byteKey(0, 1, 0, 2)),
-    mphf.lookup(prefix),
-    mphf.lookup(tail),
-  ];
-  assertEquals(new Set(ids).size, 4, "unique dense IDs");
-  assertEquals(ids.every((id) => id >= 0 && id < 4), true, "dense ID range");
-  assertEquals(mphf.lookup(byteKey(0, 1, 0, 3)), -1, "exact miss");
-});
-
-Deno.test("StaticMphfBytes batches concatenated exact-key lookup", () => {
-  const keys = byteKey(1, 2, 3, 4, 5, 6, 7, 8, 9);
-  const offsets = Uint32Array.of(0, 0, 1, 4, 9);
-  using mphf = StaticMphfBytes.fromBytes(keys, offsets);
-  const queries = byteKey(2, 3, 4, 99, 1, 5, 6, 7, 8, 9);
-  const queryOffsets = Uint32Array.of(0, 3, 4, 5, 10);
-  const output = new Int32Array(4);
-  assertEquals(mphf.lookupMany(queries, queryOffsets, output), 3, "batch hits");
-  assertEquals(output[1], -1, "batch miss");
-  assertEquals(new Set([output[0], output[2], output[3]]).size, 3, "batch IDs");
-});
-
-Deno.test("FrozenByteMapU32 stores values in MPHF slot order", () => {
-  const keys = byteKey(1, 2, 3, 4, 5, 6, 7, 8, 9);
-  const offsets = Uint32Array.of(0, 0, 1, 4, 9);
-  using map = FrozenByteMapU32.fromBytes(keys, offsets, Uint32Array.of(10, 20, 30, 40));
-  assertEquals(map.get(new Uint8Array()), 10, "empty key value");
-  assertEquals(map.get(byteKey(2, 3, 4)), 30, "middle key value");
-  assertEquals(map.get(byteKey(99)), undefined, "missing value");
-  const queries = byteKey(5, 6, 7, 8, 9, 99, 1);
-  const queryOffsets = Uint32Array.of(0, 5, 6, 7);
-  const values = new Uint32Array(3);
-  const present = new Uint8Array(3);
-  assertEquals(map.lookupMany(queries, queryOffsets, values, present), 2, "map batch hits");
-  assertEquals(values.join(","), "40,0,20", "map batch values");
-  assertEquals(present.join(","), "1,0,1", "map batch presence");
-});
-
-Deno.test("StaticMphfBytes validates uniqueness and releases using-owned storage", () => {
-  let duplicateThrew = false;
-  try {
-    new StaticMphfBytesBuilder().add(byteKey(1, 2)).add(byteKey(1, 2));
-  } catch (error) {
-    duplicateThrew = error instanceof RangeError;
-  }
-  assertEquals(duplicateThrew, true, "duplicate keys rejected");
-  const before = StaticMphfBytes.allocatorStats();
-  {
-    const builder = new StaticMphfBytesBuilder();
-    for (let index = 0; index < 2_000; index++) builder.add(fixed16(index));
-    using mphf = builder.freeze();
-    assertEquals(mphf.length, 2_000, "built length");
-  }
-  const after = StaticMphfBytes.allocatorStats();
-  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
-  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
-});
-
-Deno.test("StaticMphfBytes preserves exact membership for randomized variable keys", () => {
-  const keys: Uint8Array[] = [];
-  let state = 0x6d2b_79f5;
-  for (let input = 0; input < 5_000; input++) {
-    const key = new Uint8Array(5 + (input % 59));
-    new DataView(key.buffer).setUint32(0, input, true);
-    for (let index = 4; index < key.length; index++) {
-      state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
-      key[index] = state >>> 24;
-    }
-    keys.push(key);
-  }
-  using mphf = StaticMphfBytes.from(keys);
-  const slots = new Set<number>();
-  for (let input = 0; input < keys.length; input++) {
-    const slot = mphf.lookup(keys[input]!);
-    assertEquals(slot >= 0, true, `known input=${input}`);
-    slots.add(slot);
-    const miss = keys[input]!.slice();
-    miss[0] ^= 0x80;
-    assertEquals(mphf.lookup(miss), -1, `exact miss input=${input}`);
-  }
-  assertEquals(slots.size, keys.length, "minimal perfect slots");
-});
-
-Deno.test("FrozenByteMapU32 using lifecycle returns all owned allocations", () => {
-  const before = FrozenByteMapU32.allocatorStats();
-  {
-    using map = FrozenByteMapU32.from(
-      Array.from({ length: 2_000 }, (_, index) => [fixed16(index), index * 7] as const),
-    );
-    assertEquals(map.get(fixed16(1_999)), 13_993, "last value");
-  }
-  const after = FrozenByteMapU32.allocatorStats();
-  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
-  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
 });
 
 Deno.test("StaticMphfU32Builder freezes independent snapshots", () => {
@@ -3940,6 +4086,128 @@ Deno.test("BlockedVectorArray squared L2 matches row-major scalar results", () =
   assertEquals(Number.isNaN(output[length]), true, "blocked L2 output tail");
 });
 
+Deno.test("BlockedVectorArray L1 and inner product match row-major scalar results", () => {
+  const length = 131;
+  const dimensions = 13;
+  const values = Float32Array.from(
+    { length: length * dimensions },
+    (_, index) => ((Math.imul(index + 11, 0x9e37_79b1) >>> 8) & 0xffff) / 32768 - 1,
+  );
+  const query = values.slice(dimensions * 3, dimensions * 4);
+  const l1 = new Float32Array(length);
+  const products = new Float32Array(length);
+  using vectors = BlockedVectorArray.from(values, length, dimensions);
+  vectors.l1DistanceMany(query, l1);
+  vectors.innerProductMany(query, products);
+  for (let row = 0; row < length; row++) {
+    let expectedL1 = 0;
+    let expectedProduct = 0;
+    for (let dimension = 0; dimension < dimensions; dimension++) {
+      const value = values[row * dimensions + dimension]!;
+      expectedL1 += Math.abs(value - query[dimension]!);
+      expectedProduct += value * query[dimension]!;
+    }
+    assertClose(l1[row]!, expectedL1, 1e-4, `blocked L1 row=${row}`);
+    assertClose(products[row]!, expectedProduct, 1e-4, `blocked dot row=${row}`);
+  }
+});
+
+Deno.test("BlockedVectorArray topKInto fuses selection with deterministic ties", () => {
+  using vectors = BlockedVectorArray.from(
+    new Float32Array([
+      1,
+      0,
+      -1,
+      0,
+      0,
+      2,
+      0,
+      -2,
+      3,
+      0,
+    ]),
+    5,
+    2,
+  );
+  const ids = new Uint32Array(4);
+  const distances = new Float32Array(4);
+  assertEquals(vectors.topKInto(new Float32Array([0, 0]), ids, distances), 4, "top-k count");
+  assertEquals(ids.join(","), "0,1,2,3", "distance then id ordering");
+  assertEquals(distances.join(","), "1,1,4,4", "top-k distances");
+});
+
+Deno.test("BlockedVectorArray topKInnerProductInto ranks descending without a JS sort", () => {
+  using vectors = BlockedVectorArray.from(
+    new Float32Array([1, 0, -1, 0, 2, 0, -2, 0]),
+    4,
+    2,
+  );
+  const ids = new Uint32Array(3);
+  const products = new Float32Array(3);
+  assertEquals(
+    vectors.topKInnerProductInto(new Float32Array([1, 0]), ids, products),
+    3,
+    "inner-product top-k count",
+  );
+  assertEquals(ids.join(","), "2,0,1", "descending product then id ordering");
+  assertEquals(products.join(","), "2,1,-1", "top inner products");
+});
+
+Deno.test("BlockedVectorArray topKInto matches scalar sorting across block tails", () => {
+  const length = 131;
+  const dimensions = 13;
+  const values = Float32Array.from(
+    { length: length * dimensions },
+    (_, index) => ((Math.imul(index + 11, 0x9e37_79b1) >>> 8) & 0xffff) / 32768 - 1,
+  );
+  const query = values.slice(dimensions * 3, dimensions * 4);
+  using vectors = BlockedVectorArray.from(values, length, dimensions);
+  for (const k of [0, 1, 7, 64, length]) {
+    const ids = new Uint32Array(k);
+    const distances = new Float32Array(k);
+    assertEquals(vectors.topKInto(query, ids, distances), k, `count k=${k}`);
+    const expected = Array.from({ length }, (_, id) => {
+      let distance = 0;
+      for (let dimension = 0; dimension < dimensions; dimension++) {
+        const delta = values[id * dimensions + dimension]! - query[dimension]!;
+        distance += delta * delta;
+      }
+      return { id, distance: Math.fround(distance) };
+    }).sort((left, right) => left.distance - right.distance || left.id - right.id);
+    for (let index = 0; index < k; index++) {
+      assertEquals(ids[index], expected[index]!.id, `id k=${k}/${index}`);
+      assertClose(distances[index]!, expected[index]!.distance, 1e-5, `distance k=${k}/${index}`);
+    }
+  }
+});
+
+Deno.test("BlockedVectorArray inner-product top-k matches scalar sorting across block tails", () => {
+  const length = 131;
+  const dimensions = 13;
+  const values = Float32Array.from(
+    { length: length * dimensions },
+    (_, index) => ((Math.imul(index + 11, 0x9e37_79b1) >>> 8) & 0xffff) / 32768 - 1,
+  );
+  const query = values.slice(dimensions * 3, dimensions * 4);
+  using vectors = BlockedVectorArray.from(values, length, dimensions);
+  const expected = Array.from({ length }, (_, id) => {
+    let product = 0;
+    for (let dimension = 0; dimension < dimensions; dimension++) {
+      product += values[id * dimensions + dimension]! * query[dimension]!;
+    }
+    return { id, product };
+  }).sort((left, right) => right.product - left.product || left.id - right.id);
+  for (const k of [0, 1, 7, 64, length]) {
+    const ids = new Uint32Array(k);
+    const products = new Float32Array(k);
+    assertEquals(vectors.topKInnerProductInto(query, ids, products), k, `count k=${k}`);
+    assertEquals(ids.join(","), expected.slice(0, k).map(({ id }) => id).join(","), `ids k=${k}`);
+    for (let index = 0; index < k; index++) {
+      assertClose(products[index]!, expected[index]!.product, 1e-4, `product k=${k} i=${index}`);
+    }
+  }
+});
+
 Deno.test("BlockedVectorArray validates ownership and releases using-owned storage", () => {
   const before = BlockedVectorArray.allocatorStats();
   {
@@ -3959,6 +4227,22 @@ Deno.test("BlockedVectorArray validates ownership and releases using-owned stora
   }
   assertEquals(shapeThrew, true, "blocked vector shape");
 
+  using live = BlockedVectorArray.from(new Float32Array(4), 2, 2);
+  let topKThrew = false;
+  try {
+    live.topKInto(new Float32Array(2), new Uint32Array(2), new Float32Array(1));
+  } catch (error) {
+    topKThrew = error instanceof RangeError;
+  }
+  assertEquals(topKThrew, true, "blocked vector top-k output shape");
+  topKThrew = false;
+  try {
+    live.topKInto(new Float32Array(2), new Uint32Array(3), new Float32Array(3));
+  } catch (error) {
+    topKThrew = error instanceof RangeError;
+  }
+  assertEquals(topKThrew, true, "blocked vector top-k count");
+
   const disposed = BlockedVectorArray.from(new Float32Array(4), 2, 2);
   disposed[Symbol.dispose]();
   let disposedThrew = false;
@@ -3968,6 +4252,53 @@ Deno.test("BlockedVectorArray validates ownership and releases using-owned stora
     disposedThrew = error instanceof Error;
   }
   assertEquals(disposedThrew, true, "blocked vector use after dispose");
+});
+
+Deno.test("BitHistogram32 counts every bit across chunks and resets", () => {
+  const values = new Uint32Array([0, 1, 3, 0xffff_ffff, 0x8000_0000]);
+  const expected = new Uint32Array(32).fill(1);
+  expected[0] = 3;
+  expected[1] = 2;
+  expected[31] = 2;
+
+  const oneShot = new Uint32Array(32);
+  assertEquals(bitHistogram32(values, oneShot), oneShot, "one-shot output identity");
+  assertEquals(oneShot.join(","), expected.join(","), "one-shot histogram");
+
+  const before = BitHistogram32.allocatorStats();
+  {
+    using histogram = new BitHistogram32();
+    histogram.add(values.subarray(0, 2)).add(values.subarray(2));
+    const chunked = new Uint32Array(32);
+    assertEquals(histogram.writeInto(chunked), chunked, "resident output identity");
+    assertEquals(chunked.join(","), expected.join(","), "chunked histogram");
+    histogram.reset().writeInto(chunked);
+    assertEquals(chunked.every((count) => count === 0), true, "reset histogram");
+  }
+  const after = BitHistogram32.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "histogram allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "histogram bytes");
+});
+
+Deno.test("BitHistogram32 matches scalar positional counts across flush tails", () => {
+  for (const length of [0, 1, 17, 254, 255, 256, 1023]) {
+    const values = Uint32Array.from(
+      { length },
+      (_, index) => Math.imul(index + 1, 0x9e37_79b1) >>> 0,
+    );
+    const expected = new Uint32Array(32);
+    for (const value of values) {
+      for (let bit = 0; bit < 32; bit++) expected[bit] += (value >>> bit) & 1;
+    }
+    using histogram = new BitHistogram32();
+    for (let offset = 0; offset < length; offset += 113) {
+      histogram.add(values.subarray(offset, Math.min(length, offset + 113)));
+    }
+    const actual = new Uint32Array(32);
+    histogram.writeInto(actual);
+    assertEquals(actual.join(","), expected.join(","), `histogram n=${length}`);
+    assertEquals(histogram.length, length, `histogram length n=${length}`);
+  }
 });
 
 const I32_TEST_MIN = -0x8000_0000;

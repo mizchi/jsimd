@@ -5,6 +5,7 @@ examples/vite/dist/
 examples/tree-shake-adaptive-simd-page-i32/dist/
 examples/tree-shake-bitmap/dist/
 examples/tree-shake-bit-matrix/dist/
+examples/tree-shake-bit-histogram32/dist/
 examples/tree-shake-byte-key-flat-hash/dist/
 examples/tree-shake-binary-vector-index/dist/
 examples/tree-shake-bit-sliced-column/dist/
@@ -22,10 +23,12 @@ examples/tree-shake-matrix3d/dist/
 examples/tree-shake-rank-select-bit-vector/dist/
 examples/tree-shake-roaring-bitmap/dist/
 examples/tree-shake-static-mphf-u32/dist/
-examples/tree-shake-static-mphf-bytes/dist/
+experiments/static-mphf-bytes/prototype/kernels.wasm
+experiments/static-mphf-bytes/tree-shake-fixture/dist/
 examples/tree-shake-packed-delta-uint32-list/dist/
 examples/tree-shake-wavelet-matrix-uint32/dist/
 examples/tree-shake-wavelet-matrix-uint8/dist/
+examples/tree-shake-wavelet-matrix-uint16/dist/
 examples/tree-shake-fm-index-bytes/dist/
 examples/tree-shake-compressed-string-table/dist/
 examples/tree-shake-columnar/dist/

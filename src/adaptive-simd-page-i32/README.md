@@ -3,11 +3,14 @@
 An immutable page of up to 256 signed 32-bit integers. Construction inspects the local value range
 and chooses one physical representation:
 
-| encoding             | selection rule          | logical payload                   |
-| :------------------- | :---------------------- | :-------------------------------- |
-| `constant`           | every value is equal    | zero bytes; the value is metadata |
-| `frame-of-reference` | range fits in 1–16 bits | packed unsigned deltas from `min` |
-| `raw`                | wider local range       | four bytes per value              |
+| encoding             | selection rule                                       | logical payload                   |
+| :------------------- | :--------------------------------------------------- | :-------------------------------- |
+| `constant`           | every value is equal                                 | zero bytes; the value is metadata |
+| `run-length`         | value/end pairs are smaller than the FOR/raw payload | eight bytes per run               |
+| `dictionary`         | <=16 distinct values and smaller than RLE/FOR/raw    | values, counts, and byte codes    |
+| `sparse`             | >=75% one default and <=64 exceptions; smallest form | positions and exception values    |
+| `frame-of-reference` | range fits in 1–16 bits                              | packed unsigned deltas from `min` |
+| `raw`                | wider local range                                    | four bytes per value              |
 
 ```ts
 import { AdaptiveSimdPageI32, SimdPageMask } from "@mizchi/jsimd/adaptive-simd-page-i32";
@@ -58,14 +61,29 @@ Each page records a ZoneMap (`min` and `max`). Impossible predicates return an e
 reading the payload, and predicates covering the complete page return a full mask. Constant pages
 also answer `sum` from metadata.
 
+Run-length pages store interleaved `(value, endExclusive)` pairs. The selector chooses RLE only when
+those pairs use fewer bytes than the page's otherwise-selected FOR or Raw payload. RLE predicates
+compare once per run, `sum` multiplies each value by its run length, and decode uses `i32x4.splat`
+for full four-value tails.
+
+Dictionary pages sort up to 16 distinct `i32` values and store one byte code per row. Keeping codes
+in value order turns equality and numeric ranges into `i8x16` code comparisons without Wasm gather.
+Per-code counts make `sum` proportional to cardinality instead of row count. The selector includes
+the dictionary values, counts, and codes in its payload-size comparison.
+
+Sparse pages target a dominant default with many otherwise-distinct exceptions. They store sorted
+byte positions and aligned `i32` exception values; the default remains page metadata. Predicates
+initialize the default mask once and override exception bits, while decode fills with `i32x4.splat`
+before scattering exceptions. Sparse participates only when the default covers at least 75%, there
+are at most 64 exceptions, and its complete payload is the smallest candidate.
+
 Frame-of-reference (FOR) stores `value - min` at the smallest fixed width that covers the page's
 range. SIMD scan kernels unpack four values, add the signed base, compare with `i32x4`, and write
 the four-lane bitmask into the resident selection mask. Raw scans load four `i32` values directly.
-`sum` uses wide `i64` accumulation, so it does not silently wrap at 32 bits.
+All `sum` kernels use wide `i64` accumulation, so they do not silently wrap at 32 bits.
 
-The page is frozen at construction. This initial version deliberately excludes Delta, RLE,
-Dictionary, Sparse, and BitSliced encodings. Each will be added only if its build size and
-end-to-end page workload beat these three forms.
+The page is frozen at construction. Delta and BitSliced already have dedicated structures and will
+not be duplicated without a separate measured workload.
 
 Page construction snapshots its input. Column construction reuses one page-sized JavaScript scratch
 buffer while producing independent Wasm-resident pages, so the temporary allocation count does not
@@ -82,14 +100,35 @@ not a compatible implementation of either system.
 Recorded with Vitest 4.1.11 / Node 24 / Apple M5. Every case contains 256 values; construction is
 excluded. Predicate timings include producing a selection mask and counting it.
 
-| encoding / operation | adaptive | `Int32Array` JS | relative result |
-| :------------------- | -------: | --------------: | :-------------- |
-| Constant range scan  |  0.13 us |         0.47 us | 3.7x faster     |
-| Constant sum         |  0.02 us |         0.84 us | 44x faster      |
-| FOR range scan       |  0.55 us |         0.29 us | 1.9x slower     |
-| FOR sum              |  0.39 us |         0.78 us | 2.0x faster     |
-| Raw range scan       |  0.18 us |         0.24 us | 1.3x faster     |
-| Raw sum              |  0.07 us |         0.85 us | 11x faster      |
+| encoding / operation  | adaptive | `Int32Array` JS | relative result |
+| :-------------------- | -------: | --------------: | :-------------- |
+| Constant range scan   |  0.13 us |         0.43 us | 3.4x faster     |
+| Constant sum          |  0.02 us |         0.75 us | 41x faster      |
+| RLE range scan        |  0.15 us |         0.29 us | 2.0x faster     |
+| RLE sum               |  0.03 us |         0.74 us | 25x faster      |
+| Dictionary range scan |  0.09 us |         0.24 us | 2.6x faster     |
+| Dictionary sum        |  0.03 us |         0.74 us | 26x faster      |
+| Sparse range scan     |  0.16 us |         0.66 us | 4.2x faster     |
+| Sparse sum            |  0.07 us |         1.23 us | 18x faster      |
+| FOR range scan        |  0.51 us |         0.26 us | 1.9x slower     |
+| FOR sum               |  0.36 us |         0.75 us | 2.1x faster     |
+| Raw range scan        |  0.15 us |         0.19 us | 1.3x faster     |
+| Raw sum               |  0.07 us |         0.74 us | 11x faster      |
+
+The four-run RLE case stores 32 bytes instead of a 1,024-byte Raw payload. Its construction was 13x
+slower than `Int32Array.slice`, decode was 4.9x slower than a typed-array copy, and gathering half
+the page was 1.2x slower than the scalar loop. RLE is intended for repeated resident scans and
+aggregates, not one-shot construction followed by materialization.
+
+The four-value Dictionary case stores 288 bytes instead of a 1,024-byte Raw payload. Construction
+was 25x slower than `Int32Array.slice`, decode was 6.3x slower than copy, and gather was close
+enough to parity that it is not treated as a performance win. Like RLE, Dictionary earns its cost
+through repeated resident queries rather than one-shot use.
+
+The 32-exception Sparse case stores 160 bytes instead of a 1,024-byte Raw payload. Construction was
+15x slower than `Int32Array.slice`, decode was 5.9x slower than copy, and gathering selected default
+rows was 1.5x slower than scalar gather. The admission contract is repeated resident filtering and
+aggregation over dominant-default pages.
 
 This is not always faster than JavaScript. FOR saves space—320 bytes for the benchmark's 10-bit page
 instead of 1,024 bytes—but unpacking makes its small-page range scan slower than an optimized JS
@@ -102,9 +141,9 @@ Wasm memory before copying into the caller's array. If the workload primarily re
 values, retain an `Int32Array` instead.
 
 The retained multi-page workload contains 65,536 locally clustered values. Page ZoneMaps skip most
-payloads: range scan plus count took 0.0346 ms versus 0.245 ms for the scalar typed-array loop
-(7.08x faster), and column sum took 0.0947 ms versus 0.209 ms (2.21x faster). A predicate touching
-every FOR page can still inherit the slower small-page unpack path shown above.
+payloads: range scan plus count took 0.0426 ms versus 0.304 ms for the scalar typed-array loop (7.2x
+faster), and column sum took 0.133 ms versus 0.319 ms (2.4x faster). A predicate touching every FOR
+page can still inherit the slower small-page unpack path shown above.
 
 ```sh
 pnpm bench:adaptive-simd-page-i32
@@ -114,8 +153,8 @@ pnpm bench:compare:adaptive-simd-page-i32
 
 ## Standalone build size
 
-The isolated Vite fixture using the column emits one 1.84 kB Wasm asset (0.83 kB gzip) and a 14.58
-kB minified JS wrapper (4.63 kB gzip). It does not emit the Wasm for `SimdInt32Array`,
+The isolated Vite fixture using the column emits one 4.04 kB Wasm asset (1.63 kB gzip) and a 19.91
+kB minified JS wrapper (5.84 kB gzip). It does not emit the Wasm for `SimdInt32Array`,
 `BitSlicedColumn`, or any other entrypoint.
 
 Vitest baseline JSON and benchmark sources live in

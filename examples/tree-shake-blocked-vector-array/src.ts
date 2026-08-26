@@ -7,4 +7,10 @@ using vectors = BlockedVectorArray.from(
 );
 const distances = new Float32Array(vectors.length);
 vectors.squaredDistanceMany(new Float32Array([0, 0]), distances);
-document.body.textContent = distances.join(",");
+vectors.l1DistanceMany(new Float32Array([0, 0]), distances);
+vectors.innerProductMany(new Float32Array([0, 0]), distances);
+const ids = new Uint32Array(2);
+const nearest = new Float32Array(2);
+vectors.topKInto(new Float32Array([0, 0]), ids, nearest);
+vectors.topKInnerProductInto(new Float32Array([0, 0]), ids, nearest);
+document.body.textContent = `${distances.join(",")}; ${ids.join(",")}`;

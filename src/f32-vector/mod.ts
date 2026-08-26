@@ -1,4 +1,11 @@
-import { axpy, dot as wasmDot, memory } from "./kernels.wasm";
+import {
+  axpy,
+  cosine_similarity as wasmCosineSimilarity,
+  dot as wasmDot,
+  memory,
+  norm as wasmNorm,
+  squared_distance as wasmSquaredDistance,
+} from "./kernels.wasm";
 import {
   type Allocation,
   type AllocatorStats,
@@ -48,6 +55,30 @@ export class SimdFloat32Vector {
   dot(other: SimdFloat32Vector): number {
     this.#check(other);
     return wasmDot(this.#allocation.pointer, other.#allocation.pointer, this.#paddedLength);
+  }
+
+  squaredDistance(other: SimdFloat32Vector): number {
+    this.#check(other);
+    return wasmSquaredDistance(
+      this.#allocation.pointer,
+      other.#allocation.pointer,
+      this.#paddedLength,
+    );
+  }
+
+  norm(): number {
+    this.#assertAlive();
+    return wasmNorm(this.#allocation.pointer, this.#paddedLength);
+  }
+
+  /** Returns NaN when either vector has zero norm. */
+  cosineSimilarity(other: SimdFloat32Vector): number {
+    this.#check(other);
+    return wasmCosineSimilarity(
+      this.#allocation.pointer,
+      other.#allocation.pointer,
+      this.#paddedLength,
+    );
   }
 
   addScaled(other: SimdFloat32Vector, scale: number): this {

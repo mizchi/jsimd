@@ -1,4 +1,4 @@
-import { FrozenByteMapU32 } from "../../src/static-mphf-bytes/mod.ts";
+import { FrozenByteMapU32 } from "../prototype/mod.ts";
 
 const encoder = new TextEncoder();
 using keywords = FrozenByteMapU32.from([

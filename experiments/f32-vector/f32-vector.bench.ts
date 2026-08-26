@@ -13,6 +13,33 @@ function scalarAxpy(target: Float32Array, source: Float32Array, scale: number): 
   }
 }
 
+function scalarSquaredDistance(left: Float32Array, right: Float32Array): number {
+  let result = 0;
+  for (let index = 0; index < left.length; index++) {
+    const delta = left[index]! - right[index]!;
+    result += delta * delta;
+  }
+  return result;
+}
+
+function scalarNorm(value: Float32Array): number {
+  return Math.sqrt(scalarDot(value, value));
+}
+
+function scalarCosine(left: Float32Array, right: Float32Array): number {
+  let dot = 0;
+  let leftSquared = 0;
+  let rightSquared = 0;
+  for (let index = 0; index < left.length; index++) {
+    const leftValue = left[index]!;
+    const rightValue = right[index]!;
+    dot += leftValue * rightValue;
+    leftSquared += leftValue * leftValue;
+    rightSquared += rightValue * rightValue;
+  }
+  return dot / Math.sqrt(leftSquared * rightSquared);
+}
+
 describe.each([16, 1_024, 16_384, 262_144, 4_194_304])("Float32Vector length=%i", (length) => {
   const leftArray = Float32Array.from({ length }, (_, index) => (index % 101) / 101);
   const rightArray = Float32Array.from({ length }, (_, index) => (index % 67) / 67);
@@ -30,4 +57,19 @@ describe.each([16, 1_024, 16_384, 262_144, 4_194_304])("Float32Vector length=%i"
     left.addScaled(right, 1e-8);
   });
   bench("scalar Float32Array AXPY", () => scalarAxpy(scalarTarget, rightArray, 1e-8));
+});
+
+describe("Float32Vector derived reductions length=16384", () => {
+  const length = 16_384;
+  const leftArray = Float32Array.from({ length }, (_, index) => (index % 101) / 101);
+  const rightArray = Float32Array.from({ length }, (_, index) => (index % 67) / 67);
+  const left = SimdFloat32Vector.from(leftArray);
+  const right = SimdFloat32Vector.from(rightArray);
+
+  bench("SIMD squared distance", () => left.squaredDistance(right));
+  bench("scalar squared distance", () => scalarSquaredDistance(leftArray, rightArray));
+  bench("SIMD norm", () => left.norm());
+  bench("scalar norm", () => scalarNorm(leftArray));
+  bench("SIMD cosine", () => left.cosineSimilarity(right));
+  bench("scalar cosine", () => scalarCosine(leftArray, rightArray));
 });

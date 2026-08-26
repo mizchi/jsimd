@@ -44,4 +44,4 @@ Wasm asset (0.53 kB gzip). This cost is not part of the published package surfac
 
 Sources: [PtrHash and modern MPHF design](https://arxiv.org/html/2502.15539v1),
 [Wasm SIMD](https://github.com/WebAssembly/spec/blob/main/proposals/simd/SIMD.md), and the
-[benchmark source](../../experiments/static-mphf-bytes/static-mphf-bytes.bench.ts).
+[benchmark source](../static-mphf-bytes.bench.ts).

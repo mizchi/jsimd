@@ -5,23 +5,112 @@ benchmarks, trade-offs, and standalone build sizes belong in each feature README
 `src/<name>/`. Rejected prototypes keep their evidence under `experiments/<name>/`; implementation
 history does not belong in this queue.
 
-## Next: `WaveletMatrixUint16`
+## Next: choose a measured workload
 
-- [ ] Define UTF-16/code-unit and compact-category workloads before copying the Uint8/Uint32 APIs.
-- [ ] Compare an actual 16-level implementation with `WaveletMatrixUint32`, `Uint16Array`, and
-      binary-search/count baselines.
-- [ ] Retain only operations whose reduced level count amortizes construction and the Wasm boundary.
+There is no unconditionally admitted structure left in the queue. Before adding another public
+subpath, define an end-to-end workload and its best JavaScript baseline for one deferred candidate.
+The next implementation should be whichever candidate wins that experiment, not whichever name makes
+the API look symmetric.
 
 ## Queue
 
-### P2: workload-driven specializations
+### P1: adaptive page composition
 
-- [ ] Evaluate L1, inner product, block selection, and dimension pruning for `BlockedVectorArray`
-      only against representative repeated-query workloads.
-- [ ] Add squared distance, norm, cosine similarity, and batched dot to `SimdFloat32Vector` before
-      considering another Float32 container.
-- [ ] Evaluate additional adaptive-page encodings independently: Delta, RLE, Dictionary, Sparse, and
-      BitSliced.
+- [ ] Keep Delta deferred behind `EliasFanoSequence`, and BitSliced behind `BitSlicedColumn`, until
+      a page-composition workload demonstrates a separate win.
+
+### P2: vector pruning
+
+- [ ] Revisit `BlockedVectorArray` block selection and dimension pruning only after a representative
+      pruning workload is defined; exhaustive scans alone do not justify those APIs.
+
+### P3: release readiness
+
+- [ ] Before the next publish, review the public API diff and select the release version.
+- [ ] Run `just check`, `just memory-profile`, and `pnpm pack --dry-run`; rejected prototypes must
+      remain absent from the tarball.
+
+## v0.2.0: shared-memory and multithreading
+
+WebAssembly SIMD has no atomic `v128` load, store, or read-modify-write operation. Atomic mutation
+therefore stays scalar, bulk work stays SIMD, and the two must meet through locks, shard ownership,
+striped reduction, or immutable snapshots. Current Wasm atomic operations are sequentially
+consistent; do not expose weaker memory-ordering options that the target cannot implement.
+
+The public vocabulary should distinguish four contracts rather than using `Concurrent<T>` for
+everything:
+
+- `Atomic<T>`: linearizable scalar point updates
+- `Sharded<T>`: one writer owns each shard
+- `Striped<T>`: worker-local mutation followed by bulk reduction
+- `Snapshot<T>`: immutable versions published atomically
+
+Sources:
+[WebAssembly Threads overview](https://github.com/WebAssembly/threads/blob/main/proposals/threads/Overview.md#atomic-memory-accesses),
+[`Atomics.wait`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics/wait),
+and
+[`Atomics.waitAsync`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics/waitAsync).
+
+### Phase 0: shared-memory ABI and test harness
+
+- [ ] Define `SharedBuffer`, alignment, cache-line padding, headers, versioning, worker IDs, and
+      attach/detach ownership. Shared structures must be views over an explicitly shared backing
+      memory, not hidden module-local memories.
+- [ ] Define how independently instantiated worker modules import the same shared
+      `WebAssembly.Memory`, including fixed maximum pages and feature detection.
+- [ ] Specify `using` semantics for shared leases, snapshots, and handles separately from ownership
+      of the backing memory.
+- [ ] Build deterministic Node Worker, Deno Worker, and Vite/browser worker tests. Add contention,
+      linearizability, stale-handle, worker-termination, and allocator-plateau cases.
+- [ ] Benchmark 1/2/4/8 workers against `postMessage`, JavaScript `SharedArrayBuffer` + `Atomics`,
+      and single-threaded SIMD. Report throughput, tail latency, contention, and false-sharing
+      effects.
+
+### Phase 1: synchronization and allocation
+
+- [ ] Implement worker-blocking `Mutex`, `Barrier`, and `WaitGroup` first; expose asynchronous
+      main-thread waits through `Atomics.waitAsync` rather than blocking `Atomics.wait`.
+- [ ] Add `RwLock`, `Condvar`, `Semaphore`, and `OnceCell` only when a consumer requires them.
+- [ ] Implement `SharedBlockPool` with fixed 256-byte, 1 KiB, and 4 KiB size classes, a global
+      atomic bump pointer, per-worker caches, and mutex-protected free lists. Defer lock-free free
+      lists until ABA-safe reclamation exists.
+
+### Phase 2: transport and handles
+
+- [ ] Implement fixed-payload `SpscRingBuffer` with cache-line-separated head/tail fields and bulk
+      `pushMany` / `popMany` SIMD copies.
+- [ ] Implement sequence-numbered `MpmcRingBuffer` only after SPSC semantics and benchmarks are
+      stable. Queue fixed-width integer handles rather than JavaScript objects.
+- [ ] Implement `SharedSlotMap` with generation-tagged 64-bit handles, atomic slot state, fixed-size
+      payloads, and stale-handle/ABA detection.
+
+### Phase 3: bitmap and reduction primitives
+
+- [ ] Implement `AtomicDenseBitmap` scalar RMW operations: `set`, `clear`, `toggle`, `testAndSet`,
+      and `testAndClear`. Concurrent bulk reads must not claim snapshot consistency.
+- [ ] Implement `ShardedBitmap` with worker-owned mutable `DenseBitmap` or `RoaringBitmap` shards
+      and barrier-delimited SIMD OR/AND snapshot reduction.
+- [ ] Implement `StripedCounter`, `StripedHistogram`, and `StripedDenseBitmap`; reuse the reduction
+      pattern later for Bloom filters, min/max, and approximate sketches.
+- [ ] Evaluate concurrent Bloom filters as worker-local filters plus SIMD OR first. Atomic OR with
+      concurrent queries must either document temporary false negatives or add versioned blocks.
+
+### Phase 4: immutable publication and scheduling
+
+- [ ] Implement `SnapshotCell` / `VersionedBuffer` with double buffering, atomic publication, reader
+      guards, and safe buffer reuse. Readers must only run SIMD over immutable published regions.
+- [ ] Implement a fixed-capacity or segmented `WorkStealingDeque` of integer task handles, with
+      owner bottom operations and CAS-based stealing.
+- [ ] Implement `EpochDomain` only when snapshot reuse or segmented lock-free structures cannot be
+      handled by locks or barriers.
+
+### Phase 5: derived concurrent collections
+
+- [ ] Evaluate `ShardedHashMap` using a mutex per shard and the existing SIMD fingerprint table.
+- [ ] Evaluate `StripedRoaringBitmap`, `ConcurrentSplitBlockBloomFilter`, `ShardedOrderedMap`,
+      `MultiQueuePriorityQueue`, and `ConcurrentAppendLog` only on representative workloads.
+- [ ] Do not start with a fully lock-free hash map. Admit an upper-level collection only when it
+      beats the best sharded JavaScript or shared-memory baseline end to end.
 
 Do not add symmetric names such as `SimdFloat32Array`, `SimdInt32Vector`, or a standalone
 `BitVector` without a measured workload that wins after boundary costs.
@@ -82,7 +171,6 @@ These are not package exports. Revisit one only with a materially different layo
 - `SimdOrderedIndex`
 - `MortonSpatialIndex`
 - `UltraLogLog`
-- `BitHistogram32`
 
 ## Definition of done
 

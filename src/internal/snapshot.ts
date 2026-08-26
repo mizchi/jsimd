@@ -13,6 +13,7 @@ export const SnapshotKind = Object.freeze(
     CompressedStringTable: 5,
     EliasFanoSequence: 6,
     BinaryVectorIndex: 7,
+    WaveletMatrixUint16: 8,
   } as const,
 );
 

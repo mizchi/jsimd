@@ -1,22 +1,40 @@
 import {
+  decode_dictionary as wasmDecodeDictionary,
   decode_for as wasmDecodeFor,
   decode_raw as wasmDecodeRaw,
+  decode_rle as wasmDecodeRle,
+  decode_sparse as wasmDecodeSparse,
+  gather_dictionary as wasmGatherDictionary,
   gather_for as wasmGatherFor,
   gather_raw as wasmGatherRaw,
+  gather_rle as wasmGatherRle,
+  gather_sparse as wasmGatherSparse,
   mask_and as wasmMaskAnd,
   mask_andnot as wasmMaskAndNot,
   mask_count as wasmMaskCount,
   mask_not as wasmMaskNot,
   mask_or as wasmMaskOr,
   memory,
+  scan_between_dictionary as wasmScanBetweenDictionary,
   scan_between_for as wasmScanBetweenFor,
   scan_between_raw as wasmScanBetweenRaw,
+  scan_between_rle as wasmScanBetweenRle,
+  scan_between_sparse as wasmScanBetweenSparse,
+  scan_eq_dictionary as wasmScanEqDictionary,
   scan_eq_for as wasmScanEqFor,
   scan_eq_raw as wasmScanEqRaw,
+  scan_eq_rle as wasmScanEqRle,
+  scan_eq_sparse as wasmScanEqSparse,
+  scan_lt_dictionary as wasmScanLtDictionary,
   scan_lt_for as wasmScanLtFor,
   scan_lt_raw as wasmScanLtRaw,
+  scan_lt_rle as wasmScanLtRle,
+  scan_lt_sparse as wasmScanLtSparse,
+  sum_dictionary as wasmSumDictionary,
   sum_for as wasmSumFor,
   sum_raw as wasmSumRaw,
+  sum_rle as wasmSumRle,
+  sum_sparse as wasmSumSparse,
 } from "./kernels.wasm";
 import {
   type Allocation,
@@ -31,12 +49,18 @@ const allocator = new LinearMemoryAllocator(memory);
 
 export const AdaptivePageEncoding: Readonly<{
   Constant: "constant";
+  Dictionary: "dictionary";
   FrameOfReference: "frame-of-reference";
+  RunLength: "run-length";
+  Sparse: "sparse";
   Raw: "raw";
 }> = Object.freeze(
   {
     Constant: "constant",
+    Dictionary: "dictionary",
     FrameOfReference: "frame-of-reference",
+    RunLength: "run-length",
+    Sparse: "sparse",
     Raw: "raw",
   } as const,
 );
@@ -158,6 +182,12 @@ export class AdaptiveSimdPageI32 {
   readonly encodedBytes: number;
   readonly #allocation: Allocation;
   readonly #packedWords: number;
+  readonly #runCount: number;
+  readonly #dictionaryCardinality: number;
+  readonly #dictionaryCodesOffset: number;
+  readonly #sparseExceptionCount: number;
+  readonly #sparseValuesOffset: number;
+  readonly #sparseDefault: number;
   #disposed = false;
 
   private constructor(values: Int32Array) {
@@ -178,16 +208,117 @@ export class AdaptiveSimdPageI32 {
       this.bitWidth = 0;
       this.encodedBytes = 0;
       this.#packedWords = 0;
+      this.#runCount = 0;
+      this.#dictionaryCardinality = 0;
+      this.#dictionaryCodesOffset = 0;
+      this.#sparseExceptionCount = 0;
+      this.#sparseValuesOffset = 0;
+      this.#sparseDefault = minimum;
       this.#allocation = allocator.allocate(0);
       return;
     }
 
     const bitWidth = Math.ceil(Math.log2(range + 1));
+    const runs = packRunLength(values);
+    const sparse = packSparse(values, 64);
+    const alternativeBytes = bitWidth <= 16
+      ? Math.ceil(values.length * bitWidth / 32) * 4
+      : values.byteLength;
+    const dictionary = values.length + 16 < Math.min(
+        runs.byteLength,
+        sparse?.encodedBytes ?? Number.POSITIVE_INFINITY,
+        alternativeBytes,
+      )
+      ? packDictionary(values, 16)
+      : undefined;
+    if (
+      sparse !== undefined &&
+      sparse.encodedBytes < Math.min(
+          runs.byteLength,
+          dictionary?.encodedBytes ?? Number.POSITIVE_INFINITY,
+          alternativeBytes,
+        )
+    ) {
+      this.encoding = AdaptivePageEncoding.Sparse;
+      this.bitWidth = 0;
+      this.#packedWords = 0;
+      this.#runCount = 0;
+      this.#dictionaryCardinality = 0;
+      this.#dictionaryCodesOffset = 0;
+      this.#sparseExceptionCount = sparse.exceptionCount;
+      this.#sparseValuesOffset = sparse.valuesOffset;
+      this.#sparseDefault = sparse.defaultValue;
+      this.encodedBytes = sparse.encodedBytes;
+      const allocation = allocator.allocate(sparse.payload.byteLength);
+      try {
+        new Uint8Array(memory.buffer, allocation.pointer, sparse.payload.length).set(
+          sparse.payload,
+        );
+      } catch (error) {
+        allocator.release(allocation);
+        throw error;
+      }
+      this.#allocation = allocation;
+      return;
+    }
+    if (
+      dictionary !== undefined &&
+      dictionary.encodedBytes < Math.min(runs.byteLength, alternativeBytes)
+    ) {
+      this.encoding = AdaptivePageEncoding.Dictionary;
+      this.bitWidth = 0;
+      this.#packedWords = 0;
+      this.#runCount = 0;
+      this.#dictionaryCardinality = dictionary.cardinality;
+      this.#dictionaryCodesOffset = dictionary.codesOffset;
+      this.#sparseExceptionCount = 0;
+      this.#sparseValuesOffset = 0;
+      this.#sparseDefault = minimum;
+      this.encodedBytes = dictionary.encodedBytes;
+      const allocation = allocator.allocate(dictionary.payload.byteLength);
+      try {
+        new Uint8Array(memory.buffer, allocation.pointer, dictionary.payload.length).set(
+          dictionary.payload,
+        );
+      } catch (error) {
+        allocator.release(allocation);
+        throw error;
+      }
+      this.#allocation = allocation;
+      return;
+    }
+    if (runs.byteLength < alternativeBytes) {
+      this.encoding = AdaptivePageEncoding.RunLength;
+      this.bitWidth = 0;
+      this.#packedWords = 0;
+      this.#runCount = runs.length >>> 1;
+      this.#dictionaryCardinality = 0;
+      this.#dictionaryCodesOffset = 0;
+      this.#sparseExceptionCount = 0;
+      this.#sparseValuesOffset = 0;
+      this.#sparseDefault = minimum;
+      this.encodedBytes = runs.byteLength;
+      const allocation = allocator.allocate(runs.byteLength);
+      try {
+        new Int32Array(memory.buffer, allocation.pointer, runs.length).set(runs);
+      } catch (error) {
+        allocator.release(allocation);
+        throw error;
+      }
+      this.#allocation = allocation;
+      return;
+    }
     if (bitWidth <= 16) {
       this.encoding = AdaptivePageEncoding.FrameOfReference;
       this.bitWidth = bitWidth;
       const packed = packFrameOfReference(values, minimum, bitWidth);
       this.#packedWords = packed.length;
+      this.#runCount = 0;
+      this.#dictionaryCardinality = 0;
+      this.#dictionaryCodesOffset = 0;
+      this.#sparseExceptionCount = 0;
+      this.#sparseValuesOffset = 0;
+      this.#sparseDefault = minimum;
       this.encodedBytes = packed.byteLength;
       const allocation = allocator.allocate(packed.byteLength);
       try {
@@ -203,6 +334,12 @@ export class AdaptiveSimdPageI32 {
     this.encoding = AdaptivePageEncoding.Raw;
     this.bitWidth = 32;
     this.#packedWords = 0;
+    this.#runCount = 0;
+    this.#dictionaryCardinality = 0;
+    this.#dictionaryCodesOffset = 0;
+    this.#sparseExceptionCount = 0;
+    this.#sparseValuesOffset = 0;
+    this.#sparseDefault = minimum;
     this.encodedBytes = values.byteLength;
     const paddedLength = (values.length + 3) & ~3;
     const allocation = allocator.allocate(paddedLength * 4);
@@ -237,6 +374,45 @@ export class AdaptiveSimdPageI32 {
     if (this.encoding === AdaptivePageEncoding.Raw) {
       return new Int32Array(memory.buffer, this.#allocation.pointer, this.length)[index]!;
     }
+    if (this.encoding === AdaptivePageEncoding.Dictionary) {
+      const code = new Uint8Array(
+        memory.buffer,
+        this.#allocation.pointer + this.#dictionaryCodesOffset,
+        this.length,
+      )[index]!;
+      return new Int32Array(
+        memory.buffer,
+        this.#allocation.pointer,
+        this.#dictionaryCardinality,
+      )[code]!;
+    }
+    if (this.encoding === AdaptivePageEncoding.Sparse) {
+      const positions = new Uint8Array(
+        memory.buffer,
+        this.#allocation.pointer,
+        this.#sparseExceptionCount,
+      );
+      let low = 0;
+      let high = positions.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (positions[middle]! < index) low = middle + 1;
+        else high = middle;
+      }
+      if (positions[low] !== index) return this.#sparseDefault;
+      return new Int32Array(
+        memory.buffer,
+        this.#allocation.pointer + this.#sparseValuesOffset,
+        this.#sparseExceptionCount,
+      )[low]!;
+    }
+    if (this.encoding === AdaptivePageEncoding.RunLength) {
+      const runs = new Int32Array(memory.buffer, this.#allocation.pointer, this.#runCount * 2);
+      for (let run = 0; run < this.#runCount; run++) {
+        if (index < runs[run * 2 + 1]!) return runs[run * 2]!;
+      }
+      throw new Error("invalid RLE page");
+    }
     const words = new Uint32Array(memory.buffer, this.#allocation.pointer, this.#packedWords);
     return this.min + packedAt(words, this.bitWidth, index);
   }
@@ -254,6 +430,24 @@ export class AdaptiveSimdPageI32 {
     try {
       if (this.encoding === AdaptivePageEncoding.Raw) {
         wasmDecodeRaw(this.#allocation.pointer, scratch.pointer, this.length);
+      } else if (this.encoding === AdaptivePageEncoding.Dictionary) {
+        wasmDecodeDictionary(
+          this.#allocation.pointer,
+          this.#allocation.pointer + this.#dictionaryCodesOffset,
+          scratch.pointer,
+          this.length,
+        );
+      } else if (this.encoding === AdaptivePageEncoding.Sparse) {
+        wasmDecodeSparse(
+          this.#allocation.pointer,
+          this.#allocation.pointer + this.#sparseValuesOffset,
+          scratch.pointer,
+          this.length,
+          this.#sparseExceptionCount,
+          this.#sparseDefault,
+        );
+      } else if (this.encoding === AdaptivePageEncoding.RunLength) {
+        wasmDecodeRle(this.#allocation.pointer, scratch.pointer, this.#runCount);
       } else {
         wasmDecodeFor(
           this.#allocation.pointer,
@@ -281,6 +475,17 @@ export class AdaptiveSimdPageI32 {
     if (this.encoding === AdaptivePageEncoding.Constant) return this.min * this.length;
     const sum = this.encoding === AdaptivePageEncoding.Raw
       ? wasmSumRaw(this.#allocation.pointer, this.length)
+      : this.encoding === AdaptivePageEncoding.Dictionary
+      ? wasmSumDictionary(this.#allocation.pointer, this.#dictionaryCardinality)
+      : this.encoding === AdaptivePageEncoding.Sparse
+      ? wasmSumSparse(
+        this.#allocation.pointer + this.#sparseValuesOffset,
+        this.length,
+        this.#sparseExceptionCount,
+        this.#sparseDefault,
+      )
+      : this.encoding === AdaptivePageEncoding.RunLength
+      ? wasmSumRle(this.#allocation.pointer, this.#runCount)
       : wasmSumFor(this.#allocation.pointer, this.length, this.bitWidth, this.min);
     return Number(sum);
   }
@@ -294,6 +499,27 @@ export class AdaptiveSimdPageI32 {
     if (this.encoding === AdaptivePageEncoding.Constant) return output.fill();
     if (this.encoding === AdaptivePageEncoding.Raw) {
       wasmScanEqRaw(this.#allocation.pointer, mask.allocation.pointer, this.length, target);
+    } else if (this.encoding === AdaptivePageEncoding.Dictionary) {
+      wasmScanEqDictionary(
+        this.#allocation.pointer,
+        this.#allocation.pointer + this.#dictionaryCodesOffset,
+        mask.allocation.pointer,
+        this.length,
+        this.#dictionaryCardinality,
+        target,
+      );
+    } else if (this.encoding === AdaptivePageEncoding.Sparse) {
+      wasmScanEqSparse(
+        this.#allocation.pointer,
+        this.#allocation.pointer + this.#sparseValuesOffset,
+        mask.allocation.pointer,
+        this.length,
+        this.#sparseExceptionCount,
+        this.#sparseDefault,
+        target,
+      );
+    } else if (this.encoding === AdaptivePageEncoding.RunLength) {
+      wasmScanEqRle(this.#allocation.pointer, mask.allocation.pointer, this.#runCount, target);
     } else {
       wasmScanEqFor(
         this.#allocation.pointer,
@@ -345,6 +571,35 @@ export class AdaptiveSimdPageI32 {
         lower,
         upper,
       );
+    } else if (this.encoding === AdaptivePageEncoding.Dictionary) {
+      wasmScanBetweenDictionary(
+        this.#allocation.pointer,
+        this.#allocation.pointer + this.#dictionaryCodesOffset,
+        mask.allocation.pointer,
+        this.length,
+        this.#dictionaryCardinality,
+        lower,
+        upper,
+      );
+    } else if (this.encoding === AdaptivePageEncoding.Sparse) {
+      wasmScanBetweenSparse(
+        this.#allocation.pointer,
+        this.#allocation.pointer + this.#sparseValuesOffset,
+        mask.allocation.pointer,
+        this.length,
+        this.#sparseExceptionCount,
+        this.#sparseDefault,
+        lower,
+        upper,
+      );
+    } else if (this.encoding === AdaptivePageEncoding.RunLength) {
+      wasmScanBetweenRle(
+        this.#allocation.pointer,
+        mask.allocation.pointer,
+        this.#runCount,
+        lower,
+        upper,
+      );
     } else {
       wasmScanBetweenFor(
         this.#allocation.pointer,
@@ -380,6 +635,31 @@ export class AdaptiveSimdPageI32 {
           scratch.pointer,
           this.length,
         )
+        : this.encoding === AdaptivePageEncoding.Dictionary
+        ? wasmGatherDictionary(
+          this.#allocation.pointer,
+          this.#allocation.pointer + this.#dictionaryCodesOffset,
+          mask.allocation.pointer,
+          scratch.pointer,
+          this.length,
+        )
+        : this.encoding === AdaptivePageEncoding.Sparse
+        ? wasmGatherSparse(
+          this.#allocation.pointer,
+          this.#allocation.pointer + this.#sparseValuesOffset,
+          mask.allocation.pointer,
+          scratch.pointer,
+          this.length,
+          this.#sparseExceptionCount,
+          this.#sparseDefault,
+        )
+        : this.encoding === AdaptivePageEncoding.RunLength
+        ? wasmGatherRle(
+          this.#allocation.pointer,
+          mask.allocation.pointer,
+          scratch.pointer,
+          this.#runCount,
+        )
         : wasmGatherFor(
           this.#allocation.pointer,
           mask.allocation.pointer,
@@ -408,6 +688,27 @@ export class AdaptiveSimdPageI32 {
   #scanLtKernel(value: number, mask: MaskState): void {
     if (this.encoding === AdaptivePageEncoding.Raw) {
       wasmScanLtRaw(this.#allocation.pointer, mask.allocation.pointer, this.length, value);
+    } else if (this.encoding === AdaptivePageEncoding.Dictionary) {
+      wasmScanLtDictionary(
+        this.#allocation.pointer,
+        this.#allocation.pointer + this.#dictionaryCodesOffset,
+        mask.allocation.pointer,
+        this.length,
+        this.#dictionaryCardinality,
+        value,
+      );
+    } else if (this.encoding === AdaptivePageEncoding.Sparse) {
+      wasmScanLtSparse(
+        this.#allocation.pointer,
+        this.#allocation.pointer + this.#sparseValuesOffset,
+        mask.allocation.pointer,
+        this.length,
+        this.#sparseExceptionCount,
+        this.#sparseDefault,
+        value,
+      );
+    } else if (this.encoding === AdaptivePageEncoding.RunLength) {
+      wasmScanLtRle(this.#allocation.pointer, mask.allocation.pointer, this.#runCount, value);
     } else {
       wasmScanLtFor(
         this.#allocation.pointer,
@@ -544,7 +845,10 @@ export class SimdColumnMask {
 
 export interface AdaptivePageEncodingCounts {
   readonly constant: number;
+  readonly dictionary: number;
   readonly frameOfReference: number;
+  readonly runLength: number;
+  readonly sparse: number;
   readonly raw: number;
 }
 
@@ -646,14 +950,20 @@ export class AdaptiveSimdColumnI32 {
   encodingCounts(): AdaptivePageEncodingCounts {
     this.#assertAlive();
     let constant = 0;
+    let dictionary = 0;
     let frameOfReference = 0;
+    let runLength = 0;
+    let sparse = 0;
     let raw = 0;
     for (const page of this.#pages) {
       if (page.encoding === AdaptivePageEncoding.Constant) constant++;
+      else if (page.encoding === AdaptivePageEncoding.Dictionary) dictionary++;
       else if (page.encoding === AdaptivePageEncoding.FrameOfReference) frameOfReference++;
+      else if (page.encoding === AdaptivePageEncoding.RunLength) runLength++;
+      else if (page.encoding === AdaptivePageEncoding.Sparse) sparse++;
       else raw++;
     }
-    return Object.freeze({ constant, frameOfReference, raw });
+    return Object.freeze({ constant, dictionary, frameOfReference, runLength, sparse, raw });
   }
 
   scanEq(value: number, output: SimdColumnMask): SimdColumnMask {
@@ -741,6 +1051,108 @@ function packFrameOfReference(values: Int32Array, base: number, bitWidth: number
     }
   }
   return words;
+}
+
+function packRunLength(values: Int32Array): Int32Array {
+  const pairs = new Int32Array(values.length * 2);
+  let runCount = 0;
+  let value = values[0]!;
+  for (let index = 1; index <= values.length; index++) {
+    if (index < values.length && values[index] === value) continue;
+    pairs[runCount * 2] = value;
+    pairs[runCount * 2 + 1] = index;
+    runCount++;
+    if (index < values.length) value = values[index]!;
+  }
+  return pairs.slice(0, runCount * 2);
+}
+
+interface PackedDictionary {
+  readonly cardinality: number;
+  readonly codesOffset: number;
+  readonly encodedBytes: number;
+  readonly payload: Uint8Array;
+}
+
+interface PackedSparse {
+  readonly defaultValue: number;
+  readonly exceptionCount: number;
+  readonly valuesOffset: number;
+  readonly encodedBytes: number;
+  readonly payload: Uint8Array;
+}
+
+function packSparse(values: Int32Array, maxExceptions: number): PackedSparse | undefined {
+  let defaultValue = 0;
+  let balance = 0;
+  for (const value of values) {
+    if (balance === 0) {
+      defaultValue = value;
+      balance = 1;
+    } else if (value === defaultValue) {
+      balance++;
+    } else {
+      balance--;
+    }
+  }
+  let defaultCount = 0;
+  for (const value of values) {
+    if (value === defaultValue) defaultCount++;
+  }
+  const exceptionCount = values.length - defaultCount;
+  if (
+    exceptionCount === 0 || exceptionCount > maxExceptions || exceptionCount * 4 > values.length
+  ) {
+    return undefined;
+  }
+  const valuesOffset = (exceptionCount + 3) & ~3;
+  const encodedBytes = valuesOffset + exceptionCount * 4;
+  const payload = new Uint8Array((encodedBytes + 15) & ~15);
+  const positions = payload.subarray(0, exceptionCount);
+  const exceptions = new Int32Array(payload.buffer, valuesOffset, exceptionCount);
+  let written = 0;
+  for (let index = 0; index < values.length; index++) {
+    if (values[index] === defaultValue) continue;
+    positions[written] = index;
+    exceptions[written] = values[index]!;
+    written++;
+  }
+  return { defaultValue, exceptionCount, valuesOffset, encodedBytes, payload };
+}
+
+function packDictionary(values: Int32Array, maxCardinality: number): PackedDictionary | undefined {
+  const entries: number[] = [];
+  for (const value of values) {
+    const position = dictionaryLowerBound(entries, value);
+    if (entries[position] === value) continue;
+    if (entries.length === maxCardinality) return undefined;
+    entries.splice(position, 0, value);
+  }
+
+  const cardinality = entries.length;
+  const codesOffset = cardinality * 8;
+  const encodedBytes = codesOffset + values.length;
+  const payload = new Uint8Array((encodedBytes + 15) & ~15);
+  new Int32Array(payload.buffer, 0, cardinality).set(entries);
+  const counts = new Uint32Array(payload.buffer, cardinality * 4, cardinality);
+  const codes = payload.subarray(codesOffset, codesOffset + values.length);
+  for (let index = 0; index < values.length; index++) {
+    const code = dictionaryLowerBound(entries, values[index]!);
+    codes[index] = code;
+    counts[code] = counts[code]! + 1;
+  }
+  return { cardinality, codesOffset, encodedBytes, payload };
+}
+
+function dictionaryLowerBound(values: ArrayLike<number>, target: number): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (values[middle]! < target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
 }
 
 function packedAt(words: Uint32Array, bitWidth: number, index: number): number {

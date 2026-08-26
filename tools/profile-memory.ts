@@ -7,6 +7,7 @@ import {
   PdxFloat32Index,
 } from "../src/binary-vector-index/mod.ts";
 import { BitMatrix, SparseBitMatrix } from "../src/bit-matrix/mod.ts";
+import { BitHistogram32 } from "../src/bit-histogram32/mod.ts";
 import { BlockedBloomFilterU32 } from "../src/blocked-bloom-filter/mod.ts";
 import { BlockedVectorArray } from "../src/blocked-vector-array/mod.ts";
 import { BitSlicedColumnU8, BitSliceMask } from "../src/bit-sliced-column/mod.ts";
@@ -37,10 +38,10 @@ import { SimdMatrix3D } from "../src/matrix3d/mod.ts";
 import { PackedDeltaUint32List } from "../src/packed-delta-uint32-list/mod.ts";
 import { RankSelectBitVector } from "../src/rank-select-bit-vector/mod.ts";
 import { RoaringBitmap } from "../src/roaring-bitmap/mod.ts";
-import { FrozenByteMapU32, StaticMphfBytes } from "../src/static-mphf-bytes/mod.ts";
 import { StaticMphfU32 } from "../src/static-mphf-u32/mod.ts";
 import { WaveletMatrixUint32 } from "../src/wavelet-matrix-uint32/mod.ts";
 import { WaveletMatrixUint8 } from "../src/wavelet-matrix-uint8/mod.ts";
+import { WaveletMatrixUint16 } from "../src/wavelet-matrix-uint16/mod.ts";
 
 interface AllocatorStats {
   readonly liveAllocations: number;
@@ -89,12 +90,26 @@ const i32Values = Int32Array.from(
   { length: U32_LENGTH },
   (_, index) => Math.imul(index, 1_664_525) | 0,
 );
+const adaptiveRleValues = Int32Array.from(
+  { length: U32_LENGTH },
+  (_, index) => [-0x8000_0000, 7, 1_000_000, 0x7fff_ffff][(index >>> 6) & 3]!,
+);
+const adaptiveDictionaryValues = Int32Array.from(
+  { length: U32_LENGTH },
+  (_, index) => [-0x8000_0000, 7, 1_000_000, 0x7fff_ffff][Math.imul(index, 5) & 3]!,
+);
+const adaptiveSparseValues = Int32Array.from(
+  { length: U32_LENGTH },
+  (_, index) => (index & 7) === 0 ? Math.imul(index + 1, 0x6d2b_79f5) | 0 : -7,
+);
 const f32Values = Float32Array.from(i32Values, (value) => value / 0x8000_0000);
 const u8Values = Uint8Array.from(i32Values, (value) => value & 0xff);
+const u16Values = Uint16Array.from(i32Values, (value) => value & 0xffff);
 const u32Keys = Uint32Array.from(
   { length: U32_LENGTH },
   (_, index) => Math.imul(index, 0x9e37_79b1) >>> 0,
 );
+const histogramCounts = new Uint32Array(32);
 const monotoneValues = Uint32Array.from(
   { length: U32_LENGTH },
   (_, index) => index * 3 + Math.floor(index / 7),
@@ -167,6 +182,7 @@ const denseEdges = Array.from(
   (_, index) => [index & 63, Math.imul(index, 13) & 63] as const,
 );
 const waveletU8Snapshot = makeSnapshot(() => WaveletMatrixUint8.from(u8Values));
+const waveletU16Snapshot = makeSnapshot(() => WaveletMatrixUint16.from(u16Values));
 const fmSnapshot = makeSnapshot(() => FmIndexBytes.from(fmText));
 const compressedStringsSnapshot = makeSnapshot(() => CompressedStringTable.from(byteKeys));
 const waveletU32Snapshot = makeSnapshot(() => WaveletMatrixUint32.from(u32Keys));
@@ -208,7 +224,7 @@ const scenarios: readonly Scenario[] = [
     iterations: 500,
     run() {
       using value = SimdFloat32Vector.from(f32Values);
-      sink += value.dot(value);
+      sink += value.cosineSimilarity(value);
     },
     stats: () => SimdFloat32Vector.allocatorStats(),
   },
@@ -418,6 +434,15 @@ const scenarios: readonly Scenario[] = [
     stats: () => WaveletMatrixUint8.allocatorStats(),
   },
   {
+    name: "wavelet-matrix-u16",
+    iterations: 35,
+    run() {
+      using value = WaveletMatrixUint16.from(u16Values);
+      sink += value.quantile(0, value.length, value.length >>> 1);
+    },
+    stats: () => WaveletMatrixUint16.allocatorStats(),
+  },
+  {
     name: "fm-index-bytes",
     iterations: 20,
     run() {
@@ -489,9 +514,22 @@ const scenarios: readonly Scenario[] = [
     iterations: 100,
     run() {
       using value = BlockedVectorArray.from(vectorValues, VECTOR_COUNT, VECTOR_DIMENSIONS);
-      sink += value.squaredDistanceMany(vectorQuery, pdxOutput)[0]!;
+      sink += value.topKInto(vectorQuery, topIds, topDistances);
+      sink += value.l1DistanceMany(vectorQuery, pdxOutput)[0]!;
+      sink += value.innerProductMany(vectorQuery, pdxOutput)[0]!;
+      sink += value.topKInnerProductInto(vectorQuery, topIds, topDistances);
     },
     stats: () => BlockedVectorArray.allocatorStats(),
+  },
+  {
+    name: "bit-histogram32",
+    iterations: 500,
+    run() {
+      using value = new BitHistogram32();
+      value.add(u32Keys).writeInto(histogramCounts);
+      sink += histogramCounts[0]!;
+    },
+    stats: () => BitHistogram32.allocatorStats(),
   },
   {
     name: "binary-rerank-index",
@@ -505,24 +543,6 @@ const scenarios: readonly Scenario[] = [
       sink += value.topK(vectorQuery, 16, 64, topIds, topDistances);
     },
     stats: () => BinaryVectorIndex.allocatorStats(),
-  },
-  {
-    name: "static-mphf-bytes",
-    iterations: 100,
-    run() {
-      using value = StaticMphfBytes.from(byteKeys);
-      sink += value.lookup(byteKeys[512]!);
-    },
-    stats: () => StaticMphfBytes.allocatorStats(),
-  },
-  {
-    name: "frozen-byte-map",
-    iterations: 100,
-    run() {
-      using value = FrozenByteMapU32.from(byteEntries);
-      sink += value.get(byteKeys[512]!) ?? 0;
-    },
-    stats: () => FrozenByteMapU32.allocatorStats(),
   },
   {
     name: "static-mphf-u32",
@@ -540,6 +560,36 @@ const scenarios: readonly Scenario[] = [
       using value = AdaptiveSimdColumnI32.from(i32Values);
       using mask = new SimdColumnMask(value.length, value.pageSize);
       sink += value.scanLt(0, mask).countOnes();
+    },
+    stats: () => AdaptiveSimdColumnI32.allocatorStats(),
+  },
+  {
+    name: "adaptive-rle-column",
+    iterations: 250,
+    run() {
+      using value = AdaptiveSimdColumnI32.from(adaptiveRleValues);
+      using mask = new SimdColumnMask(value.length, value.pageSize);
+      sink += value.scanBetween(0, 2_000_000, mask).countOnes();
+    },
+    stats: () => AdaptiveSimdColumnI32.allocatorStats(),
+  },
+  {
+    name: "adaptive-dictionary-column",
+    iterations: 500,
+    run() {
+      using value = AdaptiveSimdColumnI32.from(adaptiveDictionaryValues);
+      using mask = new SimdColumnMask(value.length, value.pageSize);
+      sink += value.scanBetween(0, 2_000_000, mask).countOnes();
+    },
+    stats: () => AdaptiveSimdColumnI32.allocatorStats(),
+  },
+  {
+    name: "adaptive-sparse-column",
+    iterations: 1000,
+    run() {
+      using value = AdaptiveSimdColumnI32.from(adaptiveSparseValues);
+      using mask = new SimdColumnMask(value.length, value.pageSize);
+      sink += value.scanBetween(-7, -6, mask).countOnes();
     },
     stats: () => AdaptiveSimdColumnI32.allocatorStats(),
   },
@@ -570,6 +620,15 @@ const scenarios: readonly Scenario[] = [
       sink += value.length;
     },
     stats: () => WaveletMatrixUint8.allocatorStats(),
+  },
+  {
+    name: "snapshot-wavelet-matrix-u16",
+    iterations: 350,
+    run() {
+      using value = WaveletMatrixUint16.fromSnapshot(waveletU16Snapshot);
+      sink += value.length;
+    },
+    stats: () => WaveletMatrixUint16.allocatorStats(),
   },
   {
     name: "snapshot-fm-index-bytes",
@@ -682,10 +741,12 @@ function runScenario(scenario: Scenario): ProfileResult {
   const allocatorPlateau = samples.slice(1).every((value) =>
     samePlateau(value.allocator, samples[0]!.allocator)
   );
-  const tail = samples.slice(-4);
-  const hostPlateau = range(tail.map((value) => value.rss)) <= 2 * 1024 * 1024 &&
-    range(tail.map((value) => value.heapUsed)) <= 1024 * 1024 &&
-    range(tail.map((value) => value.external)) <= 1024 * 1024;
+  // Compare the final three post-GC generations. RSS remains an informational high-water mark:
+  // V8/Wasm tier-up and libc can retain code or arena pages even when owned storage is released.
+  const tail = samples.slice(-3);
+  const hostPlateau = range(tail.map((value) => value.heapUsed)) <= 1024 * 1024 &&
+    range(tail.map((value) => value.external)) <= 1024 * 1024 &&
+    range(tail.map((value) => value.arrayBuffers)) <= 1024 * 1024;
   return {
     name: scenario.name,
     cycles: scenario.iterations * ROUNDS,

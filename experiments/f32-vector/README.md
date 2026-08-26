@@ -9,6 +9,9 @@ import { SimdFloat32Vector } from "@mizchi/jsimd/f32-vector";
 using x = SimdFloat32Vector.from(new Float32Array([1, 2, 3, 4]));
 using y = SimdFloat32Vector.from(new Float32Array([2, 4, 6, 8]));
 x.dot(y); // 60
+x.squaredDistance(y);
+x.norm();
+x.cosineSimilarity(y);
 x.addScaled(y, 0.5);
 ```
 
@@ -26,6 +29,14 @@ Deno 2.6.4, Apple M5:
 
 These timings exclude the one-time copy performed by `from`. They model repeated operations over
 resident vectors.
+
+The Node 24 / Apple M5 derived-reduction workload over 16,384 elements measured squared distance at
+2.82 us versus 30.42 us scalar, norm at 2.66 us versus 33.51 us, and fused cosine similarity at 2.77
+us versus 66.25 us. The scalar cosine baseline also computes dot and both norms in one pass.
+
+The 16-element Node benchmark favored JavaScript slightly. The retained contract is repeated bulk
+work over resident vectors, not tiny or copy-inclusive calls. One-to-many dot was left to
+`BlockedVectorArray` rather than adding a second overlapping vector-array layout.
 
 ## Reproduce and compare
 

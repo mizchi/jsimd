@@ -31,6 +31,16 @@ function scalarSum(values: Int32Array): number {
   return total;
 }
 
+function scalarGather(values: Int32Array, mask: Uint32Array, output: Int32Array): number {
+  let written = 0;
+  for (let index = 0; index < values.length; index++) {
+    if ((mask[index >>> 5]! & (1 << (index & 31))) !== 0) {
+      output[written++] = values[index]!;
+    }
+  }
+  return written;
+}
+
 const cases = [
   ["constant", new Int32Array(256).fill(7), 7, 8],
   [
@@ -48,6 +58,35 @@ const cases = [
     -500_000_000,
     500_000_000,
   ],
+  [
+    "wide RLE",
+    Int32Array.from({ length: 256 }, (_, index) => {
+      if (index < 64) return -0x8000_0000;
+      if (index < 128) return 7;
+      if (index < 192) return 1_000_000;
+      return 0x7fff_ffff;
+    }),
+    0,
+    2_000_000,
+  ],
+  [
+    "wide dictionary",
+    Int32Array.from(
+      { length: 256 },
+      (_, index) => [-0x8000_0000, 7, 1_000_000, 0x7fff_ffff][Math.imul(index, 5) & 3]!,
+    ),
+    0,
+    2_000_000,
+  ],
+  [
+    "sparse default",
+    Int32Array.from(
+      { length: 256 },
+      (_, index) => (index & 7) === 0 ? Math.imul(index + 1, 0x6d2b_79f5) | 0 : -7,
+    ),
+    -7,
+    -6,
+  ],
 ] as const;
 
 describe.each(cases)("AdaptiveSimdPageI32 %s", (_name, values, minimum, maximum) => {
@@ -55,6 +94,9 @@ describe.each(cases)("AdaptiveSimdPageI32 %s", (_name, values, minimum, maximum)
   const selection = new SimdPageMask(values.length);
   const scalarMask = new Uint32Array(Math.ceil(values.length / 32));
   const decoded = new Int32Array(values.length);
+  const gathered = new Int32Array(values.length);
+  page.scanBetween(minimum, maximum, selection);
+  scalarBetween(values, minimum, maximum, scalarMask);
 
   afterAll(() => {
     selection[Symbol.dispose]();
@@ -80,6 +122,20 @@ describe.each(cases)("AdaptiveSimdPageI32 %s", (_name, values, minimum, maximum)
   bench("Int32Array copy", () => {
     decoded.set(values);
     sink ^= decoded.length;
+  });
+  bench("adaptive gatherInto", () => {
+    sink ^= page.gatherInto(selection, gathered);
+  });
+  bench("Int32Array scalar gather", () => {
+    sink ^= scalarGather(values, scalarMask, gathered);
+  });
+  bench("adaptive construction", () => {
+    const created = AdaptiveSimdPageI32.from(values);
+    sink ^= created.encodedBytes;
+    created[Symbol.dispose]();
+  });
+  bench("Int32Array slice", () => {
+    sink ^= values.slice().length;
   });
 });
 

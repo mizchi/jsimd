@@ -10,12 +10,18 @@ using x = SimdFloat32Vector.from(new Float32Array([1, 2, 3, 4]));
 using y = SimdFloat32Vector.from(new Float32Array([2, 4, 6, 8]));
 
 x.dot(y); // 60
+x.squaredDistance(y); // 30
+x.norm(); // sqrt(30)
+x.cosineSimilarity(y); // 1
 x.addScaled(y, 0.5); // x += 0.5 * y
 ```
 
-`from` performs a one-time copy. `dot` and AXPY then cross the JavaScript/Wasm boundary once per
-whole operation. SIMD reduction changes floating-point association and is not bit-identical to a
-sequential JavaScript sum.
+`from` performs a one-time copy. Every reduction and AXPY then crosses the JavaScript/Wasm boundary
+once per whole operation. `cosineSimilarity` accumulates dot product and both squared norms in one
+fused pass. It returns `NaN` when either vector has zero norm.
+
+SIMD reduction changes floating-point association and is not bit-identical to a sequential
+JavaScript sum. All binary operations require equal logical lengths.
 
 Declare vectors with `using` to return the backing block to the allocator at scope exit.
 `SimdFloat32Vector.allocatorStats()` exposes allocator state for leak/plateau tests.
@@ -42,14 +48,30 @@ pnpm bench:compare:f32-vector
 Vitest baseline JSON and the complete benchmark source live in
 [`experiments/f32-vector`](../../experiments/f32-vector).
 
+For 16,384 resident elements on Node 24 / Apple M5, the added reductions measured:
+
+| operation         | resident SIMD | scalar `Float32Array` | result       |
+| :---------------- | ------------: | --------------------: | :----------- |
+| squared distance  |       2.82 us |              30.42 us | 10.8x faster |
+| norm              |       2.66 us |              33.51 us | 12.6x faster |
+| cosine similarity |       2.77 us |              66.25 us | 23.9x faster |
+
+The scalar cosine baseline is already fused into one pass. These are resident-data measurements;
+construction is excluded. At 16 elements, the recorded dot and AXPY benchmark was slightly faster in
+JavaScript, so use typed arrays for tiny or one-shot work.
+
+A one-to-many `dotMany` API is intentionally not added here. That workload needs a matrix-like
+layout and is served by `BlockedVectorArray`; duplicating it on a single-vector abstraction would
+create overlapping performance contracts.
+
 ## Standalone build size
 
-The isolated Vite fixture emits one 0.22 kB Wasm asset (0.17 kB gzip) and a 4.60 kB minified JS
-wrapper (2.04 kB gzip). It emits no other jsimd Wasm module.
+The isolated Vite fixture emits one 0.50 kB Wasm asset (0.31 kB gzip) and a 4.90 kB minified JS
+wrapper (2.12 kB gzip). It emits no other jsimd Wasm module.
 
 Files:
 
 - `mod.ts`: public API and ownership contract
-- `kernels.wat`: SIMD dot-product and AXPY kernels
+- `kernels.wat`: SIMD dot, distance, norm, cosine, and AXPY kernels
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated, stripped, and validated by `just build`; Git-ignored

@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { StaticMphfBytes } from "../../src/static-mphf-bytes/mod.ts";
+import { StaticMphfBytes } from "./prototype/mod.ts";
 
 const LENGTH = 65_536;
 const QUERY_COUNT = 4096;
