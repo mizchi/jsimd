@@ -142,6 +142,7 @@ pnpm install
 just build
 just test
 just bench
+just memory-profile
 ```
 
 `just build` compiles each `src/<name>/kernels.wat` into its adjacent `kernels.wasm`. Generated Wasm
@@ -150,3 +151,9 @@ files have custom sections removed with `wasm-tools strip -a`, are checked with
 payload into `dist/`: compiled JavaScript, declarations, feature documentation, WAT sources, and the
 corresponding stripped Wasm binaries. The hand-written kernels do not require Binaryen; development
 only requires `wasm-tools` on `PATH`.
+
+`just memory-profile` runs every owning data structure in an isolated Node process with explicit GC.
+It fails if live Wasm allocations do not return to baseline, allocator capacity keeps growing after
+warmup, or host RSS/heap/external memory does not plateau over the final rounds. Peak RSS is
+reported separately because V8 may retain committed heap pages after the live objects have been
+collected.

@@ -98,6 +98,9 @@ build:
 build-package: build
     deno run -A tools/build-package.ts
 
+memory-profile: build
+    node --no-warnings --expose-gc tools/profile-memory.ts
+
 package-smoke: build-package
     deno run -A tools/smoke-package.ts
 
