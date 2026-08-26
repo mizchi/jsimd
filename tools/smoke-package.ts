@@ -19,10 +19,30 @@ try {
   );
 
   const expression =
-    `import { DenseBitmap } from "${metadata.name}/bitmap"; import { RankSelectBitmap } from "${metadata.name}/rank-select-bitmap"; import { RoaringBitmap } from "${metadata.name}/roaring-bitmap"; using bits = DenseBitmap.from(128, [1, 10]); using ranked = RankSelectBitmap.from(128, [1, 10]); using roaring = RoaringBitmap.from([1, 10]); if (bits.countOnes() !== 2 || ranked.rank1(128) !== 2 || roaring.size !== 2) throw new Error("unexpected SIMD result");`;
+    `import { DenseBitmap } from "${metadata.name}/bitmap"; import { BitVector } from "${metadata.name}/bit-vector"; import { RoaringBitmap } from "${metadata.name}/roaring-bitmap"; using bits = DenseBitmap.from(128, [1, 10]); using ranked = BitVector.from(128, [1, 10]); using roaring = RoaringBitmap.from([1, 10]); if (bits.countOnes() !== 2 || ranked.rank1(128) !== 2 || roaring.size !== 2) throw new Error("unexpected SIMD result");`;
   await run("node", ["--input-type=module", "--eval", expression], temporaryDirectory);
 
-  const installedModule = `${temporaryDirectory}/node_modules/${metadata.name}/dist/bitset/mod.js`;
+  for (
+    const removedSubpath of [
+      "bitset",
+      "rank-select-bitvector",
+      "rank-select-bitmap",
+      "roaring-uint32-set",
+      "static-mphf-bytes",
+    ]
+  ) {
+    await assertImportFails(`${metadata.name}/${removedSubpath}`, temporaryDirectory);
+  }
+
+  for (
+    const rejectedDirectory of ["static-mphf-bytes", "packed-uint32-array", "packed-delta-array"]
+  ) {
+    await assertPathMissing(
+      `${temporaryDirectory}/node_modules/${metadata.name}/dist/${rejectedDirectory}`,
+    );
+  }
+
+  const installedModule = `${temporaryDirectory}/node_modules/${metadata.name}/dist/bitmap/mod.js`;
   const denoExpression = `import { DenseBitmap } from ${
     JSON.stringify(installedModule)
   }; using bits = DenseBitmap.from(128, [1, 10]); if (bits.countOnes() !== 2) throw new Error("unexpected SIMD result");`;
@@ -31,10 +51,10 @@ try {
   await Deno.writeTextFile(
     `${temporaryDirectory}/consumer.ts`,
     `import { DenseBitmap } from "${metadata.name}/bitmap";
-import { RankSelectBitmap } from "${metadata.name}/rank-select-bitmap";
+import { BitVector } from "${metadata.name}/bit-vector";
 import { RoaringBitmap } from "${metadata.name}/roaring-bitmap";
 using bits = DenseBitmap.from(128, [1, 10]);
-using ranked = RankSelectBitmap.from(128, [1, 10]);
+using ranked = BitVector.from(128, [1, 10]);
 using roaring = RoaringBitmap.from([1, 10]);
 const count: number = bits.countOnes();
 const rank: number = ranked.rank1(128);
@@ -80,4 +100,24 @@ async function run(command: string, args: string[], cwd: string): Promise<string
     throw new Error(`${command} ${args.join(" ")} failed\n${stdout}${stderr}`);
   }
   return stdout;
+}
+
+async function assertImportFails(specifier: string, cwd: string): Promise<void> {
+  const result = await new Deno.Command("node", {
+    args: ["--input-type=module", "--eval", `await import(${JSON.stringify(specifier)})`],
+    cwd,
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  if (result.success) throw new Error(`removed package subpath still resolves: ${specifier}`);
+}
+
+async function assertPathMissing(path: string): Promise<void> {
+  try {
+    await Deno.stat(path);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return;
+    throw error;
+  }
+  throw new Error(`rejected implementation was included in the package: ${path}`);
 }

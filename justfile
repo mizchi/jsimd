@@ -1,7 +1,7 @@
 build:
     wasm-tools strip -a src/adaptive-simd-page-i32/kernels.wat -o src/adaptive-simd-page-i32/kernels.wasm
     wasm-tools strip -a src/bytes/kernels.wat -o src/bytes/kernels.wasm
-    wasm-tools strip -a src/bitset/kernels.wat -o src/bitset/kernels.wasm
+    wasm-tools strip -a src/bitmap/kernels.wat -o src/bitmap/kernels.wasm
     wasm-tools strip -a src/bit-matrix/kernels.wat -o src/bit-matrix/kernels.wasm
     wasm-tools strip -a src/byte-key-flat-hash/kernels.wat -o src/byte-key-flat-hash/kernels.wasm
     wasm-tools strip -a src/binary-vector-index/kernels.wat -o src/binary-vector-index/kernels.wasm
@@ -16,8 +16,8 @@ build:
     wasm-tools strip -a src/json/kernels.wat -o src/json/kernels.wasm
     wasm-tools strip -a src/matrix2d/kernels.wat -o src/matrix2d/kernels.wasm
     wasm-tools strip -a src/matrix3d/kernels.wat -o src/matrix3d/kernels.wasm
-    wasm-tools strip -a src/rank-select-bitvector/kernels.wat -o src/rank-select-bitvector/kernels.wasm
-    wasm-tools strip -a src/roaring-uint32-set/kernels.wat -o src/roaring-uint32-set/kernels.wasm
+    wasm-tools strip -a src/bit-vector/kernels.wat -o src/bit-vector/kernels.wasm
+    wasm-tools strip -a src/roaring-bitmap/kernels.wat -o src/roaring-bitmap/kernels.wasm
     wasm-tools strip -a src/static-mphf-u32/kernels.wat -o src/static-mphf-u32/kernels.wasm
     wasm-tools strip -a src/static-mphf-bytes/kernels.wat -o src/static-mphf-bytes/kernels.wasm
     wasm-tools strip -a src/packed-delta-uint32-list/kernels.wat -o src/packed-delta-uint32-list/kernels.wasm
@@ -27,7 +27,7 @@ build:
     wasm-tools strip -a src/compressed-string-table/kernels.wat -o src/compressed-string-table/kernels.wasm
     wasm-tools validate --features simd src/adaptive-simd-page-i32/kernels.wasm
     wasm-tools validate --features simd src/bytes/kernels.wasm
-    wasm-tools validate --features simd src/bitset/kernels.wasm
+    wasm-tools validate --features simd src/bitmap/kernels.wasm
     wasm-tools validate --features simd src/bit-matrix/kernels.wasm
     wasm-tools validate --features simd src/byte-key-flat-hash/kernels.wasm
     wasm-tools validate --features simd src/binary-vector-index/kernels.wasm
@@ -42,8 +42,8 @@ build:
     wasm-tools validate --features simd src/json/kernels.wasm
     wasm-tools validate --features simd src/matrix2d/kernels.wasm
     wasm-tools validate --features simd src/matrix3d/kernels.wasm
-    wasm-tools validate --features simd src/rank-select-bitvector/kernels.wasm
-    wasm-tools validate --features simd src/roaring-uint32-set/kernels.wasm
+    wasm-tools validate --features simd src/bit-vector/kernels.wasm
+    wasm-tools validate --features simd src/roaring-bitmap/kernels.wasm
     wasm-tools validate --features simd src/static-mphf-u32/kernels.wasm
     wasm-tools validate --features simd src/static-mphf-bytes/kernels.wasm
     wasm-tools validate --features simd src/packed-delta-uint32-list/kernels.wasm
@@ -55,8 +55,8 @@ build:
     ! wasm-tools print src/adaptive-simd-page-i32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/bytes/kernels.wasm | rg -q 'find_byte'
     ! wasm-tools print src/bytes/kernels.wasm | rg -q 'byte_swap32|json_token_starts|intersection_count|\(export "dot"'
-    wasm-tools print src/bitset/kernels.wasm | rg -q 'intersection_count'
-    ! wasm-tools print src/bitset/kernels.wasm | rg -q 'find_byte|\(export "dot"'
+    wasm-tools print src/bitmap/kernels.wasm | rg -q 'intersection_count'
+    ! wasm-tools print src/bitmap/kernels.wasm | rg -q 'find_byte|\(export "dot"'
     wasm-tools print src/bit-matrix/kernels.wasm | rg -q 'boolean_multiply|transpose|sparse_has|v128.any_true'
     wasm-tools print src/byte-key-flat-hash/kernels.wasm | rg -q 'lookup_many|insert_map_many|i8x16.bitmask'
     wasm-tools print src/binary-vector-index/kernels.wasm | rg -q 'distance_many|pdx_distance_many|pdx_distance_selected|i8x16.popcnt'
@@ -80,10 +80,10 @@ build:
     ! wasm-tools print src/matrix2d/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"'
     wasm-tools print src/matrix3d/kernels.wasm | rg -q 'batched_matmul'
     ! wasm-tools print src/matrix3d/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/rank-select-bitvector/kernels.wasm | rg -q 'build_rank_index|select1'
-    ! wasm-tools print src/rank-select-bitvector/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/roaring-uint32-set/kernels.wasm | rg -q 'bitmap_and_count|array_bitmap_and_into'
-    ! wasm-tools print src/roaring-uint32-set/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|\(export "dot"|\(export "matmul"'
+    wasm-tools print src/bit-vector/kernels.wasm | rg -q 'build_rank_index|select1'
+    ! wasm-tools print src/bit-vector/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|\(export "dot"|\(export "matmul"'
+    wasm-tools print src/roaring-bitmap/kernels.wasm | rg -q 'bitmap_and_count|array_bitmap_and_into'
+    ! wasm-tools print src/roaring-bitmap/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|\(export "dot"|\(export "matmul"'
     wasm-tools print src/static-mphf-u32/kernels.wasm | rg -q 'lookup_many|i32x4.mul'
     ! wasm-tools print src/static-mphf-u32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/static-mphf-bytes/kernels.wasm | rg -q 'lookup_many|lookup_values_many|i8x16.bitmask'
@@ -166,11 +166,11 @@ check: test package-smoke
     test "$(find examples/tree-shake-i32-array/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-i32-array/dist/assets/*.wasm | rg -q '\(export "sum"'
     ! wasm-tools print examples/tree-shake-i32-array/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"'
-    pnpm exec tsc -p examples/tree-shake-bitset/tsconfig.json
-    pnpm exec vite build examples/tree-shake-bitset
-    test "$(find examples/tree-shake-bitset/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
-    wasm-tools print examples/tree-shake-bitset/dist/assets/*.wasm | rg -q 'intersection_count'
-    ! wasm-tools print examples/tree-shake-bitset/dist/assets/*.wasm | rg -q '\(export "dot"'
+    pnpm exec tsc -p examples/tree-shake-bitmap/tsconfig.json
+    pnpm exec vite build examples/tree-shake-bitmap
+    test "$(find examples/tree-shake-bitmap/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-bitmap/dist/assets/*.wasm | rg -q 'intersection_count'
+    ! wasm-tools print examples/tree-shake-bitmap/dist/assets/*.wasm | rg -q '\(export "dot"'
     pnpm exec tsc -p examples/tree-shake-bit-matrix/tsconfig.json
     pnpm exec vite build examples/tree-shake-bit-matrix
     test "$(find examples/tree-shake-bit-matrix/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
@@ -201,16 +201,16 @@ check: test package-smoke
     test "$(find examples/tree-shake-matrix3d/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-matrix3d/dist/assets/*.wasm | rg -q 'batched_matmul'
     ! wasm-tools print examples/tree-shake-matrix3d/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"|\(export "matmul"'
-    pnpm exec tsc -p examples/tree-shake-rank-select-bitvector/tsconfig.json
-    pnpm exec vite build examples/tree-shake-rank-select-bitvector
-    test "$(find examples/tree-shake-rank-select-bitvector/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
-    wasm-tools print examples/tree-shake-rank-select-bitvector/dist/assets/*.wasm | rg -q 'build_rank_index|select1'
-    ! wasm-tools print examples/tree-shake-rank-select-bitvector/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|\(export "dot"|\(export "matmul"'
-    pnpm exec tsc -p examples/tree-shake-roaring-uint32-set/tsconfig.json
-    pnpm exec vite build examples/tree-shake-roaring-uint32-set
-    test "$(find examples/tree-shake-roaring-uint32-set/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
-    wasm-tools print examples/tree-shake-roaring-uint32-set/dist/assets/*.wasm | rg -q 'bitmap_and_count|array_bitmap_and_into'
-    ! wasm-tools print examples/tree-shake-roaring-uint32-set/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|\(export "dot"|\(export "matmul"'
+    pnpm exec tsc -p examples/tree-shake-bit-vector/tsconfig.json
+    pnpm exec vite build examples/tree-shake-bit-vector
+    test "$(find examples/tree-shake-bit-vector/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-bit-vector/dist/assets/*.wasm | rg -q 'build_rank_index|select1'
+    ! wasm-tools print examples/tree-shake-bit-vector/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|\(export "dot"|\(export "matmul"'
+    pnpm exec tsc -p examples/tree-shake-roaring-bitmap/tsconfig.json
+    pnpm exec vite build examples/tree-shake-roaring-bitmap
+    test "$(find examples/tree-shake-roaring-bitmap/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-roaring-bitmap/dist/assets/*.wasm | rg -q 'bitmap_and_count|array_bitmap_and_into'
+    ! wasm-tools print examples/tree-shake-roaring-bitmap/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|\(export "dot"|\(export "matmul"'
     pnpm exec tsc -p examples/tree-shake-static-mphf-u32/tsconfig.json
     pnpm exec vite build examples/tree-shake-static-mphf-u32
     test "$(find examples/tree-shake-static-mphf-u32/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"

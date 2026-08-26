@@ -8,8 +8,8 @@ each `src/<name>/README.md`.
 
 | component                              | status   | current scope                                                    |
 | :------------------------------------- | :------- | :--------------------------------------------------------------- |
-| `BitVector` / `RankSelectBitmap`       | complete | Frozen rank/select/neighbor queries and bulk APIs                |
-| `Bitmap` / `DenseBitmap`               | complete | Growable/fixed dense bitmaps; compatibility aliases retained     |
+| `BitVector`                            | complete | Frozen rank/select/neighbor queries and bulk APIs                |
+| `Bitmap` / `DenseBitmap`               | complete | Growable/fixed dense bitmaps                                     |
 | `RoaringBitmap`                        | complete | Mutable array/bitmap containers and reusable intersections       |
 | `PackedDeltaUint32List`                | complete | Frozen Stream VByte lists, checkpoints, decode, and intersection |
 | `FlatHashSetU32` / `FlatHashMapU32U32` | complete | Mutable typed tables with bulk probing and insertion             |
@@ -25,7 +25,7 @@ each `src/<name>/README.md`.
 | `SparseBitMatrix`                      | complete | Frozen CSR rows; BFS rejected after losing to JS adjacency       |
 | `PartitionedEliasFanoSequence`         | complete | Contiguous or local-EF blocks for clustered monotone values      |
 | `StaticMphfU32`                        | complete | Frozen dense IDs, fingerprints, and batched lookup               |
-| `StaticMphfBytes` / frozen map         | complete | Exact arbitrary-byte membership and optional `u32` values        |
+| `StaticMphfBytes` / frozen map         | rejected | Pre-encoded `Set<string>` won lookup and construction            |
 | `CompressedStringTable`                | complete | Block-local front coding and SIMD equality without decode        |
 | `WaveletMatrixUint8`                   | complete | Eight-level byte rank/select and range statistics                |
 | `FmIndexBytes`                         | complete | Batched count plus bitvector-sampled locate                      |
@@ -38,8 +38,25 @@ each `src/<name>/README.md`.
 | `PackedUint32Array`                    | rejected | Compact payload, but decode and gather lost to typed arrays      |
 | `PackedDeltaArray` (FOR+BP128)         | rejected | Smaller blocks did not offset unpack and query costs             |
 
-New entrypoints must justify both their Wasm boundary and their independently tree-shaken bundle
-cost.
+## Release acceptance policy
+
+- A public structure that overlaps `Map`, `Set`, typed arrays, strings, or another JavaScript
+  builtin must beat the best equivalent builtin in its primary end-to-end workload.
+- Include construction, key conversion, JS/Wasm copies, output materialization, and disposal unless
+  the public usage explicitly amortizes them across repeated operations.
+- A smaller representation, a faster isolated kernel, or a comparison against an avoidably slow JS
+  encoding is not enough to retain an entrypoint.
+- Bulk-oriented structures may expose point convenience methods, but the README must identify the
+  winning bulk contract and must not market slower point calls as optimizations.
+- If no representative workload wins, keep the prototype and benchmark only as rejection evidence;
+  remove its package export, public documentation row, and tree-shaken bundle claim.
+- Breaking removals and renames are allowed before the first public announcement. Do not accumulate
+  compatibility aliases during this phase.
+
+`StaticMphfBytes` is the first structure removed by this gate: its `lookupMany` was 2.26x slower and
+its construction was 94.8x slower than a pre-encoded `Set<string>`. Encoding every query to hex was
+not the best equivalent baseline. The source and experiment remain temporarily as rejection
+evidence, but the npm and Deno subpath exports are removed.
 
 ## User-facing completion queue
 
@@ -67,8 +84,8 @@ difference, and symmetric difference without converting to another representatio
 - [ ] Define tail semantics so padding beyond `capacity` is never observable as a zero bit.
 - [ ] Match the existing scalar/randomized rank/select coverage and add bulk benchmarks.
 
-`rank0` already exists, so leaving selection and neighbor queries one-sided makes the `BitVector` /
-`RankSelectBitmap` contract appear incomplete.
+`rank0` already exists, so leaving selection and neighbor queries one-sided makes the `BitVector`
+contract appear incomplete.
 
 #### 3. Standardize allocation-free output APIs
 
@@ -88,8 +105,8 @@ generic iterator abstraction in hot paths; typed bulk output is the common inter
 - [ ] Define a small binary envelope with magic, format version, structure kind, logical shape, and
       payload lengths. Invalid or truncated snapshots must fail before allocation.
 - [ ] Add `serialize()` / `fromSnapshot()` round trips first to `FmIndexBytes`,
-      `WaveletMatrixUint8/Uint32`, `StaticMphfBytes/U32`, `CompressedStringTable`,
-      `EliasFanoSequence`, and `BinaryVectorIndex`.
+      `WaveletMatrixUint8/Uint32`, `StaticMphfU32`, `CompressedStringTable`, `EliasFanoSequence`,
+      and `BinaryVectorIndex`.
 - [ ] Verify that restoration reproduces query results without rerunning the builder and that
       deserialization releases partial allocations on failure.
 - [ ] Measure snapshot bytes, load time, peak RSS, and IndexedDB/file/Worker-friendly copy costs.
@@ -114,8 +131,8 @@ intermediate selection back through JavaScript.
 
 #### 6. Add explicit mutable-to-frozen bridges
 
-- [ ] Evaluate `Bitmap -> BitVector`, `ByteKeyFlatHashMapU32 -> FrozenByteMapU32`, and monotone
-      builder -> Elias–Fano / PackedDelta conversion helpers.
+- [ ] Evaluate `Bitmap -> BitVector`, `FlatHashSetU32 -> StaticMphfU32`, and monotone builder ->
+      Elias–Fano / PackedDelta conversion helpers.
 - [ ] Make rebuild and ownership costs explicit; a `freeze` operation may construct a new physical
       representation rather than alias mutable storage.
 - [ ] Avoid a runtime factory that hides representation-specific operations or bundle costs.
@@ -128,8 +145,9 @@ intermediate selection back through JavaScript.
 - [ ] Design `addMany`, `mayContainMany`, and `merge` before adding point methods.
 - [ ] Compare false-positive rate, bytes/key, build time, and bulk negative lookup against a scalar
       typed-array Bloom filter and exact set alternatives.
-- [ ] Connect the benchmark to an existing exact structure such as a byte hash table or static MPHF;
-      reject it if the filter does not improve the end-to-end negative-lookup workload.
+- [ ] Connect the benchmark to an existing exact structure such as a byte hash table or
+      `StaticMphfU32`; reject it if the filter does not improve the end-to-end negative-lookup
+      workload.
 
 JavaScript has no builtin approximate-membership structure, making this the strongest genuinely new
 candidate after the existing contracts are complete.
@@ -153,9 +171,9 @@ Documentation and new examples use only these canonical subpaths:
 - `bit-vector`
 - `roaring-bitmap`
 
-`bitset`, `rank-select-bitvector`, `rank-select-bitmap`, and `roaring-uint32-set` remain
-compatibility aliases for now. Keep them out of the primary guide, mark them deprecated in API
-documentation, and decide their removal policy before 1.0 rather than adding further aliases.
+The pre-announcement aliases `bitset`, `rank-select-bitvector`, `rank-select-bitmap`, and
+`roaring-uint32-set`, plus their constructor aliases, have been removed. Do not add aliases until a
+real compatibility obligation exists.
 
 ## Succinct-data-structure support boundary
 
@@ -170,7 +188,7 @@ general C++ library such as SDSL.
 | bitvector rank/select        | support             | `BitVector`; Elias–Fano supplies a sparse monotone variant             |
 | integer sequences / arrays   | support selectively | `EliasFanoSequence`, `PackedDeltaUint32List`, `WaveletMatrixUint32`    |
 | byte strings / wavelet tree  | support             | `WaveletMatrixUint8`, specialized to 8 levels rather than 32           |
-| succinct associative arrays  | support             | `StaticMphfBytes` plus frozen byte arena and optional `u32` values     |
+| succinct associative arrays  | reject public API   | Byte MPHF prototype lost to a pre-encoded JavaScript `Set`             |
 | compressed full-text search  | support             | `FmIndexBytes` with batched count and sampled locate                   |
 | succinct tree topology       | reject for now      | LOUDS bulk parent lost by 6.70x to a direct `Uint32Array`              |
 | succinct trie / XBW          | do not expose now   | Previous trie prototype lost exact and prefix lookup to JavaScript     |
@@ -182,8 +200,8 @@ This makes byte-oriented static search the next coherent layer:
 
 1. `ByteKeyFlatHashMapU32` is retained as the mutable baseline and StringInterner building block:
    bulk lookup was 2.00x faster, while point lookup was 12.5x slower than native Map.
-2. `StaticMphfBytes` / frozen byte map is the direct succinct-associative-array target; the mutable
-   table is not itself succinct.
+2. `StaticMphfBytes` remains rejection evidence rather than a public succinct-associative-array
+   target because the best equivalent JavaScript `Set` won both build and lookup.
 3. `WaveletMatrixUint8` avoids the 32 levels of the general Uint32 matrix and is an acceptable
    byte-string representation.
 4. `FmIndexBytes` combines a BWT, byte wavelet matrix, cumulative symbol counts, and bitvector-
@@ -288,8 +306,9 @@ Reference: [SlimSell](https://arxiv.org/abs/2010.09913)
       was 25.6–27.9x faster than pre-stringified native `Map`/`Set` in the recorded workload.
 - [x] Retain `ByteKeyFlatHashMapU32` as a measured mutable baseline: bulk lookup won by 2.00x, while
       point lookup lost by 12.5x.
-- [x] `StaticMphfBytes` plus a frozen byte arena and exact-key membership policy. It is 13.5x faster
-      than per-query hex encoding plus `Set`, but 2.26x slower than a pre-encoded `Set<string>`.
+- [x] Reject the public `StaticMphfBytes` export. It beat per-query hex encoding but lost lookup by
+      2.26x and construction by 94.8x to a pre-encoded `Set<string>`, which is the relevant builtin
+      baseline.
 - [x] `CompressedStringTable` using block-local front coding. The recorded path corpus used 31.0% of
       raw bytes; equality beat scalar bytes by 2.00x, while random decode lost by 12.3x.
 - [x] Reject `StringInterner`: native `Map<string, u32>` already provides exact decoded-string

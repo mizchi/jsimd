@@ -101,7 +101,7 @@ pnpm bench:compare:elias-fano-sequence
 
 The isolated Vite fixture using global and partitioned sequences emits one 1.64 kB Wasm asset (0.86
 kB gzip) and a 10.98 kB minified JS wrapper (3.75 kB gzip). It does not emit PackedDelta or
-RankSelectBitVector Wasm.
+BitVector Wasm.
 
 Vitest baseline JSON and benchmark sources live in
 [`experiments/elias-fano-sequence`](../../experiments/elias-fano-sequence).

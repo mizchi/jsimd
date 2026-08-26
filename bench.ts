@@ -7,7 +7,7 @@ import {
   reverseFindByte,
 } from "./src/bytes/mod.ts";
 import { decodeUint32BE } from "./src/endian/mod.ts";
-import { FixedBitSet } from "./src/bitset/mod.ts";
+import { DenseBitmap } from "./src/bitmap/mod.ts";
 import { SimdFloat32Vector } from "./src/f32-vector/mod.ts";
 import { jsonTokenStarts } from "./src/json/mod.ts";
 
@@ -120,38 +120,38 @@ for (const capacity of [1024, 16_384, 262_144, 4_194_304]) {
       rightWords[bit >>> 5] = rightWords[bit >>> 5]! | (1 << (bit & 31));
     }
   }
-  const left = FixedBitSet.from(capacity, leftIndices);
-  const right = FixedBitSet.from(capacity, rightIndices);
+  const left = DenseBitmap.from(capacity, leftIndices);
+  const right = DenseBitmap.from(capacity, rightIndices);
   const unionTarget = left.clone();
   const scalarUnionTarget = leftWords.slice();
   const leftBigInt = wordsToBigInt(leftWords);
   const rightBigInt = wordsToBigInt(rightWords);
-  Deno.bench(`bitset SIMD intersectionCount n=${capacity}`, () => {
+  Deno.bench(`bitmap SIMD intersectionCount n=${capacity}`, () => {
     sink ^= left.intersectionCount(right);
   });
-  Deno.bench(`bitset Uint32 scalar intersectionCount n=${capacity}`, () => {
+  Deno.bench(`bitmap Uint32 scalar intersectionCount n=${capacity}`, () => {
     sink ^= scalarIntersectionCount(leftWords, rightWords);
   });
-  Deno.bench(`bitset Set intersectionCount n=${capacity}`, () => {
+  Deno.bench(`bitmap Set intersectionCount n=${capacity}`, () => {
     let count = 0;
     for (const bit of rightSet) if (leftSet.has(bit)) count++;
     sink ^= count;
   });
-  Deno.bench(`bitset Set builtin intersection size n=${capacity}`, () => {
+  Deno.bench(`bitmap Set builtin intersection size n=${capacity}`, () => {
     sink ^= leftSet.intersection(rightSet).size;
   });
-  Deno.bench(`bitset SIMD unionWith n=${capacity}`, () => {
+  Deno.bench(`bitmap SIMD unionWith n=${capacity}`, () => {
     unionTarget.unionWith(right);
     sink ^= Number(unionTarget.has(0));
   });
-  Deno.bench(`bitset Uint32 scalar union n=${capacity}`, () => {
+  Deno.bench(`bitmap Uint32 scalar union n=${capacity}`, () => {
     scalarUnionInto(scalarUnionTarget, rightWords);
     sink ^= scalarUnionTarget[0]!;
   });
-  Deno.bench(`bitset BigInt union n=${capacity}`, () => {
+  Deno.bench(`bitmap BigInt union n=${capacity}`, () => {
     _bigSink = leftBigInt | rightBigInt;
   });
-  Deno.bench(`bitset Set builtin union size n=${capacity}`, () => {
+  Deno.bench(`bitmap Set builtin union size n=${capacity}`, () => {
     sink ^= leftSet.union(rightSet).size;
   });
 }

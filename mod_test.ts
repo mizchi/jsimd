@@ -7,20 +7,13 @@ import {
   reverseFindByte,
 } from "./src/bytes/mod.ts";
 import { decodeUint32BE, decodeUint32LE } from "./src/endian/mod.ts";
-import { Bitmap, BitSet, DenseBitmap, FixedBitSet } from "./src/bitset/mod.ts";
+import { Bitmap, DenseBitmap } from "./src/bitmap/mod.ts";
 import { SimdFloat32Vector } from "./src/f32-vector/mod.ts";
 import { SimdInt32Array } from "./src/i32-array/mod.ts";
 import { SimdMatrix2D } from "./src/matrix2d/mod.ts";
 import { SimdMatrix3D } from "./src/matrix3d/mod.ts";
-import {
-  BitVector,
-  BitVectorBuilder,
-  RankSelectBitmap,
-  RankSelectBitmapBuilder,
-  RankSelectBitVector,
-  RankSelectBitVectorBuilder,
-} from "./src/rank-select-bitvector/mod.ts";
-import { RoaringBitmap, RoaringUint32Set } from "./src/roaring-uint32-set/mod.ts";
+import { BitVector, BitVectorBuilder } from "./src/bit-vector/mod.ts";
+import { RoaringBitmap } from "./src/roaring-bitmap/mod.ts";
 import {
   PackedDeltaUint32List,
   PackedDeltaUint32ListBuilder,
@@ -438,8 +431,8 @@ Deno.test("SimdMatrix3D using lifecycle and multiplication contracts", () => {
   assertEquals(after.liveBytes, before.liveBytes, "live bytes");
 });
 
-Deno.test("RankSelectBitVector defines rank and select boundary semantics", () => {
-  using bits = RankSelectBitVector.from(20, [0, 1, 3, 7, 8, 15, 19]);
+Deno.test("BitVector defines rank and select boundary semantics", () => {
+  using bits = BitVector.from(20, [0, 1, 3, 7, 8, 15, 19]);
   assertEquals(bits.length, 20, "length");
   assertEquals(bits.countOnes, 7, "count ones");
   assertEquals(bits.get(0), true, "get set bit");
@@ -457,8 +450,6 @@ Deno.test("RankSelectBitVector defines rank and select boundary semantics", () =
 });
 
 Deno.test("BitVector is the canonical frozen rank/select API", () => {
-  assertEquals(BitVector, RankSelectBitVector, "legacy vector constructor alias");
-  assertEquals(BitVectorBuilder, RankSelectBitVectorBuilder, "legacy builder constructor alias");
   const builder = new BitVectorBuilder(96);
   builder.insert(1).insert(32).insert(95);
   using bits = builder.freeze();
@@ -467,17 +458,8 @@ Deno.test("BitVector is the canonical frozen rank/select API", () => {
   assertEquals(bits.select1(2), 95, "select");
 });
 
-Deno.test("RankSelectBitmap is the bitmap-oriented BitVector name", () => {
-  assertEquals(RankSelectBitmap, BitVector, "same frozen representation");
-  assertEquals(RankSelectBitmapBuilder, BitVectorBuilder, "same builder representation");
-  const builder = new RankSelectBitmapBuilder(64).insert(2).insert(63);
-  using bitmap = builder.freeze();
-  assertEquals(bitmap.rank1(64), 2, "rank");
-  assertEquals(bitmap.select1(1), 63, "select");
-});
-
-Deno.test("RankSelectBitVector finds neighboring bits inclusively", () => {
-  using bits = RankSelectBitVector.from(20, [0, 4, 9, 19]);
+Deno.test("BitVector finds neighboring bits inclusively", () => {
+  using bits = BitVector.from(20, [0, 4, 9, 19]);
   assertEquals(bits.next1(0), 0, "next exact");
   assertEquals(bits.next1(1), 4, "next after gap");
   assertEquals(bits.next1(19), 19, "next last");
@@ -488,9 +470,9 @@ Deno.test("RankSelectBitVector finds neighboring bits inclusively", () => {
   assertEquals(bits.prev1(-1), -1, "previous before start");
 });
 
-Deno.test("RankSelectBitVector crosses 128-bit and 512-bit blocks", () => {
+Deno.test("BitVector crosses 128-bit and 512-bit blocks", () => {
   const positions = [0, 31, 32, 127, 128, 510, 511, 512, 513, 1023, 1024, 1030];
-  using bits = RankSelectBitVector.from(1031, positions);
+  using bits = BitVector.from(1031, positions);
   for (let index = 0; index < positions.length; index++) {
     assertEquals(bits.rank1(positions[index]!), index, `rank before ${positions[index]}`);
     assertEquals(bits.select1(index), positions[index], `select ${index}`);
@@ -498,8 +480,8 @@ Deno.test("RankSelectBitVector crosses 128-bit and 512-bit blocks", () => {
   assertEquals(bits.rank1(1031), positions.length, "rank tail");
 });
 
-Deno.test("RankSelectBitVectorBuilder freezes an immutable snapshot", () => {
-  const builder = new RankSelectBitVectorBuilder(600);
+Deno.test("BitVectorBuilder freezes an immutable snapshot", () => {
+  const builder = new BitVectorBuilder(600);
   builder.insert(1).insert(511).insert(512).insert(599).remove(1);
   using frozen = builder.freeze();
   builder.insert(1).remove(512);
@@ -508,9 +490,9 @@ Deno.test("RankSelectBitVectorBuilder freezes an immutable snapshot", () => {
   assertEquals(frozen.toArray().join(","), "511,512,599", "frozen values");
 });
 
-Deno.test("RankSelectBitVector executes rank and select queries in bulk", () => {
-  using bits = RankSelectBitVector.from(20, [0, 1, 3, 7, 8, 15, 19]);
-  const before = RankSelectBitVector.allocatorStats();
+Deno.test("BitVector executes rank and select queries in bulk", () => {
+  using bits = BitVector.from(20, [0, 1, 3, 7, 8, 15, 19]);
+  const before = BitVector.allocatorStats();
   const rankOutput = new Uint32Array(6);
   assertEquals(
     bits.rank1Many(new Uint32Array([0, 1, 8, 9, 20, 20]), rankOutput),
@@ -525,12 +507,12 @@ Deno.test("RankSelectBitVector executes rank and select queries in bulk", () => 
     "select output reuse",
   );
   assertEquals(selectOutput.join(","), "0,8,19,-1,-1", "bulk selects");
-  const after = RankSelectBitVector.allocatorStats();
+  const after = BitVector.allocatorStats();
   assertEquals(after.liveAllocations, before.liveAllocations, "bulk scratch allocations");
   assertEquals(after.liveBytes, before.liveBytes, "bulk scratch bytes");
 });
 
-Deno.test("RankSelectBitVector matches scalar randomized references", () => {
+Deno.test("BitVector matches scalar randomized references", () => {
   let state = 0x6d2b_79f5;
   for (const length of [0, 1, 127, 128, 511, 512, 513, 4099]) {
     const expected: number[] = [];
@@ -538,7 +520,7 @@ Deno.test("RankSelectBitVector matches scalar randomized references", () => {
       state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
       if ((state & 7) === 0) expected.push(position);
     }
-    using bits = RankSelectBitVector.from(length, expected);
+    using bits = BitVector.from(length, expected);
     let rank = 0;
     for (let end = 0; end <= length; end++) {
       assertEquals(bits.rank1(end), rank, `rank length=${length} end=${end}`);
@@ -550,19 +532,19 @@ Deno.test("RankSelectBitVector matches scalar randomized references", () => {
   }
 });
 
-Deno.test("RankSelectBitVector using lifecycle returns allocator storage", () => {
-  const before = RankSelectBitVector.allocatorStats();
+Deno.test("BitVector using lifecycle returns allocator storage", () => {
+  const before = BitVector.allocatorStats();
   {
-    using bits = RankSelectBitVector.from(1_000_000, [1, 10, 999_999]);
+    using bits = BitVector.from(1_000_000, [1, 10, 999_999]);
     assertEquals(bits.rank1(1_000_000), 3, "live rank");
   }
-  const after = RankSelectBitVector.allocatorStats();
+  const after = BitVector.allocatorStats();
   assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
   assertEquals(after.liveBytes, before.liveBytes, "live bytes");
 });
 
-Deno.test("RoaringUint32Set supports the complete Uint32 key range", () => {
-  using values = RoaringUint32Set.from([0, 1, 65_535, 65_536, 70_000, 0xffff_ffff]);
+Deno.test("RoaringBitmap supports the complete Uint32 key range", () => {
+  using values = RoaringBitmap.from([0, 1, 65_535, 65_536, 70_000, 0xffff_ffff]);
   assertEquals(values.size, 6, "size");
   assertEquals(values.has(0), true, "zero");
   assertEquals(values.has(65_536), true, "second container");
@@ -579,8 +561,8 @@ Deno.test("RoaringBitmap is the canonical adaptive-container API", () => {
   assertEquals(bitmap.has(65_536), true, "membership");
 });
 
-Deno.test("RoaringUint32Set converts containers at the 4096 threshold", () => {
-  using values = new RoaringUint32Set();
+Deno.test("RoaringBitmap converts containers at the 4096 threshold", () => {
+  using values = new RoaringBitmap();
   for (let value = 0; value <= 4096; value++) values.insert(value);
   assertEquals(values.size, 4097, "bitmap size");
   for (const value of [0, 1, 4095, 4096]) assertEquals(values.has(value), true, `has ${value}`);
@@ -589,27 +571,27 @@ Deno.test("RoaringUint32Set converts containers at the 4096 threshold", () => {
   assertEquals(values.has(4095), true, "survives bitmap to array conversion");
 });
 
-Deno.test("RoaringUint32Set computes non-materializing set queries", () => {
-  using left = RoaringUint32Set.from([1, 2, 65_535, 65_536, 65_537, 0xffff_ffff]);
-  using right = RoaringUint32Set.from([2, 65_536, 70_000, 0xffff_ffff]);
+Deno.test("RoaringBitmap computes non-materializing set queries", () => {
+  using left = RoaringBitmap.from([1, 2, 65_535, 65_536, 65_537, 0xffff_ffff]);
+  using right = RoaringBitmap.from([2, 65_536, 70_000, 0xffff_ffff]);
   assertEquals(left.andCardinality(right), 3, "intersection cardinality");
   assertEquals(left.intersects(right), true, "intersects");
   assertClose(left.jaccard(right), 3 / 7, 1e-12, "jaccard");
-  using disjoint = RoaringUint32Set.from([100, 200]);
+  using disjoint = RoaringBitmap.from([100, 200]);
   assertEquals(left.intersects(disjoint), false, "disjoint");
-  using emptyLeft = new RoaringUint32Set();
-  using emptyRight = new RoaringUint32Set();
+  using emptyLeft = new RoaringBitmap();
+  using emptyRight = new RoaringBitmap();
   assertEquals(emptyLeft.jaccard(emptyRight), 1, "empty jaccard");
 });
 
-Deno.test("RoaringUint32Set andInto reuses output without aliasing", () => {
-  using left = new RoaringUint32Set();
-  using right = new RoaringUint32Set();
+Deno.test("RoaringBitmap andInto reuses output without aliasing", () => {
+  using left = new RoaringBitmap();
+  using right = new RoaringBitmap();
   for (let value = 0; value < 20_000; value++) {
     if (value % 3 === 0) left.insert(value);
     if (value % 5 === 0) right.insert(value);
   }
-  using output = RoaringUint32Set.from([0xffff_ffff]);
+  using output = RoaringBitmap.from([0xffff_ffff]);
   assertEquals(left.andInto(right, output), output, "output reuse");
   assertEquals(output.size, 1_334, "intersection size");
   assertEquals(output.has(0), true, "first intersection");
@@ -623,9 +605,9 @@ Deno.test("RoaringUint32Set andInto reuses output without aliasing", () => {
   assertEquals(aliased, true, "aliased output");
 });
 
-Deno.test("RoaringUint32Set retains dense bitmap intersection results", () => {
-  using left = new RoaringUint32Set();
-  using right = new RoaringUint32Set();
+Deno.test("RoaringBitmap retains dense bitmap intersection results", () => {
+  using left = new RoaringBitmap();
+  using right = new RoaringBitmap();
   for (let value = 0; value <= 6_000; value++) left.insert(value);
   for (let value = 1_000; value <= 7_000; value++) right.insert(value);
   using output = left.and(right);
@@ -637,8 +619,8 @@ Deno.test("RoaringUint32Set retains dense bitmap intersection results", () => {
   assertEquals(left.andCardinality(right), 5_001, "dense count");
 });
 
-Deno.test("RoaringUint32Set emits maximal inclusive ranges", () => {
-  using values = RoaringUint32Set.from([
+Deno.test("RoaringBitmap emits maximal inclusive ranges", () => {
+  using values = RoaringBitmap.from([
     1,
     2,
     3,
@@ -653,8 +635,8 @@ Deno.test("RoaringUint32Set emits maximal inclusive ranges", () => {
   assertEquals(ranges.join(","), "1-3,65535-65537,100000-100000,100002-100002", "ranges");
 });
 
-Deno.test("RoaringUint32Set matches Set on randomized operations", () => {
-  using actual = new RoaringUint32Set();
+Deno.test("RoaringBitmap matches Set on randomized operations", () => {
+  using actual = new RoaringBitmap();
   const expected = new Set<number>();
   let state = 0x1234_abcd;
   for (let operation = 0; operation < 20_000; operation++) {
@@ -673,28 +655,28 @@ Deno.test("RoaringUint32Set matches Set on randomized operations", () => {
   assertEquals(actual.toUint32Array().join(","), sorted.join(","), "random contents");
 });
 
-Deno.test("RoaringUint32Set using lifecycle returns every container allocation", () => {
-  const before = RoaringUint32Set.allocatorStats();
+Deno.test("RoaringBitmap using lifecycle returns every container allocation", () => {
+  const before = RoaringBitmap.allocatorStats();
   {
-    using values = new RoaringUint32Set();
+    using values = new RoaringBitmap();
     for (let value = 0; value < 200_000; value += 3) values.insert(value);
     assertEquals(values.has(199_998), true, "live set");
   }
-  const after = RoaringUint32Set.allocatorStats();
+  const after = RoaringBitmap.allocatorStats();
   assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
   assertEquals(after.liveBytes, before.liveBytes, "live bytes");
 });
 
-Deno.test("RoaringUint32Set releases partial construction after invalid input", () => {
-  const before = RoaringUint32Set.allocatorStats();
+Deno.test("RoaringBitmap releases partial construction after invalid input", () => {
+  const before = RoaringBitmap.allocatorStats();
   let threw = false;
   try {
-    RoaringUint32Set.from([1, 65_536, -1]);
+    RoaringBitmap.from([1, 65_536, -1]);
   } catch (error) {
     threw = error instanceof RangeError;
   }
   assertEquals(threw, true, "invalid Uint32");
-  const after = RoaringUint32Set.allocatorStats();
+  const after = RoaringBitmap.allocatorStats();
   assertEquals(after.liveAllocations, before.liveAllocations, "partial allocations");
   assertEquals(after.liveBytes, before.liveBytes, "partial bytes");
 });
@@ -1240,9 +1222,9 @@ Deno.test("BitSlicedColumn and masks release using-owned allocations", () => {
   assertEquals(after.liveBytes, before.liveBytes, "bit-sliced bytes");
 });
 
-Deno.test("FixedBitSet handles boundaries and set algebra", () => {
-  const left = FixedBitSet.from(130, [0, 31, 32, 63, 64, 127, 129]);
-  const right = FixedBitSet.from(130, [1, 31, 63, 65, 127]);
+Deno.test("DenseBitmap handles boundaries and set algebra", () => {
+  const left = DenseBitmap.from(130, [0, 31, 32, 63, 64, 127, 129]);
+  const right = DenseBitmap.from(130, [1, 31, 63, 65, 127]);
   assertEquals(left.has(129), true, "last bit");
   assertEquals(left.has(128), false, "unset bit");
   assertEquals(left.countOnes(), 7, "left cardinality");
@@ -1260,8 +1242,6 @@ Deno.test("FixedBitSet handles boundaries and set algebra", () => {
 });
 
 Deno.test("Bitmap and DenseBitmap expose growable and fixed-universe contracts", () => {
-  assertEquals(Bitmap, BitSet, "legacy growable constructor alias");
-  assertEquals(DenseBitmap, FixedBitSet, "legacy fixed constructor alias");
   using growable = Bitmap.from([1, 130]);
   growable.insert(10_000);
   assertEquals(growable.has(10_000), true, "growable bitmap");
@@ -1272,8 +1252,8 @@ Deno.test("Bitmap and DenseBitmap expose growable and fixed-universe contracts",
   assertEquals(left.toArray().join(","), "3,130", "fixed dense intersection");
 });
 
-Deno.test("FixedBitSet validates capacity and ignores padded tail bits", () => {
-  const bits = new FixedBitSet(33).insert(32);
+Deno.test("DenseBitmap validates capacity and ignores padded tail bits", () => {
+  const bits = new DenseBitmap(33).insert(32);
   assertEquals(bits.countOnes(), 1, "tail cardinality");
   assertEquals(bits.toArray().join(","), "32", "tail enumeration");
   let threw = false;
@@ -1285,18 +1265,18 @@ Deno.test("FixedBitSet validates capacity and ignores padded tail bits", () => {
   assertEquals(threw, true, "out of bounds");
 });
 
-Deno.test("FixedBitSet storage remains intact across scratch-memory kernels", () => {
-  const bits = FixedBitSet.from(1024, [0, 511, 1023]);
+Deno.test("DenseBitmap storage remains intact across scratch-memory kernels", () => {
+  const bits = DenseBitmap.from(1024, [0, 511, 1023]);
   const input = new Uint8Array(4096).fill(0x61);
   assertEquals(findByte(input, 0x7a), -1, "scratch scan");
   assertEquals(bits.toArray().join(","), "0,511,1023", "persistent storage");
 
   // Allocate after scratch use as well, since the regions grow independently.
-  const later = FixedBitSet.from(65_537, [65_536]);
+  const later = DenseBitmap.from(65_537, [65_536]);
   assertEquals(later.countOnes(), 1, "allocation after scratch");
 });
 
-Deno.test("FixedBitSet SIMD operations match Set on randomized inputs", () => {
+Deno.test("DenseBitmap SIMD operations match Set on randomized inputs", () => {
   let state = 0x1234_5678;
   for (const capacity of [0, 1, 31, 32, 33, 127, 128, 129, 4097]) {
     const leftSet = new Set<number>();
@@ -1307,8 +1287,8 @@ Deno.test("FixedBitSet SIMD operations match Set on randomized inputs", () => {
       state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
       if ((state & 7) === 0) rightSet.add(index);
     }
-    const left = FixedBitSet.from(capacity, leftSet);
-    const right = FixedBitSet.from(capacity, rightSet);
+    const left = DenseBitmap.from(capacity, leftSet);
+    const right = DenseBitmap.from(capacity, rightSet);
     const expectedUnion = new Set([...leftSet, ...rightSet]);
     const expectedIntersection = [...leftSet].filter((bit) => rightSet.has(bit));
     assertEquals(left.countOnes(), leftSet.size, `count capacity=${capacity}`);
@@ -1325,12 +1305,12 @@ Deno.test("FixedBitSet SIMD operations match Set on randomized inputs", () => {
   }
 });
 
-Deno.test("FixedBitSet dispose reuses storage and reports allocator state", () => {
-  const before = FixedBitSet.allocatorStats();
+Deno.test("DenseBitmap dispose reuses storage and reports allocator state", () => {
+  const before = DenseBitmap.allocatorStats();
   for (let iteration = 0; iteration < 10_000; iteration++) {
-    FixedBitSet.from(4096, [0, 4095]).dispose();
+    DenseBitmap.from(4096, [0, 4095]).dispose();
   }
-  const after = FixedBitSet.allocatorStats();
+  const after = DenseBitmap.allocatorStats();
   assertEquals(after.liveAllocations, before.liveAllocations, "bitset live allocations");
   assertEquals(after.liveBytes, before.liveBytes, "bitset live bytes");
   if (after.reservedBytes > before.reservedBytes + 512) {
@@ -1338,7 +1318,7 @@ Deno.test("FixedBitSet dispose reuses storage and reports allocator state", () =
       `bitset storage did not plateau: ${before.reservedBytes} -> ${after.reservedBytes}`,
     );
   }
-  const disposed = new FixedBitSet(64);
+  const disposed = new DenseBitmap(64);
   disposed.dispose();
   let threw = false;
   try {
@@ -1434,8 +1414,8 @@ Deno.test("BitMatrix using lifecycle returns storage and invalidates views", () 
   assertEquals(after.liveBytes, before.liveBytes, "live bytes");
 });
 
-Deno.test("BitSet grows on insertion and preserves existing bits", () => {
-  using bits = BitSet.from([0, 31, 32, 129, 65_536]);
+Deno.test("Bitmap grows on insertion and preserves existing bits", () => {
+  using bits = Bitmap.from([0, 31, 32, 129, 65_536]);
   assertEquals(bits.has(65_536), true, "grown bit");
   assertEquals(bits.has(1_000_000), false, "membership outside allocated capacity");
   assertEquals(bits.countOnes(), 5, "cardinality after growth");
@@ -1445,9 +1425,9 @@ Deno.test("BitSet grows on insertion and preserves existing bits", () => {
   assertEquals(bits.toArray().join(","), "0,31,129,65536", "out-of-range removal is a no-op");
 });
 
-Deno.test("BitSet algebra accepts different capacities", () => {
-  using small = BitSet.from([1, 31, 130]);
-  using large = BitSet.from([31, 129, 65_536]);
+Deno.test("Bitmap algebra accepts different capacities", () => {
+  using small = Bitmap.from([1, 31, 130]);
+  using large = Bitmap.from([31, 129, 65_536]);
   using union = small.clone().unionWith(large);
   using intersection = small.clone().intersectWith(large);
   using reverseIntersection = large.clone().intersectWith(small);
@@ -1462,13 +1442,13 @@ Deno.test("BitSet algebra accepts different capacities", () => {
   assertEquals(small.intersectionCount(large), 1, "dynamic intersection count");
 });
 
-Deno.test("BitSet using cleanup returns all resized allocations", () => {
-  const before = BitSet.allocatorStats();
+Deno.test("Bitmap using cleanup returns all resized allocations", () => {
+  const before = Bitmap.allocatorStats();
   {
-    using bits = new BitSet();
+    using bits = new Bitmap();
     for (const bit of [0, 128, 4096, 65_536]) bits.insert(bit);
   }
-  const after = BitSet.allocatorStats();
+  const after = Bitmap.allocatorStats();
   assertEquals(after.liveAllocations, before.liveAllocations, "dynamic bitset allocations");
   assertEquals(after.liveBytes, before.liveBytes, "dynamic bitset bytes");
 });

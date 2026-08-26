@@ -73,7 +73,7 @@ pnpm bench:compare:bit-matrix
 
 The isolated Vite fixture using both dense and sparse matrices emits an 8.75 kB minified JavaScript
 wrapper (3.17 kB gzip) and one 0.63 kB Wasm asset (0.41 kB gzip). Importing this subpath emits no
-BitSet, Roaring, or matrix-float Wasm.
+Bitmap, Roaring, or matrix-float Wasm.
 
 See [`experiments/bit-matrix`](../../experiments/bit-matrix/README.md) for the benchmark source and
 committed baseline.

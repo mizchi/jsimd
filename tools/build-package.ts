@@ -1,4 +1,14 @@
 const outputDirectory = "dist";
+const packageMetadata = JSON.parse(await Deno.readTextFile("package.json")) as {
+  exports: Record<string, string>;
+};
+const publicDirectories = new Set(
+  Object.values(packageMetadata.exports).map((target) => {
+    const match = /^\.\/dist\/([^/]+)\/mod\.js$/.exec(target);
+    if (!match) throw new Error(`unsupported package export target: ${target}`);
+    return match[1]!;
+  }),
+);
 
 try {
   const stat = await Deno.stat(outputDirectory);
@@ -10,8 +20,15 @@ try {
 
 await run("pnpm", ["exec", "tsc", "-p", "tsconfig.publish.json", "--pretty", "false"]);
 
+for await (const entry of Deno.readDir(outputDirectory)) {
+  if (!entry.isDirectory || entry.name === "internal" || publicDirectories.has(entry.name)) {
+    continue;
+  }
+  await Deno.remove(`${outputDirectory}/${entry.name}`, { recursive: true });
+}
+
 for await (const entry of Deno.readDir("src")) {
-  if (!entry.isDirectory || entry.name === "internal") continue;
+  if (!entry.isDirectory || !publicDirectories.has(entry.name)) continue;
   const sourceDirectory = `src/${entry.name}`;
   const targetDirectory = `${outputDirectory}/${entry.name}`;
   for (const filename of ["kernels.wasm", "kernels.wat", "README.md"]) {

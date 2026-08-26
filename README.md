@@ -14,7 +14,14 @@ This project provides compact data structures and bulk operations that cannot be
 concisely or optimized as predictably in JavaScript. Their hot loops are hand-assembled in WAT for
 128-bit WebAssembly SIMD, while TypeScript defines the public contracts, ownership, and `using`
 lifecycle. The goal is not to replace JavaScript builtins: an entrypoint is retained only when a
-measured workload justifies crossing the Wasm boundary.
+measured workload justifies crossing the Wasm boundary. If equivalent behavior can be implemented
+with `Map`, `Set`, or another JavaScript builtin, the jsimd implementation must beat that builtin in
+its primary end-to-end workload. Smaller storage or an isolated kernel win is not sufficient.
+
+Construction, JS/Wasm copies, output materialization, and required key conversion belong inside the
+comparison unless the documented usage reuses that work across repeated operations. Point methods
+needed to operate a bulk-oriented structure may remain as convenience APIs, but they are not
+presented as optimizations when the corresponding builtin is faster.
 
 Bundle size is part of that contract. Each feature has an independent Wasm binary and package
 subpath, so importing one data structure does not pull in the others. The modules favor small,
@@ -77,14 +84,13 @@ expected. Stateful entrypoints expose `allocatorStats()` so tests can require `l
 
 ### Data structures
 
-The guide uses `bitmap`, `bit-vector`, and `roaring-bitmap` as the canonical subpaths. The older
-`bitset`, `rank-select-bitvector`, `rank-select-bitmap`, and `roaring-uint32-set` exports remain
-compatibility aliases but should not be used in new code.
+The canonical bitmap subpaths are `bitmap`, `bit-vector`, and `roaring-bitmap`. Pre-announcement
+compatibility aliases were removed so each structure has one public name.
 
 | export                                                                 | purpose                                      | observed speedup | slower than JS in the recorded benchmark?                 | minified JS + Wasm, raw (gzip)   |
 | :--------------------------------------------------------------------- | :------------------------------------------- | :--------------- | :-------------------------------------------------------- | :------------------------------- |
 | [`adaptive-simd-page-i32`](./src/adaptive-simd-page-i32/README.md)     | Adaptive frozen `i32` pages/columns          | 0.5–44x          | Yes — FOR scan and full decode                            | 14.58 kB (4.63) + 1.84 kB (0.83) |
-| [`bitmap`](./src/bitset/README.md)                                     | Growable and fixed dense mutable bitmaps     | 9.8–19.8x        | No — small and point-heavy cases were not measured        | 8.84 kB (2.79) + 0.50 kB (0.26)  |
+| [`bitmap`](./src/bitmap/README.md)                                     | Growable and fixed dense mutable bitmaps     | 9.8–19.8x        | No — small and point-heavy cases were not measured        | 8.84 kB (2.79) + 0.50 kB (0.26)  |
 | [`bit-matrix`](./src/bit-matrix/README.md)                             | Dense Boolean matrix and frozen CSR          | 6.56x dense      | Yes — CSR traversal and small matrices                    | 8.75 kB (3.17) + 0.63 kB (0.41)  |
 | [`byte-key-flat-hash`](./src/byte-key-flat-hash/README.md)             | Variable-byte-key map with resident arena    | 2.00x bulk       | Yes — individual gets were 12.5x slower                   | 9.07 kB (3.10) + 1.26 kB (0.73)  |
 | [`compressed-string-table`](./src/compressed-string-table/README.md)   | Frozen front-coded byte strings              | 2.00x byte eq    | Yes — decoded strings and random materialization          | 8.06 kB (3.05) + 0.66 kB (0.34)  |
@@ -100,10 +106,9 @@ compatibility aliases but should not be used in new code.
 | [`matrix2d`](./src/matrix2d/README.md)                                 | Resident Float32 matrix multiplication       | ~1–9.5x          | No — 4×4 was near parity; BLAS/GPU were not compared      | 6.17 kB (2.51) + 0.37 kB (0.23)  |
 | [`matrix3d`](./src/matrix3d/README.md)                                 | Resident batched matrix multiplication       | 5.0–7.3x         | No — only resident generic JS loops were compared         | 6.84 kB (2.67) + 0.45 kB (0.27)  |
 | [`packed-delta-uint32-list`](./src/packed-delta-uint32-list/README.md) | Compressed postings and monotone lists       | 0.06–1.4x        | Yes — full decode and lower-bound queries                 | 6.96 kB (2.76) + 1.49 kB (0.88)  |
-| [`bit-vector`](./src/rank-select-bitvector/README.md)                  | Frozen `BitVector` / `RankSelectBitmap`      | 1.5–3.0x bulk    | Yes — single-query rank                                   | 7.36 kB (2.68) + 0.95 kB (0.53)  |
-| [`roaring-bitmap`](./src/roaring-uint32-set/README.md)                 | Compressed mutable `u32` bitmap              | 2.2–175x         | No — construction and point-heavy cases were not measured | 9.96 kB (3.63) + 1.02 kB (0.49)  |
+| [`bit-vector`](./src/bit-vector/README.md)                             | Frozen rank/select `BitVector`               | 1.5–3.0x bulk    | Yes — single-query rank                                   | 7.36 kB (2.68) + 0.95 kB (0.53)  |
+| [`roaring-bitmap`](./src/roaring-bitmap/README.md)                     | Compressed mutable `u32` bitmap              | 2.2–175x         | No — construction and point-heavy cases were not measured | 9.96 kB (3.63) + 1.02 kB (0.49)  |
 | [`static-mphf-u32`](./src/static-mphf-u32/README.md)                   | Frozen perfect hash for known `u32` keys     | 1.75x bulk       | Yes — individual lookup and construction                  | 7.27 kB (2.97) + 0.68 kB (0.39)  |
-| [`static-mphf-bytes`](./src/static-mphf-bytes/README.md)               | Frozen exact perfect hash for byte keys      | 13.5x vs encode  | Yes — pre-encoded strings and construction                | 10.50 kB (3.95) + 0.84 kB (0.53) |
 | [`wavelet-matrix-uint8`](./src/wavelet-matrix-uint8/README.md)         | Rank/range queries over frozen bytes         | 4.8x vs u32      | Yes — direct byte access                                  | 7.92 kB (2.92) + 2.10 kB (0.97)  |
 | [`wavelet-matrix-uint32`](./src/wavelet-matrix-uint32/README.md)       | Range statistics over frozen `u32` sequences | 2.2–100x+        | Yes — direct access and exact rank                        | 7.77 kB (2.85) + 2.10 kB (0.97)  |
 
@@ -122,6 +127,10 @@ feature README. They are workload samples, not cross-feature scores. Resident be
 exclude construction and final materialization; copy-inclusive kernels explicitly include boundary
 copies. Rerun the linked benchmark on the target engine and data distribution before choosing a
 representation.
+
+Admission is based on the documented primary workload, not on every convenience method. A row that
+reports a slower JS case is retained only when a separate, representative bulk workload wins; that
+slower operation is outside the performance contract.
 
 Build sizes come from isolated Vite 8.2 production fixtures. Each cell reports the minified
 JavaScript output and its one independently emitted Wasm asset in kB, with gzip size in parentheses.

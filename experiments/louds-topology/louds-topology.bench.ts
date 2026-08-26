@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { BitVector } from "../../src/rank-select-bitvector/mod.ts";
+import { BitVector } from "../../src/bit-vector/mod.ts";
 
 const NODE_COUNT = 87_381;
 const QUERY_COUNT = 4096;

@@ -44,7 +44,7 @@ range.andAssign(active);
 range.countOnes();
 ```
 
-`BitSliceMask` is deliberately local to this entrypoint rather than `FixedBitSet`: independently
+`BitSliceMask` is deliberately local to this entrypoint rather than `DenseBitmap`: independently
 tree-shaken Wasm modules have distinct linear memories, and crossing between them would add a full
 mask copy to every predicate. Masks support `andAssign`, `orAssign`, `differenceAssign`,
 `countOnes`, and final `toIndices` materialization. Declare columns and masks with `using`.

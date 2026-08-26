@@ -1,20 +1,11 @@
-# StaticMphfBytes / FrozenByteMapU32
+# StaticMphfBytes / FrozenByteMapU32 (rejected prototype)
+
+This prototype is not exported by the npm or Deno package. It remains in the repository only as
+rejection evidence: the best equivalent JavaScript representation won both lookup and construction.
 
 An immutable minimal perfect hash for a key set known at construction time. Keys are arbitrary
 bytes: empty keys, embedded NUL bytes, and long common prefixes are supported. Exact membership is
 verified against a frozen byte arena, so unknown keys never become false positives.
-
-```ts
-import { FrozenByteMapU32 } from "@mizchi/jsimd/static-mphf-bytes";
-
-const encoder = new TextEncoder();
-using keywords = FrozenByteMapU32.from([
-  [encoder.encode("if"), 1],
-  [encoder.encode("else"), 2],
-]);
-
-keywords.get(encoder.encode("else")); // 2
-```
 
 `StaticMphfBytesBuilder` separates mutable construction from the frozen query layout.
 `StaticMphfBytes.lookupMany(bytes, offsets, output)` and `FrozenByteMapU32.lookupMany(...)` keep the
@@ -46,10 +37,10 @@ Construction and point lookup are deliberately not presented as wins. The exact 
 this is not key-free MPHF storage; table metadata costs about nine bytes per key in addition to the
 original key bytes, and `FrozenByteMapU32` adds four value bytes per key.
 
-## Standalone build size
+## Rejected bundle cost
 
-The isolated Vite 8.2 production fixture emits 10.50 kB minified JavaScript (3.95 kB gzip) and one
-0.84 kB Wasm asset (0.53 kB gzip).
+The experimental Vite 8.2 fixture emits 10.50 kB minified JavaScript (3.95 kB gzip) and one 0.84 kB
+Wasm asset (0.53 kB gzip). This cost is not part of the published package surface.
 
 Sources: [PtrHash and modern MPHF design](https://arxiv.org/html/2502.15539v1),
 [Wasm SIMD](https://github.com/WebAssembly/spec/blob/main/proposals/simd/SIMD.md), and the
