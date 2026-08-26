@@ -19,8 +19,12 @@ build:
     wasm-tools strip -a src/rank-select-bitvector/kernels.wat -o src/rank-select-bitvector/kernels.wasm
     wasm-tools strip -a src/roaring-uint32-set/kernels.wat -o src/roaring-uint32-set/kernels.wasm
     wasm-tools strip -a src/static-mphf-u32/kernels.wat -o src/static-mphf-u32/kernels.wasm
+    wasm-tools strip -a src/static-mphf-bytes/kernels.wat -o src/static-mphf-bytes/kernels.wasm
     wasm-tools strip -a src/packed-delta-uint32-list/kernels.wat -o src/packed-delta-uint32-list/kernels.wasm
     wasm-tools strip -a src/wavelet-matrix-uint32/kernels.wat -o src/wavelet-matrix-uint32/kernels.wasm
+    wasm-tools strip -a src/wavelet-matrix-uint8/kernels.wat -o src/wavelet-matrix-uint8/kernels.wasm
+    wasm-tools strip -a src/fm-index-bytes/kernels.wat -o src/fm-index-bytes/kernels.wasm
+    wasm-tools strip -a src/compressed-string-table/kernels.wat -o src/compressed-string-table/kernels.wasm
     wasm-tools validate --features simd src/adaptive-simd-page-i32/kernels.wasm
     wasm-tools validate --features simd src/bytes/kernels.wasm
     wasm-tools validate --features simd src/bitset/kernels.wasm
@@ -41,8 +45,12 @@ build:
     wasm-tools validate --features simd src/rank-select-bitvector/kernels.wasm
     wasm-tools validate --features simd src/roaring-uint32-set/kernels.wasm
     wasm-tools validate --features simd src/static-mphf-u32/kernels.wasm
+    wasm-tools validate --features simd src/static-mphf-bytes/kernels.wasm
     wasm-tools validate --features simd src/packed-delta-uint32-list/kernels.wasm
     wasm-tools validate --features simd src/wavelet-matrix-uint32/kernels.wasm
+    wasm-tools validate --features simd src/wavelet-matrix-uint8/kernels.wasm
+    wasm-tools validate --features simd src/fm-index-bytes/kernels.wasm
+    wasm-tools validate --features simd src/compressed-string-table/kernels.wasm
     wasm-tools print src/adaptive-simd-page-i32/kernels.wasm | rg -q 'scan_between_for|scan_between_raw|gather_for|mask_count'
     ! wasm-tools print src/adaptive-simd-page-i32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/bytes/kernels.wasm | rg -q 'find_byte'
@@ -78,10 +86,14 @@ build:
     ! wasm-tools print src/roaring-uint32-set/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|\(export "dot"|\(export "matmul"'
     wasm-tools print src/static-mphf-u32/kernels.wasm | rg -q 'lookup_many|i32x4.mul'
     ! wasm-tools print src/static-mphf-u32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
+    wasm-tools print src/static-mphf-bytes/kernels.wasm | rg -q 'lookup_many|lookup_values_many|i8x16.bitmask'
     wasm-tools print src/packed-delta-uint32-list/kernels.wasm | rg -q 'init_shuffle_table|decode_range|intersect_into'
     ! wasm-tools print src/packed-delta-uint32-list/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|\(export "dot"|\(export "matmul"'
     wasm-tools print src/wavelet-matrix-uint32/kernels.wasm | rg -q 'access_many|rank_many|quantile_many|count_lt'
     ! wasm-tools print src/wavelet-matrix-uint32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
+    wasm-tools print src/wavelet-matrix-uint8/kernels.wasm | rg -q 'access_many|rank_many|quantile_many|count_lt'
+    wasm-tools print src/fm-index-bytes/kernels.wasm | rg -q 'count_many|i8x16.popcnt'
+    wasm-tools print src/compressed-string-table/kernels.wasm | rg -q 'equals_many|i8x16.bitmask'
 
 build-package: build
     deno run -A tools/build-package.ts
@@ -201,6 +213,10 @@ check: test package-smoke
     test "$(find examples/tree-shake-static-mphf-u32/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-static-mphf-u32/dist/assets/*.wasm | rg -q 'lookup_many|i32x4.mul'
     ! wasm-tools print examples/tree-shake-static-mphf-u32/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
+    pnpm exec tsc -p examples/tree-shake-static-mphf-bytes/tsconfig.json
+    pnpm exec vite build examples/tree-shake-static-mphf-bytes
+    test "$(find examples/tree-shake-static-mphf-bytes/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-static-mphf-bytes/dist/assets/*.wasm | rg -q 'lookup_many|lookup_values_many|i8x16.bitmask'
     pnpm exec tsc -p examples/tree-shake-packed-delta-uint32-list/tsconfig.json
     pnpm exec vite build examples/tree-shake-packed-delta-uint32-list
     test "$(find examples/tree-shake-packed-delta-uint32-list/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
@@ -211,3 +227,15 @@ check: test package-smoke
     test "$(find examples/tree-shake-wavelet-matrix-uint32/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-wavelet-matrix-uint32/dist/assets/*.wasm | rg -q 'access_many|rank_many|quantile_many|count_lt'
     ! wasm-tools print examples/tree-shake-wavelet-matrix-uint32/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
+    pnpm exec tsc -p examples/tree-shake-wavelet-matrix-uint8/tsconfig.json
+    pnpm exec vite build examples/tree-shake-wavelet-matrix-uint8
+    test "$(find examples/tree-shake-wavelet-matrix-uint8/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-wavelet-matrix-uint8/dist/assets/*.wasm | rg -q 'access_many|rank_many|quantile_many'
+    pnpm exec tsc -p examples/tree-shake-fm-index-bytes/tsconfig.json
+    pnpm exec vite build examples/tree-shake-fm-index-bytes
+    test "$(find examples/tree-shake-fm-index-bytes/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-fm-index-bytes/dist/assets/*.wasm | rg -q 'count_many|i8x16.popcnt'
+    pnpm exec tsc -p examples/tree-shake-compressed-string-table/tsconfig.json
+    pnpm exec vite build examples/tree-shake-compressed-string-table
+    test "$(find examples/tree-shake-compressed-string-table/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-compressed-string-table/dist/assets/*.wasm | rg -q 'equals_many|i8x16.bitmask'

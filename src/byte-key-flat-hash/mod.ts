@@ -388,5 +388,5 @@ function validateUint32(value: number): number {
 }
 
 function align4(value: number): number {
-  return (value + 3) & ~3;
+  return Math.ceil(value / 4) * 4;
 }

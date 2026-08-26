@@ -14,7 +14,7 @@ each `src/<name>/README.md`.
 | `PackedDeltaUint32List`                | complete | Frozen Stream VByte lists, checkpoints, decode, and intersection |
 | `FlatHashSetU32` / `FlatHashMapU32U32` | complete | Mutable typed tables with bulk probing and insertion             |
 | `FlatHashMapFixed16U32` / set          | complete | Fused fingerprint and v128 full-key probes                       |
-| `ByteKeyFlatHashMapU32`                | active   | Mutable byte arena and SIMD candidate verification               |
+| `ByteKeyFlatHashMapU32`                | complete | Bulk 2.00x faster; point lookup 12.5x slower than native Map     |
 | `FingerprintGroup16/Table16`           | complete | SwissTable masks; multi-group batch probes are 4.91x faster      |
 | `BitSlicedColumnU8`                    | complete | Nullable predicates and resident composable masks                |
 | `BitMatrix`                            | complete | Dense rows, non-owning views, transpose, and Boolean product     |
@@ -22,8 +22,14 @@ each `src/<name>/README.md`.
 | `EliasFanoSequence`                    | complete | Compressed monotone access, rank, neighbors, and bulk decode     |
 | `AdaptiveSimdPageI32`                  | complete | Constant, FOR, or Raw pages with scans, masks, gather, and sum   |
 | `StaticMphfU32`                        | complete | Frozen dense IDs, fingerprints, and batched lookup               |
+| `StaticMphfBytes` / frozen map         | complete | Exact arbitrary-byte membership and optional `u32` values        |
+| `CompressedStringTable`                | complete | Block-local front coding and SIMD equality without decode        |
+| `WaveletMatrixUint8`                   | complete | Eight-level byte rank/select and range statistics                |
+| `FmIndexBytes`                         | complete | Batched count plus bitvector-sampled locate                      |
 | `BinaryVectorIndex`                    | complete | Resident binary signatures and exhaustive Hamming scans          |
 | `SuccinctTrie`                         | rejected | Prototype lost exact lookup and prefix queries to JavaScript     |
+| `StringInterner`                       | rejected | Native `Map<string,u32>` owns decoded-string interning           |
+| `LoudsTree` topology                   | rejected | Batched parent navigation was 6.70x slower than `Uint32Array`    |
 | `PackedUint32Array`                    | rejected | Compact payload, but decode and gather lost to typed arrays      |
 | `PackedDeltaArray` (FOR+BP128)         | rejected | Smaller blocks did not offset unpack and query costs             |
 
@@ -42,10 +48,10 @@ general C++ library such as SDSL.
 | :--------------------------- | :------------------ | :--------------------------------------------------------------------- |
 | bitvector rank/select        | support             | `BitVector`; Elias–Fano supplies a sparse monotone variant             |
 | integer sequences / arrays   | support selectively | `EliasFanoSequence`, `PackedDeltaUint32List`, `WaveletMatrixUint32`    |
-| byte strings / wavelet tree  | add                 | `WaveletMatrixUint8`, specialized to 8 levels rather than 32           |
-| succinct associative arrays  | add                 | `StaticMphfBytes` plus frozen byte arena and optional `u32` values     |
-| compressed full-text search  | add                 | `FmIndexBytes` with batched `countMany` first, sampled `locate` second |
-| succinct tree topology       | conditional         | Prototype `LoudsTree` or balanced-parentheses bulk navigation only     |
+| byte strings / wavelet tree  | support             | `WaveletMatrixUint8`, specialized to 8 levels rather than 32           |
+| succinct associative arrays  | support             | `StaticMphfBytes` plus frozen byte arena and optional `u32` values     |
+| compressed full-text search  | support             | `FmIndexBytes` with batched count and sampled locate                   |
+| succinct tree topology       | reject for now      | LOUDS bulk parent lost by 6.70x to a direct `Uint32Array`              |
 | succinct trie / XBW          | do not expose now   | Previous trie prototype lost exact and prefix lookup to JavaScript     |
 | CSA / compressed suffix tree | no standalone type  | Add only as an internal FM-index extension after `locate` measurements |
 | DAG-compressed array         | defer               | Pointer chasing has no demonstrated Wasm SIMD advantage                |
@@ -53,17 +59,17 @@ general C++ library such as SDSL.
 
 This makes byte-oriented static search the next coherent layer:
 
-1. Finish and measure `ByteKeyFlatHashMapU32` as the mutable baseline and StringInterner building
-   block; remove it if bulk lookup does not beat pre-encoded native string keys.
-2. Implement `StaticMphfBytes` / frozen byte map. This is the direct succinct-associative-array
-   target; the mutable table is not itself succinct.
-3. Implement `WaveletMatrixUint8`. The current Uint32 matrix always stores 32 bit levels and is not
-   an acceptable byte-string representation.
-4. Build `FmIndexBytes` from a BWT, byte wavelet matrix, cumulative symbol counts, and optional
-   sampled suffix-array positions. Compare repeated pattern batches with `Uint8Array` and string
-   search, including index construction and encoded size separately.
-5. Revisit only the topology layer of LOUDS or balanced parentheses. Retain it only if bulk
-   `parentMany`, `childrenMany`, or subtree navigation wins a concrete AST/dictionary workload.
+1. `ByteKeyFlatHashMapU32` is retained as the mutable baseline and StringInterner building block:
+   bulk lookup was 2.00x faster, while point lookup was 12.5x slower than native Map.
+2. `StaticMphfBytes` / frozen byte map is the direct succinct-associative-array target; the mutable
+   table is not itself succinct.
+3. `WaveletMatrixUint8` avoids the 32 levels of the general Uint32 matrix and is an acceptable
+   byte-string representation.
+4. `FmIndexBytes` combines a BWT, byte wavelet matrix, cumulative symbol counts, and bitvector-
+   sampled suffix-array positions. Its repeated count workload won; construction and size remain
+   explicit trade-offs.
+5. The topology-only LOUDS prototype was not retained: `Uint32Array` parent lookup was 6.70x faster.
+   Its benchmark remains under `experiments/louds-topology/` as rejection evidence.
 
 The mutable byte map and string interner remain typed utility structures, but they do not count as
 succinct coverage. Likewise, `WaveletMatrixUint32` covers general integer sequences but does not
@@ -109,10 +115,11 @@ Reference: [Techniques for Inverted Index Compression](https://arxiv.org/html/19
 
 ### 2. Shared monotone contract
 
-- [ ] Evaluate a `MonotoneUint32Sequence` read-only contract or factory over Elias–Fano,
-      PackedDelta, dense bitmap, and contiguous-range representations.
-- [ ] Measure interface dispatch before adding a wrapper; do not publish an abstraction that erases
-      the selected encoding's benefit.
+- [x] Reject a runtime `MonotoneUint32Sequence` wrapper/factory. Elias–Fano exposes rank and full
+      decode while PackedDelta exposes lower-bound and ranged decode; forcing one runtime surface
+      would hide the encoding-specific operations without creating a new SIMD kernel. TypeScript
+      callers can use a structural `{ length; at(index); nextGEQ(value) }` contract at zero bundle
+      cost when that smaller common surface is sufficient.
 - [ ] Consider partitioned Elias–Fano only after block-level density measurements show that global
       Elias–Fano leaves meaningful space or query performance on the table.
 
@@ -155,13 +162,18 @@ Reference: [SlimSell](https://arxiv.org/abs/2010.09913)
 - [ ] `FlatHashMapU64U32` only with a real 64-bit-key workload.
 - [x] `FlatHashMapFixed16U32` and `FlatHashSetFixed16` for UUID or fixed-hash keys. Batched lookup
       was 25.6–27.9x faster than pre-stringified native `Map`/`Set` in the recorded workload.
-- [ ] Finish benchmarking `ByteKeyFlatHashMapU32`; retain it only as a measured mutable baseline.
-- [ ] `StaticMphfBytes` plus a frozen byte arena and exact-key or fingerprint membership policy.
-- [ ] `CompressedStringTable` using front coding, FSST, or OnPair16; compare against an ordinary
-      byte arena before adding compression.
-- [ ] `StringInterner` with `u32` handles only if bulk lookup amortizes UTF-8 copying.
-- [ ] `WaveletMatrixUint8` with 8 levels, byte-oriented bulk rank, and BWT-ready storage.
-- [ ] `FmIndexBytes.countMany`; add sampled `locateMany` only after count and size benchmarks pass.
+- [x] Retain `ByteKeyFlatHashMapU32` as a measured mutable baseline: bulk lookup won by 2.00x, while
+      point lookup lost by 12.5x.
+- [x] `StaticMphfBytes` plus a frozen byte arena and exact-key membership policy. It is 13.5x faster
+      than per-query hex encoding plus `Set`, but 2.26x slower than a pre-encoded `Set<string>`.
+- [x] `CompressedStringTable` using block-local front coding. The recorded path corpus used 31.0% of
+      raw bytes; equality beat scalar bytes by 2.00x, while random decode lost by 12.3x.
+- [x] Reject `StringInterner`: native `Map<string, u32>` already provides exact decoded-string
+      interning, while the measured byte map is 12.5x slower for point lookup before UTF-8 copying.
+- [x] `WaveletMatrixUint8` with 8 levels, byte-oriented bulk rank, and BWT-ready storage.
+- [x] `FmIndexBytes.countMany` and bitvector-sampled `locateMany`; count was 6.86x faster than the
+      overlapping `String#indexOf` workload. Locating 233,657 positions took 324.8 ms, so count and
+      cap results first.
 
 Do not add arbitrary JavaScript object keys or values. Native `Map` and `Set` already own that
 workload.

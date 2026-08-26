@@ -28,8 +28,12 @@
     "./roaring-uint32-set": "./dist/roaring-uint32-set/mod.js",
     "./roaring-bitmap": "./dist/roaring-uint32-set/mod.js",
     "./static-mphf-u32": "./dist/static-mphf-u32/mod.js",
+    "./static-mphf-bytes": "./dist/static-mphf-bytes/mod.js",
     "./packed-delta-uint32-list": "./dist/packed-delta-uint32-list/mod.js",
-    "./wavelet-matrix-uint32": "./dist/wavelet-matrix-uint32/mod.js"
+    "./wavelet-matrix-uint32": "./dist/wavelet-matrix-uint32/mod.js",
+    "./wavelet-matrix-uint8": "./dist/wavelet-matrix-uint8/mod.js",
+    "./fm-index-bytes": "./dist/fm-index-bytes/mod.js",
+    "./compressed-string-table": "./dist/compressed-string-table/mod.js"
   },
   "sideEffects": false,
   "files": [
@@ -60,8 +64,12 @@
     "bench:rank-select-bitvector": "vitest bench experiments/rank-select-bitvector",
     "bench:roaring-uint32-set": "vitest bench experiments/roaring-uint32-set",
     "bench:static-mphf-u32": "vitest bench experiments/static-mphf-u32",
+    "bench:static-mphf-bytes": "vitest bench experiments/static-mphf-bytes",
     "bench:packed-delta-uint32-list": "vitest bench experiments/packed-delta-uint32-list",
     "bench:wavelet-matrix-uint32": "vitest bench experiments/wavelet-matrix-uint32",
+    "bench:wavelet-matrix-uint8": "vitest bench experiments/wavelet-matrix-uint8",
+    "bench:fm-index-bytes": "vitest bench experiments/fm-index-bytes",
+    "bench:compressed-string-table": "vitest bench experiments/compressed-string-table",
     "bench:record:bitset": "vitest bench experiments/bitset --outputJson experiments/bitset/benchmarks/baseline.json",
     "bench:record:bit-matrix": "vitest bench experiments/bit-matrix --outputJson experiments/bit-matrix/benchmarks/baseline.json",
     "bench:record:byte-key-flat-hash": "vitest bench experiments/byte-key-flat-hash --outputJson experiments/byte-key-flat-hash/benchmarks/baseline.json",
@@ -80,8 +88,12 @@
     "bench:record:rank-select-bitvector": "vitest bench experiments/rank-select-bitvector --outputJson experiments/rank-select-bitvector/benchmarks/baseline.json",
     "bench:record:roaring-uint32-set": "vitest bench experiments/roaring-uint32-set --outputJson experiments/roaring-uint32-set/benchmarks/baseline.json",
     "bench:record:static-mphf-u32": "vitest bench experiments/static-mphf-u32 --outputJson experiments/static-mphf-u32/benchmarks/baseline.json",
+    "bench:record:static-mphf-bytes": "vitest bench experiments/static-mphf-bytes --outputJson experiments/static-mphf-bytes/benchmarks/baseline.json",
     "bench:record:packed-delta-uint32-list": "vitest bench experiments/packed-delta-uint32-list --outputJson experiments/packed-delta-uint32-list/benchmarks/baseline.json",
     "bench:record:wavelet-matrix-uint32": "vitest bench experiments/wavelet-matrix-uint32 --outputJson experiments/wavelet-matrix-uint32/benchmarks/baseline.json",
+    "bench:record:wavelet-matrix-uint8": "vitest bench experiments/wavelet-matrix-uint8 --outputJson experiments/wavelet-matrix-uint8/benchmarks/baseline.json",
+    "bench:record:fm-index-bytes": "vitest bench experiments/fm-index-bytes --outputJson experiments/fm-index-bytes/benchmarks/baseline.json",
+    "bench:record:compressed-string-table": "vitest bench experiments/compressed-string-table --outputJson experiments/compressed-string-table/benchmarks/baseline.json",
     "bench:compare:bitset": "vitest bench experiments/bitset --compare experiments/bitset/benchmarks/baseline.json",
     "bench:compare:bit-matrix": "vitest bench experiments/bit-matrix --compare experiments/bit-matrix/benchmarks/baseline.json",
     "bench:compare:byte-key-flat-hash": "vitest bench experiments/byte-key-flat-hash --compare experiments/byte-key-flat-hash/benchmarks/baseline.json",
@@ -100,8 +112,12 @@
     "bench:compare:rank-select-bitvector": "vitest bench experiments/rank-select-bitvector --compare experiments/rank-select-bitvector/benchmarks/baseline.json",
     "bench:compare:roaring-uint32-set": "vitest bench experiments/roaring-uint32-set --compare experiments/roaring-uint32-set/benchmarks/baseline.json",
     "bench:compare:static-mphf-u32": "vitest bench experiments/static-mphf-u32 --compare experiments/static-mphf-u32/benchmarks/baseline.json",
+    "bench:compare:static-mphf-bytes": "vitest bench experiments/static-mphf-bytes --compare experiments/static-mphf-bytes/benchmarks/baseline.json",
     "bench:compare:packed-delta-uint32-list": "vitest bench experiments/packed-delta-uint32-list --compare experiments/packed-delta-uint32-list/benchmarks/baseline.json",
-    "bench:compare:wavelet-matrix-uint32": "vitest bench experiments/wavelet-matrix-uint32 --compare experiments/wavelet-matrix-uint32/benchmarks/baseline.json"
+    "bench:compare:wavelet-matrix-uint32": "vitest bench experiments/wavelet-matrix-uint32 --compare experiments/wavelet-matrix-uint32/benchmarks/baseline.json",
+    "bench:compare:wavelet-matrix-uint8": "vitest bench experiments/wavelet-matrix-uint8 --compare experiments/wavelet-matrix-uint8/benchmarks/baseline.json",
+    "bench:compare:fm-index-bytes": "vitest bench experiments/fm-index-bytes --compare experiments/fm-index-bytes/benchmarks/baseline.json",
+    "bench:compare:compressed-string-table": "vitest bench experiments/compressed-string-table --compare experiments/compressed-string-table/benchmarks/baseline.json"
   },
   "license": "MIT",
   "publishConfig": {

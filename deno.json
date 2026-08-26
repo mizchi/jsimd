@@ -26,8 +26,12 @@
     "./roaring-uint32-set": "./src/roaring-uint32-set/mod.ts",
     "./roaring-bitmap": "./src/roaring-uint32-set/mod.ts",
     "./static-mphf-u32": "./src/static-mphf-u32/mod.ts",
+    "./static-mphf-bytes": "./src/static-mphf-bytes/mod.ts",
     "./packed-delta-uint32-list": "./src/packed-delta-uint32-list/mod.ts",
-    "./wavelet-matrix-uint32": "./src/wavelet-matrix-uint32/mod.ts"
+    "./wavelet-matrix-uint32": "./src/wavelet-matrix-uint32/mod.ts",
+    "./wavelet-matrix-uint8": "./src/wavelet-matrix-uint8/mod.ts",
+    "./fm-index-bytes": "./src/fm-index-bytes/mod.ts",
+    "./compressed-string-table": "./src/compressed-string-table/mod.ts"
   },
   "tasks": {
     "build": "just build",

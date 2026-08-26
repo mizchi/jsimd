@@ -29,6 +29,9 @@ import { FlatHashMapU32U32, FlatHashSetU32 } from "./src/flat-hash/mod.ts";
 import { BitSlicedColumnU8, BitSliceMask } from "./src/bit-sliced-column/mod.ts";
 import { jsonTokenStarts } from "./src/json/mod.ts";
 import { WaveletMatrixUint32 } from "./src/wavelet-matrix-uint32/mod.ts";
+import { WaveletMatrixUint8 } from "./src/wavelet-matrix-uint8/mod.ts";
+import { FmIndexBytes } from "./src/fm-index-bytes/mod.ts";
+import { CompressedStringTable } from "./src/compressed-string-table/mod.ts";
 import { EliasFanoSequence, EliasFanoSequenceBuilder } from "./src/elias-fano-sequence/mod.ts";
 import {
   AdaptivePageEncoding,
@@ -36,6 +39,11 @@ import {
   SimdPageMask,
 } from "./src/adaptive-simd-page-i32/mod.ts";
 import { StaticMphfU32, StaticMphfU32Builder } from "./src/static-mphf-u32/mod.ts";
+import {
+  FrozenByteMapU32,
+  StaticMphfBytes,
+  StaticMphfBytesBuilder,
+} from "./src/static-mphf-bytes/mod.ts";
 import { BinaryVectorIndex } from "./src/binary-vector-index/mod.ts";
 import { BitMatrix } from "./src/bit-matrix/mod.ts";
 import { FingerprintGroup16, FingerprintTable16 } from "./src/fingerprint-group16/mod.ts";
@@ -1468,6 +1476,230 @@ Deno.test("WaveletMatrixUint32 supports access, rank, and select", () => {
   assertEquals(matrix.select(1, 2), -1, "missing occurrence");
 });
 
+Deno.test("WaveletMatrixUint8 specializes wavelet queries to the byte alphabet", () => {
+  using matrix = WaveletMatrixUint8.from(Uint8Array.of(98, 97, 110, 97, 110, 97, 0, 255));
+  assertEquals(matrix.length, 8, "length");
+  assertEquals(matrix.levels, 8, "byte levels");
+  assertEquals(matrix.access(3), 97, "access");
+  assertEquals(matrix.rank(97, 6), 3, "rank");
+  assertEquals(matrix.select(110, 1), 4, "select");
+  assertEquals(matrix.rangeFreq(0, 8, 97, 111), 6, "range frequency");
+  assertEquals(matrix.quantile(0, 8, 0), 0, "quantile");
+  assertEquals(matrix.predecessor(0, 8, 98), 97, "predecessor");
+});
+
+Deno.test("WaveletMatrixUint8 batches byte access, rank, and quantile", () => {
+  using matrix = WaveletMatrixUint8.from(Uint8Array.of(9, 1, 7, 1, 5, 1, 3));
+  assertEquals(matrix.accessMany(Uint32Array.of(6, 0, 3)).join(","), "3,9,1", "accessMany");
+  assertEquals(
+    matrix.rankMany(Uint8Array.of(1, 7, 9), Uint32Array.of(7, 4, 1)).join(","),
+    "3,1,1",
+    "rankMany",
+  );
+  assertEquals(
+    matrix.quantileMany(
+      Uint32Array.of(0, 1),
+      Uint32Array.of(7, 6),
+      Uint32Array.of(3, 2),
+    ).join(","),
+    "3,1",
+    "quantileMany",
+  );
+});
+
+Deno.test("WaveletMatrixUint8 using lifecycle returns allocator storage", () => {
+  const before = WaveletMatrixUint8.allocatorStats();
+  {
+    using matrix = WaveletMatrixUint8.from(new Uint8Array(100_000));
+    assertEquals(matrix.rank(0, matrix.length), matrix.length, "resident query");
+  }
+  const after = WaveletMatrixUint8.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+Deno.test("WaveletMatrixUint8 matches scalar randomized byte queries", () => {
+  let state = 0x1234_abcd;
+  const values = Uint8Array.from({ length: 2_057 }, () => {
+    state = (Math.imul(state, 1_103_515_245) + 12_345) >>> 0;
+    return state >>> 24;
+  });
+  using matrix = WaveletMatrixUint8.from(values);
+  for (let query = 0; query < 500; query++) {
+    state = (Math.imul(state, 1_103_515_245) + 12_345) >>> 0;
+    const left = state % values.length;
+    state = (Math.imul(state, 1_103_515_245) + 12_345) >>> 0;
+    const right = left + (state % (values.length - left + 1));
+    const value = state & 0xff;
+    let rank = 0;
+    for (let index = 0; index < right; index++) rank += Number(values[index] === value);
+    assertEquals(matrix.rank(value, right), rank, `rank query=${query}`);
+    if (right > left) {
+      const sorted = values.slice(left, right).sort();
+      const kth = state % sorted.length;
+      assertEquals(matrix.quantile(left, right, kth), sorted[kth], `quantile query=${query}`);
+    }
+  }
+});
+
+Deno.test("FmIndexBytes counts overlapping arbitrary-byte patterns", () => {
+  const encoder = new TextEncoder();
+  using index = FmIndexBytes.from(encoder.encode("banana"));
+  assertEquals(index.length, 6, "text length");
+  assertEquals(index.count(encoder.encode("ana")), 2, "overlapping ana");
+  assertEquals(index.count(encoder.encode("na")), 2, "na");
+  assertEquals(index.count(encoder.encode("banana")), 1, "whole text");
+  assertEquals(index.count(encoder.encode("x")), 0, "missing");
+  assertEquals(index.count(new Uint8Array()), 7, "empty pattern suffixes");
+});
+
+Deno.test("FmIndexBytes countMany amortizes the Wasm boundary", () => {
+  const text = Uint8Array.of(0, 255, 0, 1, 0, 255, 0);
+  using index = FmIndexBytes.from(text);
+  const patterns = Uint8Array.of(0, 255, 0, 0, 1, 2);
+  const offsets = Uint32Array.of(0, 0, 1, 3, 5, 6);
+  const output = index.countMany(patterns, offsets);
+  assertEquals(output.join(","), "8,4,2,1,0", "batch counts");
+});
+
+Deno.test("FmIndexBytes locates sampled suffix-array positions", () => {
+  const encoder = new TextEncoder();
+  using index = FmIndexBytes.from(encoder.encode("banana"));
+  assertEquals(Array.from(index.locate(encoder.encode("ana"))).sort().join(","), "1,3", "ana");
+  assertEquals(Array.from(index.locate(encoder.encode("na"))).sort().join(","), "2,4", "na");
+  assertEquals(index.locate(encoder.encode("x")).length, 0, "missing");
+  const patterns = encoder.encode("ananaX");
+  const located = index.locateMany(patterns, Uint32Array.of(0, 3, 5, 6));
+  assertEquals(located.offsets.join(","), "0,2,4,4", "result offsets");
+  assertEquals(
+    Array.from(located.positions.subarray(0, 2)).sort().join(","),
+    "1,3",
+    "first positions",
+  );
+  assertEquals(
+    Array.from(located.positions.subarray(2, 4)).sort().join(","),
+    "2,4",
+    "second positions",
+  );
+});
+
+Deno.test("FmIndexBytes matches scalar randomized pattern counts", () => {
+  let state = 0x1020_3040;
+  const text = Uint8Array.from({ length: 2_048 }, () => {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    return state & 15;
+  });
+  using index = FmIndexBytes.from(text);
+  for (let query = 0; query < 250; query++) {
+    const length = query % 9;
+    const pattern = new Uint8Array(length);
+    for (let byte = 0; byte < length; byte++) {
+      state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+      pattern[byte] = state & 15;
+    }
+    const expectedCount = scalarByteCount(text, pattern);
+    assertEquals(index.count(pattern), expectedCount, `query=${query}`);
+    if (query < 32) {
+      assertEquals(
+        Array.from(index.locate(pattern)).sort((left, right) => left - right).join(","),
+        scalarBytePositions(text, pattern).join(","),
+        `locate query=${query}`,
+      );
+    }
+  }
+});
+
+Deno.test("FmIndexBytes using lifecycle returns allocator storage", () => {
+  const before = FmIndexBytes.allocatorStats();
+  {
+    using index = FmIndexBytes.from(new Uint8Array(10_000));
+    assertEquals(index.count(Uint8Array.of(0, 0)), 9_999, "resident count");
+  }
+  const after = FmIndexBytes.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+function scalarByteCount(text: Uint8Array, pattern: Uint8Array): number {
+  if (pattern.length === 0) return text.length + 1;
+  let count = 0;
+  outer:
+  for (let start = 0; start + pattern.length <= text.length; start++) {
+    for (let index = 0; index < pattern.length; index++) {
+      if (text[start + index] !== pattern[index]) continue outer;
+    }
+    count++;
+  }
+  return count;
+}
+
+function scalarBytePositions(text: Uint8Array, pattern: Uint8Array): number[] {
+  if (pattern.length === 0) return Array.from({ length: text.length + 1 }, (_, index) => index);
+  const positions: number[] = [];
+  outer:
+  for (let start = 0; start + pattern.length <= text.length; start++) {
+    for (let index = 0; index < pattern.length; index++) {
+      if (text[start + index] !== pattern[index]) continue outer;
+    }
+    positions.push(start);
+  }
+  return positions;
+}
+
+Deno.test("CompressedStringTable preserves front-coded arbitrary byte strings", () => {
+  const encoder = new TextEncoder();
+  const keys = [
+    encoder.encode("src/components/button/render.ts"),
+    encoder.encode("src/components/button/style.ts"),
+    encoder.encode("src/components/input/render.ts"),
+    Uint8Array.of(0, 1, 0, 2),
+  ];
+  using table = CompressedStringTable.from(keys);
+  assertEquals(table.length, keys.length, "length");
+  for (let id = 0; id < keys.length; id++) {
+    assertEquals(table.get(id).join(","), keys[id]!.join(","), `get id=${id}`);
+    assertEquals(table.equals(id, keys[id]!), true, `equals id=${id}`);
+  }
+  assertEquals(table.equals(0, encoder.encode("src/components/button/style.ts")), false, "miss");
+});
+
+Deno.test("CompressedStringTable batches equality without decoding", () => {
+  const encoder = new TextEncoder();
+  const keys = Array.from(
+    { length: 64 },
+    (_, index) =>
+      encoder.encode(`packages/compiler/src/shared-prefix-${index.toString(16).padStart(4, "0")}`),
+  );
+  using table = CompressedStringTable.from(keys);
+  const ids = Uint32Array.of(0, 17, 63, 10);
+  const queryList = [keys[0]!, keys[17]!, encoder.encode("missing"), keys[11]!];
+  const queryOffsets = new Uint32Array(queryList.length + 1);
+  let total = 0;
+  for (let index = 0; index < queryList.length; index++) {
+    total += queryList[index]!.length;
+    queryOffsets[index + 1] = total;
+  }
+  const queries = new Uint8Array(total);
+  for (let index = 0; index < queryList.length; index++) {
+    queries.set(queryList[index]!, queryOffsets[index]);
+  }
+  assertEquals(table.equalsMany(ids, queries, queryOffsets).join(","), "1,1,0,0", "matches");
+  assertEquals(table.encodedBytes < table.uncompressedBytes, true, "front coding saves space");
+});
+
+Deno.test("CompressedStringTable using lifecycle returns allocator storage", () => {
+  const before = CompressedStringTable.allocatorStats();
+  {
+    using table = CompressedStringTable.from(
+      Array.from({ length: 1_000 }, (_, index) => new TextEncoder().encode(`common/${index}`)),
+    );
+    assertEquals(table.length, 1_000, "resident table");
+  }
+  const after = CompressedStringTable.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
 Deno.test("WaveletMatrixUint32 supports range statistics", () => {
   using matrix = WaveletMatrixUint32.from([3, 1, 4, 1, 5, 9, 2, 6, 5]);
   assertEquals(matrix.rangeFreq(0, 9, 2, 6), 5, "values in [2,6)");
@@ -2154,6 +2386,113 @@ Deno.test("StaticMphfU32 maps every known key to a unique dense ID", () => {
   assertEquals(ids.size, keys.length, "unique IDs");
   assertEquals(index.has(123_456_789), false, "unknown key");
   assertEquals(index.fingerprintBits, 16, "fingerprint bits");
+});
+
+Deno.test("StaticMphfBytes maps arbitrary known keys to exact dense IDs", () => {
+  const prefix = new Uint8Array(40).fill(0x61);
+  const tail = prefix.slice();
+  tail[39] = 0x62;
+  using mphf = StaticMphfBytes.from([
+    new Uint8Array(),
+    byteKey(0, 1, 0, 2),
+    prefix,
+    tail,
+  ]);
+  const ids = [
+    mphf.lookup(new Uint8Array()),
+    mphf.lookup(byteKey(0, 1, 0, 2)),
+    mphf.lookup(prefix),
+    mphf.lookup(tail),
+  ];
+  assertEquals(new Set(ids).size, 4, "unique dense IDs");
+  assertEquals(ids.every((id) => id >= 0 && id < 4), true, "dense ID range");
+  assertEquals(mphf.lookup(byteKey(0, 1, 0, 3)), -1, "exact miss");
+});
+
+Deno.test("StaticMphfBytes batches concatenated exact-key lookup", () => {
+  const keys = byteKey(1, 2, 3, 4, 5, 6, 7, 8, 9);
+  const offsets = Uint32Array.of(0, 0, 1, 4, 9);
+  using mphf = StaticMphfBytes.fromBytes(keys, offsets);
+  const queries = byteKey(2, 3, 4, 99, 1, 5, 6, 7, 8, 9);
+  const queryOffsets = Uint32Array.of(0, 3, 4, 5, 10);
+  const output = new Int32Array(4);
+  assertEquals(mphf.lookupMany(queries, queryOffsets, output), 3, "batch hits");
+  assertEquals(output[1], -1, "batch miss");
+  assertEquals(new Set([output[0], output[2], output[3]]).size, 3, "batch IDs");
+});
+
+Deno.test("FrozenByteMapU32 stores values in MPHF slot order", () => {
+  const keys = byteKey(1, 2, 3, 4, 5, 6, 7, 8, 9);
+  const offsets = Uint32Array.of(0, 0, 1, 4, 9);
+  using map = FrozenByteMapU32.fromBytes(keys, offsets, Uint32Array.of(10, 20, 30, 40));
+  assertEquals(map.get(new Uint8Array()), 10, "empty key value");
+  assertEquals(map.get(byteKey(2, 3, 4)), 30, "middle key value");
+  assertEquals(map.get(byteKey(99)), undefined, "missing value");
+  const queries = byteKey(5, 6, 7, 8, 9, 99, 1);
+  const queryOffsets = Uint32Array.of(0, 5, 6, 7);
+  const values = new Uint32Array(3);
+  const present = new Uint8Array(3);
+  assertEquals(map.lookupMany(queries, queryOffsets, values, present), 2, "map batch hits");
+  assertEquals(values.join(","), "40,0,20", "map batch values");
+  assertEquals(present.join(","), "1,0,1", "map batch presence");
+});
+
+Deno.test("StaticMphfBytes validates uniqueness and releases using-owned storage", () => {
+  let duplicateThrew = false;
+  try {
+    new StaticMphfBytesBuilder().add(byteKey(1, 2)).add(byteKey(1, 2));
+  } catch (error) {
+    duplicateThrew = error instanceof RangeError;
+  }
+  assertEquals(duplicateThrew, true, "duplicate keys rejected");
+  const before = StaticMphfBytes.allocatorStats();
+  {
+    const builder = new StaticMphfBytesBuilder();
+    for (let index = 0; index < 2_000; index++) builder.add(fixed16(index));
+    using mphf = builder.freeze();
+    assertEquals(mphf.length, 2_000, "built length");
+  }
+  const after = StaticMphfBytes.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+Deno.test("StaticMphfBytes preserves exact membership for randomized variable keys", () => {
+  const keys: Uint8Array[] = [];
+  let state = 0x6d2b_79f5;
+  for (let input = 0; input < 5_000; input++) {
+    const key = new Uint8Array(5 + (input % 59));
+    new DataView(key.buffer).setUint32(0, input, true);
+    for (let index = 4; index < key.length; index++) {
+      state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+      key[index] = state >>> 24;
+    }
+    keys.push(key);
+  }
+  using mphf = StaticMphfBytes.from(keys);
+  const slots = new Set<number>();
+  for (let input = 0; input < keys.length; input++) {
+    const slot = mphf.lookup(keys[input]!);
+    assertEquals(slot >= 0, true, `known input=${input}`);
+    slots.add(slot);
+    const miss = keys[input]!.slice();
+    miss[0] ^= 0x80;
+    assertEquals(mphf.lookup(miss), -1, `exact miss input=${input}`);
+  }
+  assertEquals(slots.size, keys.length, "minimal perfect slots");
+});
+
+Deno.test("FrozenByteMapU32 using lifecycle returns all owned allocations", () => {
+  const before = FrozenByteMapU32.allocatorStats();
+  {
+    using map = FrozenByteMapU32.from(
+      Array.from({ length: 2_000 }, (_, index) => [fixed16(index), index * 7] as const),
+    );
+    assertEquals(map.get(fixed16(1_999)), 13_993, "last value");
+  }
+  const after = FrozenByteMapU32.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
 });
 
 Deno.test("StaticMphfU32Builder freezes independent snapshots", () => {
