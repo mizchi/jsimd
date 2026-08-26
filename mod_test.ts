@@ -12,7 +12,10 @@ import { SimdFloat32Vector } from "./src/f32-vector/mod.ts";
 import { SimdInt32Array } from "./src/i32-array/mod.ts";
 import { SimdMatrix2D } from "./src/matrix2d/mod.ts";
 import { SimdMatrix3D } from "./src/matrix3d/mod.ts";
-import { BitVector, BitVectorBuilder } from "./src/bit-vector/mod.ts";
+import {
+  RankSelectBitVector,
+  RankSelectBitVectorBuilder,
+} from "./src/rank-select-bit-vector/mod.ts";
 import { RoaringBitmap } from "./src/roaring-bitmap/mod.ts";
 import {
   PackedDeltaUint32List,
@@ -431,8 +434,8 @@ Deno.test("SimdMatrix3D using lifecycle and multiplication contracts", () => {
   assertEquals(after.liveBytes, before.liveBytes, "live bytes");
 });
 
-Deno.test("BitVector defines rank and select boundary semantics", () => {
-  using bits = BitVector.from(20, [0, 1, 3, 7, 8, 15, 19]);
+Deno.test("RankSelectBitVector defines rank and select boundary semantics", () => {
+  using bits = RankSelectBitVector.from(20, [0, 1, 3, 7, 8, 15, 19]);
   assertEquals(bits.length, 20, "length");
   assertEquals(bits.countOnes, 7, "count ones");
   assertEquals(bits.get(0), true, "get set bit");
@@ -449,17 +452,17 @@ Deno.test("BitVector defines rank and select boundary semantics", () => {
   assertEquals(bits.select1(-1), -1, "negative rank");
 });
 
-Deno.test("BitVector is the canonical frozen rank/select API", () => {
-  const builder = new BitVectorBuilder(96);
+Deno.test("RankSelectBitVector is the canonical frozen rank/select API", () => {
+  const builder = new RankSelectBitVectorBuilder(96);
   builder.insert(1).insert(32).insert(95);
   using bits = builder.freeze();
-  assertEquals(bits instanceof BitVector, true, "canonical runtime type");
+  assertEquals(bits instanceof RankSelectBitVector, true, "canonical runtime type");
   assertEquals(bits.rank1(33), 2, "rank");
   assertEquals(bits.select1(2), 95, "select");
 });
 
-Deno.test("BitVector finds neighboring bits inclusively", () => {
-  using bits = BitVector.from(20, [0, 4, 9, 19]);
+Deno.test("RankSelectBitVector finds neighboring bits inclusively", () => {
+  using bits = RankSelectBitVector.from(20, [0, 4, 9, 19]);
   assertEquals(bits.next1(0), 0, "next exact");
   assertEquals(bits.next1(1), 4, "next after gap");
   assertEquals(bits.next1(19), 19, "next last");
@@ -470,9 +473,9 @@ Deno.test("BitVector finds neighboring bits inclusively", () => {
   assertEquals(bits.prev1(-1), -1, "previous before start");
 });
 
-Deno.test("BitVector crosses 128-bit and 512-bit blocks", () => {
+Deno.test("RankSelectBitVector crosses 128-bit and 512-bit blocks", () => {
   const positions = [0, 31, 32, 127, 128, 510, 511, 512, 513, 1023, 1024, 1030];
-  using bits = BitVector.from(1031, positions);
+  using bits = RankSelectBitVector.from(1031, positions);
   for (let index = 0; index < positions.length; index++) {
     assertEquals(bits.rank1(positions[index]!), index, `rank before ${positions[index]}`);
     assertEquals(bits.select1(index), positions[index], `select ${index}`);
@@ -480,8 +483,8 @@ Deno.test("BitVector crosses 128-bit and 512-bit blocks", () => {
   assertEquals(bits.rank1(1031), positions.length, "rank tail");
 });
 
-Deno.test("BitVectorBuilder freezes an immutable snapshot", () => {
-  const builder = new BitVectorBuilder(600);
+Deno.test("RankSelectBitVectorBuilder freezes an immutable snapshot", () => {
+  const builder = new RankSelectBitVectorBuilder(600);
   builder.insert(1).insert(511).insert(512).insert(599).remove(1);
   using frozen = builder.freeze();
   builder.insert(1).remove(512);
@@ -490,9 +493,9 @@ Deno.test("BitVectorBuilder freezes an immutable snapshot", () => {
   assertEquals(frozen.toArray().join(","), "511,512,599", "frozen values");
 });
 
-Deno.test("BitVector executes rank and select queries in bulk", () => {
-  using bits = BitVector.from(20, [0, 1, 3, 7, 8, 15, 19]);
-  const before = BitVector.allocatorStats();
+Deno.test("RankSelectBitVector executes rank and select queries in bulk", () => {
+  using bits = RankSelectBitVector.from(20, [0, 1, 3, 7, 8, 15, 19]);
+  const before = RankSelectBitVector.allocatorStats();
   const rankOutput = new Uint32Array(6);
   assertEquals(
     bits.rank1Many(new Uint32Array([0, 1, 8, 9, 20, 20]), rankOutput),
@@ -507,12 +510,12 @@ Deno.test("BitVector executes rank and select queries in bulk", () => {
     "select output reuse",
   );
   assertEquals(selectOutput.join(","), "0,8,19,-1,-1", "bulk selects");
-  const after = BitVector.allocatorStats();
+  const after = RankSelectBitVector.allocatorStats();
   assertEquals(after.liveAllocations, before.liveAllocations, "bulk scratch allocations");
   assertEquals(after.liveBytes, before.liveBytes, "bulk scratch bytes");
 });
 
-Deno.test("BitVector matches scalar randomized references", () => {
+Deno.test("RankSelectBitVector matches scalar randomized references", () => {
   let state = 0x6d2b_79f5;
   for (const length of [0, 1, 127, 128, 511, 512, 513, 4099]) {
     const expected: number[] = [];
@@ -520,7 +523,7 @@ Deno.test("BitVector matches scalar randomized references", () => {
       state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
       if ((state & 7) === 0) expected.push(position);
     }
-    using bits = BitVector.from(length, expected);
+    using bits = RankSelectBitVector.from(length, expected);
     let rank = 0;
     for (let end = 0; end <= length; end++) {
       assertEquals(bits.rank1(end), rank, `rank length=${length} end=${end}`);
@@ -532,13 +535,13 @@ Deno.test("BitVector matches scalar randomized references", () => {
   }
 });
 
-Deno.test("BitVector using lifecycle returns allocator storage", () => {
-  const before = BitVector.allocatorStats();
+Deno.test("RankSelectBitVector using lifecycle returns allocator storage", () => {
+  const before = RankSelectBitVector.allocatorStats();
   {
-    using bits = BitVector.from(1_000_000, [1, 10, 999_999]);
+    using bits = RankSelectBitVector.from(1_000_000, [1, 10, 999_999]);
     assertEquals(bits.rank1(1_000_000), 3, "live rank");
   }
-  const after = BitVector.allocatorStats();
+  const after = RankSelectBitVector.allocatorStats();
   assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
   assertEquals(after.liveBytes, before.liveBytes, "live bytes");
 });

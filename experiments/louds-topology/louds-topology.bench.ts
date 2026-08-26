@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { BitVector } from "../../src/bit-vector/mod.ts";
+import { RankSelectBitVector } from "../../src/rank-select-bit-vector/mod.ts";
 
 const NODE_COUNT = 87_381;
 const QUERY_COUNT = 4096;
@@ -27,7 +27,7 @@ const ranks = new Uint32Array(QUERY_COUNT);
 let sink = 0;
 
 describe("rejected LOUDS parent navigation", () => {
-  const louds = BitVector.fromUint32Array(bit, words.subarray(0, Math.ceil(bit / 32)));
+  const louds = RankSelectBitVector.fromUint32Array(bit, words.subarray(0, Math.ceil(bit / 32)));
   afterAll(() => louds[Symbol.dispose]());
   bench("LOUDS select+rank parentMany x4096", () => {
     louds.select1Many(nodes, positions);

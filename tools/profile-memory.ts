@@ -27,7 +27,7 @@ import { jsonTokenStarts } from "../src/json/mod.ts";
 import { SimdMatrix2D } from "../src/matrix2d/mod.ts";
 import { SimdMatrix3D } from "../src/matrix3d/mod.ts";
 import { PackedDeltaUint32List } from "../src/packed-delta-uint32-list/mod.ts";
-import { BitVector } from "../src/bit-vector/mod.ts";
+import { RankSelectBitVector } from "../src/rank-select-bit-vector/mod.ts";
 import { RoaringBitmap } from "../src/roaring-bitmap/mod.ts";
 import { FrozenByteMapU32, StaticMphfBytes } from "../src/static-mphf-bytes/mod.ts";
 import { StaticMphfU32 } from "../src/static-mphf-u32/mod.ts";
@@ -225,13 +225,13 @@ const scenarios: readonly Scenario[] = [
     stats: () => SimdMatrix3D.allocatorStats(),
   },
   {
-    name: "bit-vector",
+    name: "rank-select-bit-vector",
     iterations: 250,
     run() {
-      using value = BitVector.from(131_072, bitPositions);
+      using value = RankSelectBitVector.from(131_072, bitPositions);
       sink += value.rank1(65_536);
     },
-    stats: () => BitVector.allocatorStats(),
+    stats: () => RankSelectBitVector.allocatorStats(),
   },
   {
     name: "roaring-bitmap",

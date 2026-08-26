@@ -1,12 +1,12 @@
-# @mizchi/jsimd/bit-vector experiment
+# @mizchi/jsimd/rank-select-bit-vector experiment
 
-Compares `BitVector` with JavaScript functions using the same 512-bit cumulative index. The
-benchmark includes the public call boundary and executes 1,024 pseudo-random queries per sample.
+Compares `RankSelectBitVector` with JavaScript functions using the same 512-bit cumulative index.
+The benchmark includes the public call boundary and executes 1,024 pseudo-random queries per sample.
 
 ```ts
-import { BitVectorBuilder } from "@mizchi/jsimd/bit-vector";
+import { RankSelectBitVectorBuilder } from "@mizchi/jsimd/rank-select-bit-vector";
 
-const builder = new BitVectorBuilder(1_000_000);
+const builder = new RankSelectBitVectorBuilder(1_000_000);
 builder.insert(1).insert(10).insert(999_999);
 using bits = builder.freeze();
 bits.rank1(11);
@@ -25,9 +25,9 @@ Recorded with Vitest 4.1.11 / Node 24 / Apple M5. Times are per batch of 1,024 q
 near parity with indexed JavaScript; the useful SIMD interface is the bulk operation.
 
 ```sh
-pnpm bench:bit-vector
-pnpm bench:record:rank-select-bitvector
-pnpm bench:compare:rank-select-bitvector
+pnpm bench:rank-select-bit-vector
+pnpm bench:record:rank-select-bit-vector
+pnpm bench:compare:rank-select-bit-vector
 ```
 
 The committed baseline is environment-specific. The 512-bit rank index adds 0.78% logical storage

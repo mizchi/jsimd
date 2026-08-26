@@ -1,10 +1,10 @@
 {
   "files": [
     {
-      "filepath": "/Users/mz/ghq/github.com/mizchi/jsimd/experiments/bit-vector/bit-vector.bench.ts",
+      "filepath": "/Users/mz/ghq/github.com/mizchi/jsimd/experiments/rank-select-bit-vector/rank-select-bit-vector.bench.ts",
       "groups": [
         {
-          "fullName": "experiments/bit-vector/bit-vector.bench.ts > BitVector length=16384",
+          "fullName": "experiments/rank-select-bit-vector/rank-select-bit-vector.bench.ts > RankSelectBitVector length=16384",
           "benchmarks": [
             {
               "id": "-1187201933_0_0",
@@ -159,7 +159,7 @@
           ]
         },
         {
-          "fullName": "experiments/bit-vector/bit-vector.bench.ts > BitVector length=262144",
+          "fullName": "experiments/rank-select-bit-vector/rank-select-bit-vector.bench.ts > RankSelectBitVector length=262144",
           "benchmarks": [
             {
               "id": "-1187201933_1_0",
@@ -314,7 +314,7 @@
           ]
         },
         {
-          "fullName": "experiments/bit-vector/bit-vector.bench.ts > BitVector length=4194304",
+          "fullName": "experiments/rank-select-bit-vector/rank-select-bit-vector.bench.ts > RankSelectBitVector length=4194304",
           "benchmarks": [
             {
               "id": "-1187201933_2_0",

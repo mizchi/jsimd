@@ -39,8 +39,8 @@ level stores one bit per input value, its zero/one partition boundary, and a cum
 every 512 bits. Rank scans at most four `v128` blocks beyond that indexed prefix.
 
 All 32 levels are embedded in this entrypoint's own Wasm module. Reusing the separately packaged
-`BitVector` would emit a second Wasm and would make a point query cross the JS/Wasm boundary once
-per level.
+`RankSelectBitVector` would emit a second Wasm and would make a point query cross the JS/Wasm
+boundary once per level.
 
 The logical resident size is about 4.25 bytes per value: 4 bytes for 32 level bits and 0.25 bytes
 for 512-bit rank prefixes, plus 128 bytes of level boundaries. The allocator rounds the three
@@ -53,7 +53,7 @@ workloads.
 The binary layout and range-navigation operations follow the wavelet matrix family. The choice to
 start with a binary representation and evaluate a 4-ary layout later is informed by
 [“Faster Wavelet Tree Queries”](https://arxiv.org/html/2302.09239v2). The 512-bit rank prefix and
-128-bit scan are the same Wasm-oriented design used by this package's `BitVector`.
+128-bit scan are the same Wasm-oriented design used by this package's `RankSelectBitVector`.
 
 ## Benchmark
 

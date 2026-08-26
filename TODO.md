@@ -8,7 +8,7 @@ each `src/<name>/README.md`.
 
 | component                              | status   | current scope                                                    |
 | :------------------------------------- | :------- | :--------------------------------------------------------------- |
-| `BitVector`                            | complete | Frozen rank/select/neighbor queries and bulk APIs                |
+| `RankSelectBitVector`                  | complete | Frozen rank/select/neighbor queries and bulk APIs                |
 | `Bitmap` / `DenseBitmap`               | complete | Growable/fixed dense bitmaps                                     |
 | `RoaringBitmap`                        | complete | Mutable array/bitmap containers and reusable intersections       |
 | `PackedDeltaUint32List`                | complete | Frozen Stream VByte lists, checkpoints, decode, and intersection |
@@ -78,14 +78,14 @@ the existing structures before adding another standalone type.
 This is the most visible API gap: users choosing a Roaring bitmap reasonably expect union,
 difference, and symmetric difference without converting to another representation.
 
-#### 2. Complete the zero-bit side of `BitVector`
+#### 2. Complete the zero-bit side of `RankSelectBitVector`
 
 - [ ] Add `rank0Many`, `select0`, `select0Many`, `next0`, and `prev0`.
 - [ ] Define tail semantics so padding beyond `capacity` is never observable as a zero bit.
 - [ ] Match the existing scalar/randomized rank/select coverage and add bulk benchmarks.
 
-`rank0` already exists, so leaving selection and neighbor queries one-sided makes the `BitVector`
-contract appear incomplete.
+`rank0` already exists, so leaving selection and neighbor queries one-sided makes the
+`RankSelectBitVector` contract appear incomplete.
 
 #### 3. Standardize allocation-free output APIs
 
@@ -131,8 +131,8 @@ intermediate selection back through JavaScript.
 
 #### 6. Add explicit mutable-to-frozen bridges
 
-- [ ] Evaluate `Bitmap -> BitVector`, `FlatHashSetU32 -> StaticMphfU32`, and monotone builder ->
-      Elias–Fano / PackedDelta conversion helpers.
+- [ ] Evaluate `Bitmap -> RankSelectBitVector`, `FlatHashSetU32 -> StaticMphfU32`, and monotone
+      builder -> Elias–Fano / PackedDelta conversion helpers.
 - [ ] Make rebuild and ownership costs explicit; a `freeze` operation may construct a new physical
       representation rather than alias mutable storage.
 - [ ] Avoid a runtime factory that hides representation-specific operations or bundle costs.
@@ -168,12 +168,18 @@ operation that wins after boundary and copy costs.
 Documentation and new examples use only these canonical subpaths:
 
 - `bitmap`
-- `bit-vector`
+- `rank-select-bit-vector`
 - `roaring-bitmap`
 
-The pre-announcement aliases `bitset`, `rank-select-bitvector`, `rank-select-bitmap`, and
-`roaring-uint32-set`, plus their constructor aliases, have been removed. Do not add aliases until a
-real compatibility obligation exists.
+The pre-announcement aliases `bitset`, `bit-vector`, `rank-select-bitvector`, `rank-select-bitmap`,
+and `roaring-uint32-set`, plus their constructor aliases, have been removed. Do not add aliases
+until a real compatibility obligation exists.
+
+`BitVector` and the `bit-vector` subpath are reserved for a possible immutable packed boolean
+sequence without rank/select metadata. Do not implement it merely for naming symmetry: retain it
+only if bulk access, comparison, scan, or another representative workload beats the best typed-array
+implementation after boundary costs. Until then, `RankSelectBitVector` is the only public frozen
+bit-vector structure.
 
 ## Succinct-data-structure support boundary
 
@@ -185,7 +191,7 @@ general C++ library such as SDSL.
 
 | article family               | decision            | `jsimd` surface                                                        |
 | :--------------------------- | :------------------ | :--------------------------------------------------------------------- |
-| bitvector rank/select        | support             | `BitVector`; Elias–Fano supplies a sparse monotone variant             |
+| bitvector rank/select        | support             | `RankSelectBitVector`; Elias–Fano supplies a sparse monotone variant   |
 | integer sequences / arrays   | support selectively | `EliasFanoSequence`, `PackedDeltaUint32List`, `WaveletMatrixUint32`    |
 | byte strings / wavelet tree  | support             | `WaveletMatrixUint8`, specialized to 8 levels rather than 32           |
 | succinct associative arrays  | reject public API   | Byte MPHF prototype lost to a pre-encoded JavaScript `Set`             |

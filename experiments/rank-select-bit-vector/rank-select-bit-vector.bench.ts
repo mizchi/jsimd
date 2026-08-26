@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { BitVector } from "../../src/bit-vector/mod.ts";
+import { RankSelectBitVector } from "../../src/rank-select-bit-vector/mod.ts";
 
 let sink = 0;
 
@@ -52,7 +52,7 @@ function scalarSelect1(words: Uint32Array, index: Uint32Array, rank: number): nu
   return -1;
 }
 
-describe.each([16_384, 262_144, 4_194_304])("BitVector length=%i", (length) => {
+describe.each([16_384, 262_144, 4_194_304])("RankSelectBitVector length=%i", (length) => {
   const positions: number[] = [];
   const words = new Uint32Array(Math.ceil(length / 32));
   for (let position = 0; position < length; position += 7) {
@@ -60,7 +60,7 @@ describe.each([16_384, 262_144, 4_194_304])("BitVector length=%i", (length) => {
     words[position >>> 5] |= 1 << (position & 31);
   }
   const index = buildScalarIndex(words);
-  const bits = BitVector.fromUint32Array(length, words);
+  const bits = RankSelectBitVector.fromUint32Array(length, words);
   const queryCount = 1_024;
   const rankEnds = Uint32Array.from(
     { length: queryCount },

@@ -5,7 +5,7 @@
     ".": "./src/bytes/mod.ts",
     "./adaptive-simd-page-i32": "./src/adaptive-simd-page-i32/mod.ts",
     "./bitmap": "./src/bitmap/mod.ts",
-    "./bit-vector": "./src/bit-vector/mod.ts",
+    "./rank-select-bit-vector": "./src/rank-select-bit-vector/mod.ts",
     "./bit-matrix": "./src/bit-matrix/mod.ts",
     "./byte-key-flat-hash": "./src/byte-key-flat-hash/mod.ts",
     "./binary-vector-index": "./src/binary-vector-index/mod.ts",

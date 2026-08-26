@@ -1,12 +1,16 @@
-# BitVector
+# RankSelectBitVector
 
 An immutable, Wasm-resident bit vector with rank, select, and neighboring-bit queries. Build a
 mutable bit pattern, freeze it, and release the frozen snapshot automatically with `using`:
 
-```ts
-import { BitVectorBuilder } from "@mizchi/jsimd/bit-vector";
+This type always stores rank/select metadata; it is not the package's generic packed-bit sequence.
+The `BitVector` name and `bit-vector` subpath are reserved for a future unindexed immutable sequence
+and are not currently exported. Use `Bitmap` or `DenseBitmap` for mutable set algebra.
 
-const builder = new BitVectorBuilder(1_000_000);
+```ts
+import { RankSelectBitVectorBuilder } from "@mizchi/jsimd/rank-select-bit-vector";
+
+const builder = new RankSelectBitVectorBuilder(1_000_000);
 builder.insert(1).insert(10).insert(999_999);
 
 using bits = builder.freeze();
@@ -25,10 +29,10 @@ bits.rank1Many(ends, ranks); // reuses ranks and crosses the Wasm boundary once
 For data that is already available as positions or packed words:
 
 ```ts
-import { BitVector } from "@mizchi/jsimd/bit-vector";
+import { RankSelectBitVector } from "@mizchi/jsimd/rank-select-bit-vector";
 
-using positions = BitVector.from(128, [1, 7, 64]);
-using packed = BitVector.fromUint32Array(64, new Uint32Array([0b1010, 0]));
+using positions = RankSelectBitVector.from(128, [1, 7, 64]);
+using packed = RankSelectBitVector.fromUint32Array(64, new Uint32Array([0b1010, 0]));
 ```
 
 `rank1(end)` and `rank0(end)` use half-open `[0, end)` semantics. `select1(rank)` is zero-based and
@@ -71,18 +75,19 @@ faster for 16K and 262K bits and 3.0x for 4M bits, although the largest scalar s
 higher variance. The single-query results are near parity and should not be presented as a SIMD win.
 
 ```sh
-pnpm bench:bit-vector
-pnpm bench:record:rank-select-bitvector
-pnpm bench:compare:rank-select-bitvector
+pnpm bench:rank-select-bit-vector
+pnpm bench:record:rank-select-bit-vector
+pnpm bench:compare:rank-select-bit-vector
 ```
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 947 B Wasm asset (0.53 kB gzip) and a 7.36 kB minified JS
-wrapper (2.68 kB gzip). Bulk-query copying, builder code, allocator, and ownership checks are in the
+The isolated Vite fixture emits one 947 B Wasm asset (0.53 kB gzip) and a 7.37 kB minified JS
+wrapper (2.69 kB gzip). Bulk-query copying, builder code, allocator, and ownership checks are in the
 JS asset; no other jsimd Wasm is emitted.
 
-See [`experiments/bit-vector`](../../experiments/bit-vector/README.md) for the recorded results.
+See [`experiments/rank-select-bit-vector`](../../experiments/rank-select-bit-vector/README.md) for
+the recorded results.
 
 Files:
 

@@ -16,7 +16,7 @@ build:
     wasm-tools strip -a src/json/kernels.wat -o src/json/kernels.wasm
     wasm-tools strip -a src/matrix2d/kernels.wat -o src/matrix2d/kernels.wasm
     wasm-tools strip -a src/matrix3d/kernels.wat -o src/matrix3d/kernels.wasm
-    wasm-tools strip -a src/bit-vector/kernels.wat -o src/bit-vector/kernels.wasm
+    wasm-tools strip -a src/rank-select-bit-vector/kernels.wat -o src/rank-select-bit-vector/kernels.wasm
     wasm-tools strip -a src/roaring-bitmap/kernels.wat -o src/roaring-bitmap/kernels.wasm
     wasm-tools strip -a src/static-mphf-u32/kernels.wat -o src/static-mphf-u32/kernels.wasm
     wasm-tools strip -a src/static-mphf-bytes/kernels.wat -o src/static-mphf-bytes/kernels.wasm
@@ -42,7 +42,7 @@ build:
     wasm-tools validate --features simd src/json/kernels.wasm
     wasm-tools validate --features simd src/matrix2d/kernels.wasm
     wasm-tools validate --features simd src/matrix3d/kernels.wasm
-    wasm-tools validate --features simd src/bit-vector/kernels.wasm
+    wasm-tools validate --features simd src/rank-select-bit-vector/kernels.wasm
     wasm-tools validate --features simd src/roaring-bitmap/kernels.wasm
     wasm-tools validate --features simd src/static-mphf-u32/kernels.wasm
     wasm-tools validate --features simd src/static-mphf-bytes/kernels.wasm
@@ -80,8 +80,8 @@ build:
     ! wasm-tools print src/matrix2d/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"'
     wasm-tools print src/matrix3d/kernels.wasm | rg -q 'batched_matmul'
     ! wasm-tools print src/matrix3d/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/bit-vector/kernels.wasm | rg -q 'build_rank_index|select1'
-    ! wasm-tools print src/bit-vector/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|\(export "dot"|\(export "matmul"'
+    wasm-tools print src/rank-select-bit-vector/kernels.wasm | rg -q 'build_rank_index|select1'
+    ! wasm-tools print src/rank-select-bit-vector/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|\(export "dot"|\(export "matmul"'
     wasm-tools print src/roaring-bitmap/kernels.wasm | rg -q 'bitmap_and_count|array_bitmap_and_into'
     ! wasm-tools print src/roaring-bitmap/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|\(export "dot"|\(export "matmul"'
     wasm-tools print src/static-mphf-u32/kernels.wasm | rg -q 'lookup_many|i32x4.mul'
@@ -201,11 +201,11 @@ check: test package-smoke
     test "$(find examples/tree-shake-matrix3d/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-matrix3d/dist/assets/*.wasm | rg -q 'batched_matmul'
     ! wasm-tools print examples/tree-shake-matrix3d/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"|\(export "matmul"'
-    pnpm exec tsc -p examples/tree-shake-bit-vector/tsconfig.json
-    pnpm exec vite build examples/tree-shake-bit-vector
-    test "$(find examples/tree-shake-bit-vector/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
-    wasm-tools print examples/tree-shake-bit-vector/dist/assets/*.wasm | rg -q 'build_rank_index|select1'
-    ! wasm-tools print examples/tree-shake-bit-vector/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|\(export "dot"|\(export "matmul"'
+    pnpm exec tsc -p examples/tree-shake-rank-select-bit-vector/tsconfig.json
+    pnpm exec vite build examples/tree-shake-rank-select-bit-vector
+    test "$(find examples/tree-shake-rank-select-bit-vector/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print examples/tree-shake-rank-select-bit-vector/dist/assets/*.wasm | rg -q 'build_rank_index|select1'
+    ! wasm-tools print examples/tree-shake-rank-select-bit-vector/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|\(export "dot"|\(export "matmul"'
     pnpm exec tsc -p examples/tree-shake-roaring-bitmap/tsconfig.json
     pnpm exec vite build examples/tree-shake-roaring-bitmap
     test "$(find examples/tree-shake-roaring-bitmap/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"

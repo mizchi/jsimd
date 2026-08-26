@@ -16,8 +16,8 @@ import {
 
 const allocator = new LinearMemoryAllocator(memory);
 
-/** Mutable construction state for an immutable BitVector snapshot. */
-export class BitVectorBuilder {
+/** Mutable construction state for an immutable RankSelectBitVector snapshot. */
+export class RankSelectBitVectorBuilder {
   readonly capacity: number;
   readonly #words: Uint32Array;
 
@@ -49,8 +49,8 @@ export class BitVectorBuilder {
     return this;
   }
 
-  freeze(): BitVector {
-    return BitVector.fromUint32Array(this.capacity, this.#words);
+  freeze(): RankSelectBitVector {
+    return RankSelectBitVector.fromUint32Array(this.capacity, this.#words);
   }
 
   #checkPosition(position: number): void {
@@ -61,7 +61,7 @@ export class BitVectorBuilder {
 }
 
 /** An immutable bit vector with a 512-bit rank index and zero-based select queries. */
-export class BitVector {
+export class RankSelectBitVector {
   readonly length: number;
   readonly countOnes: number;
   readonly #words: number;
@@ -105,14 +105,14 @@ export class BitVector {
     }
   }
 
-  static from(capacity: number, positions: Iterable<number>): BitVector {
-    const builder = new BitVectorBuilder(capacity);
+  static from(capacity: number, positions: Iterable<number>): RankSelectBitVector {
+    const builder = new RankSelectBitVectorBuilder(capacity);
     for (const position of positions) builder.insert(position);
     return builder.freeze();
   }
 
-  static fromUint32Array(capacity: number, words: Uint32Array): BitVector {
-    return new BitVector(capacity, words);
+  static fromUint32Array(capacity: number, words: Uint32Array): RankSelectBitVector {
+    return new RankSelectBitVector(capacity, words);
   }
 
   static allocatorStats(): AllocatorStats {
@@ -255,7 +255,7 @@ export class BitVector {
   }
 
   #assertAlive(): void {
-    if (this.#disposed) throw new Error("BitVector has been disposed");
+    if (this.#disposed) throw new Error("RankSelectBitVector has been disposed");
   }
 
   #checkPosition(position: number): void {

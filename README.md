@@ -84,8 +84,10 @@ expected. Stateful entrypoints expose `allocatorStats()` so tests can require `l
 
 ### Data structures
 
-The canonical bitmap subpaths are `bitmap`, `bit-vector`, and `roaring-bitmap`. Pre-announcement
-compatibility aliases were removed so each structure has one public name.
+The canonical bitmap subpaths are `bitmap`, `rank-select-bit-vector`, and `roaring-bitmap`.
+`bit-vector` is intentionally reserved for a future immutable packed-bit sequence without a
+rank/select index; it is not currently exported. Pre-announcement compatibility aliases were removed
+so each structure has one public name.
 
 | export                                                                 | purpose                                      | observed speedup | slower than JS in the recorded benchmark?                 | minified JS + Wasm, raw (gzip)   |
 | :--------------------------------------------------------------------- | :------------------------------------------- | :--------------- | :-------------------------------------------------------- | :------------------------------- |
@@ -106,7 +108,7 @@ compatibility aliases were removed so each structure has one public name.
 | [`matrix2d`](./src/matrix2d/README.md)                                 | Resident Float32 matrix multiplication       | ~1–9.5x          | No — 4×4 was near parity; BLAS/GPU were not compared      | 6.17 kB (2.51) + 0.37 kB (0.23)  |
 | [`matrix3d`](./src/matrix3d/README.md)                                 | Resident batched matrix multiplication       | 5.0–7.3x         | No — only resident generic JS loops were compared         | 6.84 kB (2.67) + 0.45 kB (0.27)  |
 | [`packed-delta-uint32-list`](./src/packed-delta-uint32-list/README.md) | Compressed postings and monotone lists       | 0.06–1.4x        | Yes — full decode and lower-bound queries                 | 6.96 kB (2.76) + 1.49 kB (0.88)  |
-| [`bit-vector`](./src/bit-vector/README.md)                             | Frozen rank/select `BitVector`               | 1.5–3.0x bulk    | Yes — single-query rank                                   | 7.36 kB (2.68) + 0.95 kB (0.53)  |
+| [`rank-select-bit-vector`](./src/rank-select-bit-vector/README.md)     | Frozen indexed `RankSelectBitVector`         | 1.5–3.0x bulk    | Yes — single-query rank                                   | 7.37 kB (2.69) + 0.95 kB (0.53)  |
 | [`roaring-bitmap`](./src/roaring-bitmap/README.md)                     | Compressed mutable `u32` bitmap              | 2.2–175x         | No — construction and point-heavy cases were not measured | 9.96 kB (3.63) + 1.02 kB (0.49)  |
 | [`static-mphf-u32`](./src/static-mphf-u32/README.md)                   | Frozen perfect hash for known `u32` keys     | 1.75x bulk       | Yes — individual lookup and construction                  | 7.27 kB (2.97) + 0.68 kB (0.39)  |
 | [`wavelet-matrix-uint8`](./src/wavelet-matrix-uint8/README.md)         | Rank/range queries over frozen bytes         | 4.8x vs u32      | Yes — direct byte access                                  | 7.92 kB (2.92) + 2.10 kB (0.97)  |
