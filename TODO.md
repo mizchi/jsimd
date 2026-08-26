@@ -41,6 +41,122 @@ each `src/<name>/README.md`.
 New entrypoints must justify both their Wasm boundary and their independently tree-shaken bundle
 cost.
 
+## User-facing completion queue
+
+The library already covers enough distinct structure families. Complete the contracts and connect
+the existing structures before adding another standalone type.
+
+### P0: Complete existing public contracts
+
+#### 1. Complete `RoaringBitmap` set algebra
+
+- [ ] Add materializing and reusable-output `or`, `xor`, and `andNot` operations alongside the
+      existing `and` / `andInto` path.
+- [ ] Add `orCardinality`, `xorCardinality`, and `andNotCardinality` so callers can avoid
+      materializing intermediate sets.
+- [ ] Add batched membership into a caller-owned `Uint8Array`.
+- [ ] Benchmark every retained array/bitmap container pairing against the best typed-array or native
+      `Set` reference and record construction separately.
+
+This is the most visible API gap: users choosing a Roaring bitmap reasonably expect union,
+difference, and symmetric difference without converting to another representation.
+
+#### 2. Complete the zero-bit side of `BitVector`
+
+- [ ] Add `rank0Many`, `select0`, `select0Many`, `next0`, and `prev0`.
+- [ ] Define tail semantics so padding beyond `capacity` is never observable as a zero bit.
+- [ ] Match the existing scalar/randomized rank/select coverage and add bulk benchmarks.
+
+`rank0` already exists, so leaving selection and neighbor queries one-sided makes the `BitVector` /
+`RankSelectBitmap` contract appear incomplete.
+
+#### 3. Standardize allocation-free output APIs
+
+- [ ] Add caller-owned output paths for bitmap set positions, hash keys/entries, sparse-matrix rows,
+      and Roaring ranges where only allocating or callback forms currently exist.
+- [ ] Use consistent `*Into(output) -> writtenCount` semantics and reject undersized or wrong typed
+      outputs before entering Wasm.
+- [ ] Keep allocating convenience methods as thin wrappers over the `Into` contract.
+
+Priority targets are `Bitmap`, `FlatHashMap*`, `SparseBitMatrix`, and `RoaringBitmap`. Avoid a
+generic iterator abstraction in hot paths; typed bulk output is the common interoperability layer.
+
+### P1: Persistence and composition
+
+#### 4. Add versioned snapshots for expensive frozen structures
+
+- [ ] Define a small binary envelope with magic, format version, structure kind, logical shape, and
+      payload lengths. Invalid or truncated snapshots must fail before allocation.
+- [ ] Add `serialize()` / `fromSnapshot()` round trips first to `FmIndexBytes`,
+      `WaveletMatrixUint8/Uint32`, `StaticMphfBytes/U32`, `CompressedStringTable`,
+      `EliasFanoSequence`, and `BinaryVectorIndex`.
+- [ ] Verify that restoration reproduces query results without rerunning the builder and that
+      deserialization releases partial allocations on failure.
+- [ ] Measure snapshot bytes, load time, peak RSS, and IndexedDB/file/Worker-friendly copy costs.
+
+Construction is excluded from many resident benchmarks. Persistence is therefore necessary for
+applications that build once and query across multiple process or page lifetimes. Do not promise
+cross-version stability until the envelope and compatibility policy are explicitly documented.
+
+#### 5. Prototype a shared column selection mask
+
+- [ ] Define the common logical operations required by adaptive and bit-sliced columns: clear, fill,
+      count, `and`, `or`, `andNot`, invert, and typed position output.
+- [ ] Prototype `AdaptiveSimdColumnI32` and `BitSlicedColumnU8` sharing one Wasm memory and one mask
+      layout under a possible `column` entrypoint.
+- [ ] Reject a TypeScript-only common interface if combining masks still copies complete bitmaps
+      between independent Wasm memories.
+- [ ] Retain the combined entrypoint only if a multi-column predicate workload beats materialized
+      JavaScript masks after including its larger bundle.
+
+The goal is to support queries such as `age.between(...).and(status.eq(...))` without copying an
+intermediate selection back through JavaScript.
+
+#### 6. Add explicit mutable-to-frozen bridges
+
+- [ ] Evaluate `Bitmap -> BitVector`, `ByteKeyFlatHashMapU32 -> FrozenByteMapU32`, and monotone
+      builder -> Elias–Fano / PackedDelta conversion helpers.
+- [ ] Make rebuild and ownership costs explicit; a `freeze` operation may construct a new physical
+      representation rather than alias mutable storage.
+- [ ] Avoid a runtime factory that hides representation-specific operations or bundle costs.
+
+### P2: New entrypoints after P0/P1
+
+#### 7. Prototype `BlockedBloomFilter`
+
+- [ ] Use a cache-local logical block represented by a small fixed number of `v128` values.
+- [ ] Design `addMany`, `mayContainMany`, and `merge` before adding point methods.
+- [ ] Compare false-positive rate, bytes/key, build time, and bulk negative lookup against a scalar
+      typed-array Bloom filter and exact set alternatives.
+- [ ] Connect the benchmark to an existing exact structure such as a byte hash table or static MPHF;
+      reject it if the filter does not improve the end-to-end negative-lookup workload.
+
+JavaScript has no builtin approximate-membership structure, making this the strongest genuinely new
+candidate after the existing contracts are complete.
+
+#### 8. Evaluate type-specialized follow-ups only with a workload
+
+- [ ] Benchmark `AdaptiveSimdColumnU32` for unsigned range predicates and aggregates.
+- [ ] Benchmark `WaveletMatrixUint16` for UTF-16/code-unit data and compact category columns against
+      the existing Uint32 implementation.
+- [ ] Add `squaredDistance`, norm, cosine similarity, and batched dot operations to
+      `SimdFloat32Vector` before considering another Float32 container type.
+
+Do not add `SimdFloat32Array`, `SimdInt32Vector`, or other symmetric names without first showing an
+operation that wins after boundary and copy costs.
+
+### Canonical names
+
+Documentation and new examples use only these canonical subpaths:
+
+- `bitmap`
+- `bit-vector`
+- `roaring-bitmap`
+
+`bitset`, `rank-select-bitvector`, `rank-select-bitmap`, and `roaring-uint32-set` remain
+compatibility aliases for now. Keep them out of the primary guide, mark them deprecated in API
+documentation, and decide their removal policy before 1.0 rather than adding further aliases.
+
 ## Succinct-data-structure support boundary
 
 The 2011 JSAI overview organizes succinct structures around sets, strings, trees, and graphs, and
@@ -85,7 +201,7 @@ Sources:
 [SDSL's implemented structure families](https://github.com/simongog/sdsl-lite), and the
 [FM-index authors' project page](https://people.unipmn.it/manzini/fmindex/).
 
-## Next implementation queue
+## Implementation history and remaining experiments
 
 ### 1. Packed integer layouts
 
@@ -211,12 +327,14 @@ References: [PDX vector layout](https://arxiv.org/html/2503.04422),
 These remain below the queue until a concrete workload suggests an advantage over JavaScript or an
 established library:
 
-- `BlockedBloomFilter` or another negative-lookup filter
 - `SimdPriorityQueue`
 - `SimdOrderedIndex`
 - `MortonSpatialIndex`
 - `UltraLogLog`
 - `BitHistogram32`
+
+`BlockedBloomFilter` moved to the user-facing completion queue. It remains behind the existing API,
+persistence, and composition work rather than being treated as the immediate next implementation.
 
 `SuccinctTrie` remains rejected: the removed prototype was about 69x slower than `Set` for exact
 lookup and about 1.67x slower than two lower bounds over a sorted string array for prefix ranges.

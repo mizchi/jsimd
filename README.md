@@ -77,6 +77,10 @@ expected. Stateful entrypoints expose `allocatorStats()` so tests can require `l
 
 ### Data structures
 
+The guide uses `bitmap`, `bit-vector`, and `roaring-bitmap` as the canonical subpaths. The older
+`bitset`, `rank-select-bitvector`, `rank-select-bitmap`, and `roaring-uint32-set` exports remain
+compatibility aliases but should not be used in new code.
+
 | export                                                                 | purpose                                      | observed speedup | slower than JS in the recorded benchmark?                 | minified JS + Wasm, raw (gzip)   |
 | :--------------------------------------------------------------------- | :------------------------------------------- | :--------------- | :-------------------------------------------------------- | :------------------------------- |
 | [`adaptive-simd-page-i32`](./src/adaptive-simd-page-i32/README.md)     | Adaptive frozen `i32` pages/columns          | 0.5–44x          | Yes — FOR scan and full decode                            | 14.58 kB (4.63) + 1.84 kB (0.83) |
