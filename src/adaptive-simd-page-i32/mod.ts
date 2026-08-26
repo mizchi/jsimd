@@ -217,6 +217,9 @@ export class AdaptiveSimdPageI32 {
 
   static from(values: ArrayLike<number>): AdaptiveSimdPageI32 {
     validatePageLength(values.length);
+    if (values instanceof Int32Array) {
+      return new AdaptiveSimdPageI32(values);
+    }
     const normalized = new Int32Array(values.length);
     for (let index = 0; index < values.length; index++) {
       normalized[index] = validateI32(values[index]!);
@@ -590,14 +593,14 @@ export class AdaptiveSimdColumnI32 {
     validateColumnLength(values.length);
     validatePageSize(pageSize);
     const pages: AdaptiveSimdPageI32[] = [];
+    const scratch = new Int32Array(Math.min(pageSize, values.length));
     try {
       for (let offset = 0; offset < values.length; offset += pageSize) {
         const length = Math.min(pageSize, values.length - offset);
-        const pageValues = new Int32Array(length);
         for (let index = 0; index < length; index++) {
-          pageValues[index] = validateI32(values[offset + index]!);
+          scratch[index] = validateI32(values[offset + index]!);
         }
-        pages.push(AdaptiveSimdPageI32.from(pageValues));
+        pages.push(AdaptiveSimdPageI32.from(scratch.subarray(0, length)));
       }
       return new AdaptiveSimdColumnI32(pages, values.length, pageSize);
     } catch (error) {

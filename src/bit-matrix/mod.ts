@@ -241,25 +241,69 @@ export class SparseBitMatrix {
   ): SparseBitMatrix {
     const rowCount = validateDimension(rows, "rows");
     const columnCount = validateDimension(columns, "columns");
-    const buckets: number[][] = Array.from({ length: rowCount }, () => []);
+    let edgePairs = new Uint32Array(0);
+    let edgeCount = 0;
     for (const [row, column] of edges) {
       validateCell(row, column, rowCount, columnCount);
-      buckets[row]!.push(column);
-    }
-    const offsets = new Uint32Array(rowCount + 1);
-    const canonical: number[] = [];
-    for (let row = 0; row < rowCount; row++) {
-      const values = buckets[row]!;
-      values.sort((left, right) => left - right);
-      let previous = -1;
-      for (const value of values) {
-        if (value !== previous) canonical.push(value);
-        previous = value;
+      if (row > 0xffff_ffff || column > 0xffff_ffff) {
+        throw new RangeError("sparse matrix coordinates must fit in u32");
       }
-      if (canonical.length > 0xffff_ffff) throw new RangeError("too many matrix edges");
-      offsets[row + 1] = canonical.length;
+      if (edgeCount * 2 === edgePairs.length) {
+        const capacity = edgePairs.length === 0 ? 256 : edgePairs.length;
+        if (!Number.isSafeInteger(capacity) || capacity > 0x7fff_ffff) {
+          throw new RangeError("too many matrix edges");
+        }
+        const grown = new Uint32Array(capacity * 2);
+        grown.set(edgePairs);
+        edgePairs = grown;
+      }
+      edgePairs[edgeCount * 2] = row;
+      edgePairs[edgeCount * 2 + 1] = column;
+      edgeCount++;
     }
-    return new SparseBitMatrix(rowCount, columnCount, offsets, Uint32Array.from(canonical));
+
+    const offsets = new Uint32Array(rowCount + 1);
+    for (let index = 0; index < edgeCount; index++) {
+      const row = edgePairs[index * 2]!;
+      if (offsets[row + 1] === 0xffff_ffff) throw new RangeError("too many matrix edges");
+      offsets[row + 1]++;
+    }
+    for (let row = 0; row < rowCount; row++) {
+      if (offsets[row + 1]! > 0xffff_ffff - offsets[row]!) {
+        throw new RangeError("too many matrix edges");
+      }
+      offsets[row + 1] += offsets[row]!;
+    }
+
+    const cursors = offsets.slice(0, rowCount);
+    const columnValues = new Uint32Array(edgeCount);
+    for (let index = 0; index < edgeCount; index++) {
+      const row = edgePairs[index * 2]!;
+      columnValues[cursors[row]!] = edgePairs[index * 2 + 1]!;
+      cursors[row]++;
+    }
+
+    let outputIndex = 0;
+    for (let row = 0; row < rowCount; row++) {
+      const start = offsets[row]!;
+      const end = offsets[row + 1]!;
+      columnValues.subarray(start, end).sort();
+      offsets[row] = outputIndex;
+      let previous = -1;
+      for (let index = start; index < end; index++) {
+        const column = columnValues[index]!;
+        if (column === previous) continue;
+        previous = column;
+        columnValues[outputIndex++] = column;
+      }
+    }
+    offsets[rowCount] = outputIndex;
+    return new SparseBitMatrix(
+      rowCount,
+      columnCount,
+      offsets,
+      columnValues.subarray(0, outputIndex),
+    );
   }
 
   static allocatorStats(): AllocatorStats {

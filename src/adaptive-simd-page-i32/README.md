@@ -67,6 +67,10 @@ The page is frozen at construction. This initial version deliberately excludes D
 Dictionary, Sparse, and BitSliced encodings. Each will be added only if its build size and
 end-to-end page workload beat these three forms.
 
+Page construction snapshots its input. Column construction reuses one page-sized JavaScript scratch
+buffer while producing independent Wasm-resident pages, so the temporary allocation count does not
+grow with the number of pages.
+
 The adaptive compressed-operator direction follows
 [MorphStore](https://arxiv.org/html/2004.09350v1), which keeps intermediate data compressed across
 operators. The broader per-block encoding-selection direction is also explored by
@@ -110,8 +114,8 @@ pnpm bench:compare:adaptive-simd-page-i32
 
 ## Standalone build size
 
-The isolated Vite fixture using the column emits one 1.84 kB Wasm asset (0.83 kB gzip) and a 14.50
-kB minified JS wrapper (4.61 kB gzip). It does not emit the Wasm for `SimdInt32Array`,
+The isolated Vite fixture using the column emits one 1.84 kB Wasm asset (0.83 kB gzip) and a 14.58
+kB minified JS wrapper (4.63 kB gzip). It does not emit the Wasm for `SimdInt32Array`,
 `BitSlicedColumn`, or any other entrypoint.
 
 Vitest baseline JSON and benchmark sources live in

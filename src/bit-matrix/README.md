@@ -54,6 +54,11 @@ large sparse matrices lose on memory before kernel speed matters. `SparseBitMatr
 sorted, deduplicated CSR rows and provides `has`, row views, and transpose. It is a storage choice,
 not a claim that random CSR probes beat native collections.
 
+`SparseBitMatrix.fromEdges` consumes its iterable once into a contiguous typed-array pair buffer,
+counts row sizes, scatters columns into CSR order, and sorts and deduplicates each row in place. It
+does not allocate one JavaScript array per row. Construction is still scalar preprocessing; the Wasm
+kernel accelerates resident queries rather than the freeze step.
+
 A bulk CSR reachability kernel was prototyped but removed: on 16,384 vertices with degree four it
 took 0.209 ms, while a direct JavaScript adjacency BFS took 0.123 ms (JS 1.70x faster). BFS and
 reachability therefore remain outside the public API.
@@ -66,8 +71,8 @@ pnpm bench:compare:bit-matrix
 
 ## Standalone build size
 
-The isolated Vite fixture using both dense and sparse matrices emits an 8.21 kB minified JavaScript
-wrapper (2.99 kB gzip) and one 0.63 kB Wasm asset (0.41 kB gzip). Importing this subpath emits no
+The isolated Vite fixture using both dense and sparse matrices emits an 8.75 kB minified JavaScript
+wrapper (3.17 kB gzip) and one 0.63 kB Wasm asset (0.41 kB gzip). Importing this subpath emits no
 BitSet, Roaring, or matrix-float Wasm.
 
 See [`experiments/bit-matrix`](../../experiments/bit-matrix/README.md) for the benchmark source and

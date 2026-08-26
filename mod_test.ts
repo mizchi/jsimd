@@ -2367,6 +2367,17 @@ Deno.test("AdaptiveSimdPageI32 validates page and mask contracts", () => {
   assertEquals(threw, true, "mask length");
 });
 
+Deno.test("AdaptiveSimdPageI32 snapshots Int32Array input", () => {
+  const values = new Int32Array([-0x8000_0000, 17, 0x7fff_ffff]);
+  using page = AdaptiveSimdPageI32.from(values);
+  values.fill(0);
+  assertEquals(
+    page.toInt32Array().join(","),
+    "-2147483648,17,2147483647",
+    "snapshot",
+  );
+});
+
 Deno.test("AdaptiveSimdPageI32 using lifecycle returns allocator storage", () => {
   const before = AdaptiveSimdPageI32.allocatorStats();
   for (let iteration = 0; iteration < 10_000; iteration++) {
@@ -2468,7 +2479,7 @@ Deno.test("AdaptiveSimdColumnI32 matches scalar predicates across page tails", (
 
 Deno.test("AdaptiveSimdColumnI32 using lifecycle releases every page and mask", () => {
   const before = AdaptiveSimdPageI32.allocatorStats();
-  {
+  for (let iteration = 0; iteration < 1_000; iteration++) {
     using column = AdaptiveSimdColumnI32.from(
       Int32Array.from({ length: 1025 }, (_, index) => index - 512),
       129,
@@ -2502,7 +2513,7 @@ Deno.test("SparseBitMatrix canonicalizes CSR rows and transposes", () => {
 
 Deno.test("SparseBitMatrix using lifecycle returns CSR storage", () => {
   const before = SparseBitMatrix.allocatorStats();
-  {
+  for (let iteration = 0; iteration < 1_000; iteration++) {
     using graph = SparseBitMatrix.fromEdges(
       1024,
       1024,

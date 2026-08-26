@@ -70,13 +70,18 @@ good fit when several bulk operations reuse resident data. Native arrays and col
 remain the better choice for small inputs, one-shot work, point access, or workloads that repeatedly
 materialize complete results back into JavaScript.
 
+Disposal returns allocator blocks to an internal reuse pool; it does not shrink
+`WebAssembly.Memory`. A stable `reservedBytes` or `memoryBytes` value after a workload is therefore
+expected. Stateful entrypoints expose `allocatorStats()` so tests can require `liveAllocations` and
+`liveBytes` to return to their baseline after each `using` scope.
+
 ### Data structures
 
 | export                                                                 | purpose                                      | observed speedup | slower than JS in the recorded benchmark?                 | minified JS + Wasm, raw (gzip)   |
 | :--------------------------------------------------------------------- | :------------------------------------------- | :--------------- | :-------------------------------------------------------- | :------------------------------- |
-| [`adaptive-simd-page-i32`](./src/adaptive-simd-page-i32/README.md)     | Adaptive frozen `i32` pages/columns          | 0.5–44x          | Yes — FOR scan and full decode                            | 14.50 kB (4.61) + 1.84 kB (0.83) |
+| [`adaptive-simd-page-i32`](./src/adaptive-simd-page-i32/README.md)     | Adaptive frozen `i32` pages/columns          | 0.5–44x          | Yes — FOR scan and full decode                            | 14.58 kB (4.63) + 1.84 kB (0.83) |
 | [`bitmap`](./src/bitset/README.md)                                     | Growable and fixed dense mutable bitmaps     | 9.8–19.8x        | No — small and point-heavy cases were not measured        | 8.84 kB (2.79) + 0.50 kB (0.26)  |
-| [`bit-matrix`](./src/bit-matrix/README.md)                             | Dense Boolean matrix and frozen CSR          | 6.56x dense      | Yes — CSR traversal and small matrices                    | 8.21 kB (2.99) + 0.63 kB (0.41)  |
+| [`bit-matrix`](./src/bit-matrix/README.md)                             | Dense Boolean matrix and frozen CSR          | 6.56x dense      | Yes — CSR traversal and small matrices                    | 8.75 kB (3.17) + 0.63 kB (0.41)  |
 | [`byte-key-flat-hash`](./src/byte-key-flat-hash/README.md)             | Variable-byte-key map with resident arena    | 2.00x bulk       | Yes — individual gets were 12.5x slower                   | 9.07 kB (3.10) + 1.26 kB (0.73)  |
 | [`compressed-string-table`](./src/compressed-string-table/README.md)   | Frozen front-coded byte strings              | 2.00x byte eq    | Yes — decoded strings and random materialization          | 8.06 kB (3.05) + 0.66 kB (0.34)  |
 | [`binary-vector-index`](./src/binary-vector-index/README.md)           | Hamming search and exact PDX rerank          | 6.5–9.8x         | Yes — recall depends on candidate count                   | 8.65 kB (3.11) + 0.85 kB (0.43)  |
