@@ -3,29 +3,14 @@
 Small prebuilt WebAssembly SIMD kernels and Wasm-resident data structures for data-parallel
 JavaScript hot paths.
 
-## Purpose
+## Goal
 
-JavaScript does not expose a portable API for issuing explicit SIMD instructions. WebAssembly SIMD
-does, but its `v128` values cannot cross the JavaScript/WebAssembly boundary. Applications therefore
-need Wasm kernels that keep vector operations and intermediate data inside linear memory, exposing
-only scalar results or typed-array batches to JavaScript.
+jsimd provides small, tree-shakeable data structures and bulk operations powered by hand-written
+WebAssembly SIMD kernels. It targets JavaScript hot paths where explicit SIMD can outperform the
+equivalent built-in implementation end to end.
 
-This project provides compact data structures and bulk operations that cannot be expressed as
-concisely or optimized as predictably in JavaScript. Their hot loops are hand-assembled in WAT for
-128-bit WebAssembly SIMD, while TypeScript defines the public contracts, ownership, and `using`
-lifecycle. The goal is not to replace JavaScript builtins: an entrypoint is retained only when a
-measured workload justifies crossing the Wasm boundary. If equivalent behavior can be implemented
-with `Map`, `Set`, or another JavaScript builtin, the jsimd implementation must beat that builtin in
-its primary end-to-end workload. Smaller storage or an isolated kernel win is not sufficient.
-
-Construction, JS/Wasm copies, output materialization, and required key conversion belong inside the
-comparison unless the documented usage reuses that work across repeated operations. Point methods
-needed to operate a bulk-oriented structure may remain as convenience APIs, but they are not
-presented as optimizations when the corresponding builtin is faster.
-
-Bundle size is part of that contract. Each feature has an independent Wasm binary and package
-subpath, so importing one data structure does not pull in the others. The modules favor small,
-specialized kernels and batched APIs that amortize boundary and copy costs.
+Each feature ships as an independent package subpath with documented performance, boundary-cost,
+and bundle-size trade-offs.
 
 ## Install
 
@@ -89,41 +74,41 @@ The canonical bitmap subpaths are `bitmap`, `rank-select-bit-vector`, and `roari
 rank/select index; it is not currently exported. Pre-announcement compatibility aliases were removed
 so each structure has one public name.
 
-| export                                                                 | purpose                                      | observed speedup | slower than JS in the recorded benchmark?                 | minified JS + Wasm, gzip |
-| :--------------------------------------------------------------------- | :------------------------------------------- | :--------------- | :-------------------------------------------------------- | :----------------------- |
-| [`adaptive-simd-page-i32`](./src/adaptive-simd-page-i32/README.md)     | Adaptive frozen `i32` pages/columns          | 0.5–44x          | Yes — FOR scan and full decode                            | 4.63 kB + 0.83 kB        |
-| [`bitmap`](./src/bitmap/README.md)                                     | Growable and fixed dense mutable bitmaps     | 9.8–19.8x        | No — small and point-heavy cases were not measured        | 2.94 kB + 0.26 kB        |
-| [`bit-matrix`](./src/bit-matrix/README.md)                             | Dense Boolean matrix and frozen CSR          | 6.56x dense      | Yes — CSR traversal and small matrices                    | 3.29 kB + 0.41 kB        |
-| [`byte-key-flat-hash`](./src/byte-key-flat-hash/README.md)             | Variable-byte-key map with resident arena    | 2.00x bulk       | Yes — individual gets were 12.5x slower                   | 3.37 kB + 0.73 kB        |
-| [`compressed-string-table`](./src/compressed-string-table/README.md)   | Frozen front-coded byte strings              | 2.00x byte eq    | Yes — decoded strings and random materialization          | 4.18 kB + 0.34 kB        |
-| [`columnar`](./src/columnar/README.md)                                 | Shared-mask i32/u32/u8 column predicates     | 2.9–40.5x        | Yes — rejected u32 sum was 2.45x slower                   | 4.76 kB + 0.93 kB        |
-| [`binary-vector-index`](./src/binary-vector-index/README.md)           | Hamming search and exact PDX rerank          | 6.5–9.8x         | Yes — recall depends on candidate count                   | 4.17 kB + 0.43 kB        |
-| [`blocked-vector-array`](./src/blocked-vector-array/README.md)         | Repeated exact Float32 distance scans        | 1.8–9.2x         | Yes — construction was 7.67x slower than typed-array copy | 2.56 kB + 0.43 kB        |
-| [`bit-sliced-column`](./src/bit-sliced-column/README.md)               | Repeated predicates over static `u8` columns | 17.6–29.6x       | No — construction, point reads, and small scans excluded  | 3.00 kB + 0.43 kB        |
-| [`blocked-bloom-filter`](./src/blocked-bloom-filter/README.md)         | Bulk negative filter before exact lookup     | 1.6–5.5x E2E     | Yes — all-hit lookup was 1.22x slower                     | 2.49 kB + 0.37 kB        |
-| [`elias-fano-sequence`](./src/elias-fano-sequence/README.md)           | Global/partitioned monotone sequences        | 0.03–11.2x       | Yes — point access, decode, uniform partitioning          | 5.09 kB + 0.86 kB        |
-| [`f32-vector`](./src/f32-vector/README.md)                             | Resident Float32 vector operations           | 2–7x             | No — construction and point access were excluded          | 2.04 kB + 0.17 kB        |
-| [`flat-hash`](./src/flat-hash/README.md)                               | Batched `u32`/`u64` hash set/map             | 6.8–12.0x        | Yes — individual `has` and `get` calls                    | 3.35 kB + 0.95 kB        |
-| [`flat-hash-fixed16`](./src/flat-hash-fixed16/README.md)               | UUID/hash-keyed map and set                  | 25.6–27.9x bulk  | Yes — numeric or point-key workloads                      | 3.02 kB + 0.62 kB        |
-| [`fingerprint-group16`](./src/fingerprint-group16/README.md)           | SwissTable control groups and tables         | 1.6–4.9x bulk    | Yes — individual probes                                   | 2.33 kB + 0.27 kB        |
-| [`fm-index-bytes`](./src/fm-index-bytes/README.md)                     | Frozen full-text byte search                 | 6.86x count      | Yes — construction, locate, small/frequently updated text | 4.95 kB + 1.31 kB        |
-| [`i32-array`](./src/i32-array/README.md)                               | Resident fixed `i32` arrays                  | 3–7x             | No — one-shot and sub-1K cases were not measured          | 2.21 kB + 0.34 kB        |
-| [`matrix2d`](./src/matrix2d/README.md)                                 | Resident Float32 matrix multiplication       | ~1–9.5x          | No — 4×4 was near parity; BLAS/GPU were not compared      | 2.51 kB + 0.23 kB        |
-| [`matrix3d`](./src/matrix3d/README.md)                                 | Resident batched matrix multiplication       | 5.0–7.3x         | No — only resident generic JS loops were compared         | 2.67 kB + 0.27 kB        |
-| [`packed-delta-uint32-list`](./src/packed-delta-uint32-list/README.md) | Compressed postings and monotone lists       | 0.06–1.4x        | Yes — full decode and lower-bound queries                 | 2.91 kB + 0.88 kB        |
-| [`rank-select-bit-vector`](./src/rank-select-bit-vector/README.md)     | Frozen indexed `RankSelectBitVector`         | 1.5–3.0x bulk    | Yes — single-query rank                                   | 2.97 kB + 0.77 kB        |
-| [`roaring-bitmap`](./src/roaring-bitmap/README.md)                     | Compressed mutable `u32` bitmap              | 2.2–175x         | No — construction and point-heavy cases were not measured | 4.74 kB + 0.53 kB        |
-| [`static-mphf-u32`](./src/static-mphf-u32/README.md)                   | Frozen perfect hash for known `u32` keys     | 1.75x bulk       | Yes — individual lookup and construction                  | 4.09 kB + 0.39 kB        |
-| [`wavelet-matrix-uint8`](./src/wavelet-matrix-uint8/README.md)         | Rank/range queries over frozen bytes         | 4.8x vs u32      | Yes — direct byte access                                  | 4.25 kB + 0.97 kB        |
-| [`wavelet-matrix-uint32`](./src/wavelet-matrix-uint32/README.md)       | Range statistics over frozen `u32` sequences | 2.2–100x+        | Yes — direct access and exact rank                        | 4.19 kB + 0.97 kB        |
+| export                                                                 | purpose                                      | observed speedup | trade-off                                             | minified JS + Wasm, gzip |
+| :--------------------------------------------------------------------- | :------------------------------------------- | :--------------- | :---------------------------------------------------- | :----------------------- |
+| [`adaptive-simd-page-i32`](./src/adaptive-simd-page-i32/README.md)     | Adaptive frozen `i32` pages/columns          | 0.5–44x          | FOR scans and full decode can be slower               | 4.63 kB + 0.83 kB        |
+| [`bitmap`](./src/bitmap/README.md)                                     | Growable and fixed dense mutable bitmaps     | 9.8–19.8x        | Small and point-heavy cases were not measured         | 2.94 kB + 0.26 kB        |
+| [`bit-matrix`](./src/bit-matrix/README.md)                             | Dense Boolean matrix and frozen CSR          | 6.56x dense      | CSR traversal and small matrices can be slower        | 3.29 kB + 0.41 kB        |
+| [`byte-key-flat-hash`](./src/byte-key-flat-hash/README.md)             | Variable-byte-key map with resident arena    | 2.00x bulk       | Individual gets were 12.5x slower                     | 3.37 kB + 0.73 kB        |
+| [`compressed-string-table`](./src/compressed-string-table/README.md)   | Frozen front-coded byte strings              | 2.00x byte eq    | Decode and random materialization can be slower       | 4.18 kB + 0.34 kB        |
+| [`columnar`](./src/columnar/README.md)                                 | Shared-mask i32/u32/u8 column predicates     | 2.9–40.5x        | Rejected u32 sum was 2.45x slower                     | 4.76 kB + 0.93 kB        |
+| [`binary-vector-index`](./src/binary-vector-index/README.md)           | Hamming search and exact PDX rerank          | 6.5–9.8x         | Recall depends on candidate count                     | 4.17 kB + 0.43 kB        |
+| [`blocked-vector-array`](./src/blocked-vector-array/README.md)         | Repeated exact Float32 distance scans        | 1.8–9.2x         | Construction was 7.67x slower than typed-array copy   | 2.56 kB + 0.43 kB        |
+| [`bit-sliced-column`](./src/bit-sliced-column/README.md)               | Repeated predicates over static `u8` columns | 17.6–29.6x       | Construction, point reads, and small scans excluded   | 3.00 kB + 0.43 kB        |
+| [`blocked-bloom-filter`](./src/blocked-bloom-filter/README.md)         | Bulk negative filter before exact lookup     | 1.6–5.5x E2E     | All-hit lookup was 1.22x slower                       | 2.49 kB + 0.37 kB        |
+| [`elias-fano-sequence`](./src/elias-fano-sequence/README.md)           | Global/partitioned monotone sequences        | 0.03–11.2x       | Point access, decode, and uniform partitions are slow | 5.09 kB + 0.86 kB        |
+| [`f32-vector`](./src/f32-vector/README.md)                             | Resident Float32 vector operations           | 2–7x             | Construction and point access were excluded           | 2.04 kB + 0.17 kB        |
+| [`flat-hash`](./src/flat-hash/README.md)                               | Batched `u32`/`u64` hash set/map             | 6.8–12.0x        | Individual `has` and `get` calls are slower           | 3.35 kB + 0.95 kB        |
+| [`flat-hash-fixed16`](./src/flat-hash-fixed16/README.md)               | UUID/hash-keyed map and set                  | 25.6–27.9x bulk  | Numeric and point-key workloads can be slower         | 3.02 kB + 0.62 kB        |
+| [`fingerprint-group16`](./src/fingerprint-group16/README.md)           | SwissTable control groups and tables         | 1.6–4.9x bulk    | Individual probes are slower                          | 2.33 kB + 0.27 kB        |
+| [`fm-index-bytes`](./src/fm-index-bytes/README.md)                     | Frozen full-text byte search                 | 6.86x count      | Construction, locate, and mutable text can be slower  | 4.95 kB + 1.31 kB        |
+| [`i32-array`](./src/i32-array/README.md)                               | Resident fixed `i32` arrays                  | 3–7x             | One-shot and sub-1K cases were not measured           | 2.21 kB + 0.34 kB        |
+| [`matrix2d`](./src/matrix2d/README.md)                                 | Resident Float32 matrix multiplication       | ~1–9.5x          | 4×4 was near parity; BLAS/GPU were not compared       | 2.51 kB + 0.23 kB        |
+| [`matrix3d`](./src/matrix3d/README.md)                                 | Resident batched matrix multiplication       | 5.0–7.3x         | Compared only with resident generic JS loops          | 2.67 kB + 0.27 kB        |
+| [`packed-delta-uint32-list`](./src/packed-delta-uint32-list/README.md) | Compressed postings and monotone lists       | 0.06–1.4x        | Full decode and lower-bound queries are slower        | 2.91 kB + 0.88 kB        |
+| [`rank-select-bit-vector`](./src/rank-select-bit-vector/README.md)     | Frozen indexed `RankSelectBitVector`         | 1.5–3.0x bulk    | Single-query rank is slower                           | 2.97 kB + 0.77 kB        |
+| [`roaring-bitmap`](./src/roaring-bitmap/README.md)                     | Compressed mutable `u32` bitmap              | 2.2–175x         | Construction and point-heavy cases were not measured  | 4.74 kB + 0.53 kB        |
+| [`static-mphf-u32`](./src/static-mphf-u32/README.md)                   | Frozen perfect hash for known `u32` keys     | 1.75x bulk       | Individual lookup and construction are slower         | 4.09 kB + 0.39 kB        |
+| [`wavelet-matrix-uint8`](./src/wavelet-matrix-uint8/README.md)         | Rank/range queries over frozen bytes         | 4.8x vs u32      | Direct byte access is slower                          | 4.25 kB + 0.97 kB        |
+| [`wavelet-matrix-uint32`](./src/wavelet-matrix-uint32/README.md)       | Range statistics over frozen `u32` sequences | 2.2–100x+        | Direct access and exact rank are slower               | 4.19 kB + 0.97 kB        |
 
 ### Stateless and copy-inclusive kernels
 
-| export                             | purpose                  | observed speedup | slower than JS in the recorded benchmark? | minified JS + Wasm, gzip |
-| :--------------------------------- | :----------------------- | :--------------- | :---------------------------------------- | :----------------------- |
-| [`bytes`](./src/bytes/README.md)   | General byte operations  | 4.9–18.1x        | No — small inputs use JS fallbacks        | 1.40 kB + 0.50 kB        |
-| [`endian`](./src/endian/README.md) | Batched `u32` decoding   | 1.0–2.2x         | No — small inputs were at parity          | 1.11 kB + 0.18 kB        |
-| [`json`](./src/json/README.md)     | JSON token-start scanner | 1.1–3.5x         | No — long strings were near parity        | 1.00 kB + 0.28 kB        |
+| export                             | purpose                  | observed speedup | trade-off                          | minified JS + Wasm, gzip |
+| :--------------------------------- | :----------------------- | :--------------- | :--------------------------------- | :----------------------- |
+| [`bytes`](./src/bytes/README.md)   | General byte operations  | 4.9–18.1x        | Small inputs use JS fallbacks      | 1.40 kB + 0.50 kB        |
+| [`endian`](./src/endian/README.md) | Batched `u32` decoding   | 1.0–2.2x         | Small inputs were at parity        | 1.11 kB + 0.18 kB        |
+| [`json`](./src/json/README.md)     | JSON token-start scanner | 1.1–3.5x         | Long strings were near parity      | 1.00 kB + 0.28 kB        |
 
 ### How to read the numbers
 
