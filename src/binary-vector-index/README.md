@@ -35,9 +35,10 @@ const exactSquaredL2 = new Float32Array(10);
 index.topK(query, 10, 100, ids, exactSquaredL2);
 ```
 
-`PdxFloat32Index` is also public for exact exhaustive search. Four vectors are interleaved in
-dimension-major order so one `f32x4` accumulator scores four candidates. `distanceSelected` reuses
-that layout for reranking. Bind all owning types with `using`.
+`PdxFloat32Index` remains public because its four-vector layout supports `distanceSelected` for
+reranking sparse candidate IDs. For repeated exhaustive scans, prefer
+[`BlockedVectorArray`](../blocked-vector-array/README.md), whose 64-vector PDX blocks measured 1.84x
+faster in the shared 16,384 × 64 workload. Bind all owning types with `using`.
 
 `BinaryVectorIndex.serialize()` preserves row padding and non-byte-aligned logical dimensions;
 restore with `BinaryVectorIndex.fromSnapshot(bytes)`. The loader rejects non-zero padding or bits

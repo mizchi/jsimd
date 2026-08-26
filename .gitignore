@@ -30,4 +30,5 @@ examples/tree-shake-fm-index-bytes/dist/
 examples/tree-shake-compressed-string-table/dist/
 examples/tree-shake-columnar/dist/
 examples/tree-shake-blocked-bloom-filter/dist/
+examples/tree-shake-blocked-vector-array/dist/
 src/**/*.wasm

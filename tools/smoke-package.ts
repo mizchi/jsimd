@@ -19,7 +19,7 @@ try {
   );
 
   const expression =
-    `import { DenseBitmap } from "${metadata.name}/bitmap"; import { RankSelectBitVector } from "${metadata.name}/rank-select-bit-vector"; import { RoaringBitmap } from "${metadata.name}/roaring-bitmap"; import { AdaptiveU32Column, SelectionMask } from "${metadata.name}/columnar"; using bits = DenseBitmap.from(128, [1, 10]); using ranked = RankSelectBitVector.from(128, [1, 10]); using roaring = RoaringBitmap.from([1, 10]); using column = AdaptiveU32Column.from(new Uint32Array([0xffffffff, 1, 2])); using selected = new SelectionMask(3); column.scanLt(3, selected); if (bits.countOnes() !== 2 || ranked.rank1(128) !== 2 || roaring.size !== 2 || selected.countOnes() !== 2) throw new Error("unexpected SIMD result");`;
+    `import { DenseBitmap } from "${metadata.name}/bitmap"; import { RankSelectBitVector } from "${metadata.name}/rank-select-bit-vector"; import { RoaringBitmap } from "${metadata.name}/roaring-bitmap"; import { AdaptiveU32Column, SelectionMask } from "${metadata.name}/columnar"; import { BlockedVectorArray } from "${metadata.name}/blocked-vector-array"; using bits = DenseBitmap.from(128, [1, 10]); using ranked = RankSelectBitVector.from(128, [1, 10]); using roaring = RoaringBitmap.from([1, 10]); using column = AdaptiveU32Column.from(new Uint32Array([0xffffffff, 1, 2])); using selected = new SelectionMask(3); using vectors = BlockedVectorArray.from(new Float32Array([0, 1, 1, 0]), 2, 2); const distances = new Float32Array(2); column.scanLt(3, selected); vectors.squaredDistanceMany(new Float32Array([0, 0]), distances); if (bits.countOnes() !== 2 || ranked.rank1(128) !== 2 || roaring.size !== 2 || selected.countOnes() !== 2 || distances[0] !== 1 || distances[1] !== 1) throw new Error("unexpected SIMD result");`;
   await run("node", ["--input-type=module", "--eval", expression], temporaryDirectory);
 
   for (
@@ -55,20 +55,24 @@ try {
 import { RankSelectBitVector } from "${metadata.name}/rank-select-bit-vector";
 import { RoaringBitmap } from "${metadata.name}/roaring-bitmap";
 import { AdaptiveU32Column, SelectionMask } from "${metadata.name}/columnar";
+import { BlockedVectorArray } from "${metadata.name}/blocked-vector-array";
 using bits = DenseBitmap.from(128, [1, 10]);
 using ranked = RankSelectBitVector.from(128, [1, 10]);
 using roaring = RoaringBitmap.from([1, 10]);
 using column = AdaptiveU32Column.from(new Uint32Array([0xffff_ffff, 1, 2]));
 using selected = new SelectionMask(3);
+using vectors = BlockedVectorArray.from(new Float32Array([0, 1, 1, 0]), 2, 2);
 column.scanLt(3, selected);
 const count: number = bits.countOnes();
 const rank: number = ranked.rank1(128);
 const roaringCount: number = roaring.size;
 const selectedCount: number = selected.countOnes();
+const vectorCount: number = vectors.length;
 void count;
 void rank;
 void roaringCount;
 void selectedCount;
+void vectorCount;
 `,
   );
   await run(

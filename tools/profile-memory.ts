@@ -8,6 +8,7 @@ import {
 } from "../src/binary-vector-index/mod.ts";
 import { BitMatrix, SparseBitMatrix } from "../src/bit-matrix/mod.ts";
 import { BlockedBloomFilterU32 } from "../src/blocked-bloom-filter/mod.ts";
+import { BlockedVectorArray } from "../src/blocked-vector-array/mod.ts";
 import { BitSlicedColumnU8, BitSliceMask } from "../src/bit-sliced-column/mod.ts";
 import { Bitmap, DenseBitmap } from "../src/bitmap/mod.ts";
 import { memory as bytesMemory } from "../src/bytes/kernels.wasm";
@@ -482,6 +483,15 @@ const scenarios: readonly Scenario[] = [
       sink += value.distanceMany(vectorQuery, pdxOutput)[0]!;
     },
     stats: () => PdxFloat32Index.allocatorStats(),
+  },
+  {
+    name: "blocked-vector-array",
+    iterations: 100,
+    run() {
+      using value = BlockedVectorArray.from(vectorValues, VECTOR_COUNT, VECTOR_DIMENSIONS);
+      sink += value.squaredDistanceMany(vectorQuery, pdxOutput)[0]!;
+    },
+    stats: () => BlockedVectorArray.allocatorStats(),
   },
   {
     name: "binary-rerank-index",

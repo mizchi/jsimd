@@ -64,6 +64,7 @@ import {
   SelectionMask,
 } from "./src/columnar/mod.ts";
 import { BlockedBloomFilterU32 } from "./src/blocked-bloom-filter/mod.ts";
+import { BlockedVectorArray } from "./src/blocked-vector-array/mod.ts";
 
 function assertEquals(actual: unknown, expected: unknown, context: string): void {
   if (!Object.is(actual, expected)) {
@@ -3897,6 +3898,83 @@ Deno.test("BlockedBloomFilterU32 rejects incompatible and invalid operations", (
     allocationThrew = error instanceof RangeError;
   }
   assertEquals(allocationThrew, true, "Wasm allocation bound");
+});
+
+Deno.test("BlockedVectorArray preserves rows across 64-vector block tails", () => {
+  const length = 67;
+  const dimensions = 7;
+  const values = Float32Array.from(
+    { length: length * dimensions },
+    (_, index) => ((Math.imul(index + 1, 17) % 101) - 50) / 13,
+  );
+  using vectors = BlockedVectorArray.from(values, length, dimensions);
+  assertEquals(vectors.length, length, "blocked vector length");
+  assertEquals(vectors.dimensions, dimensions, "blocked vector dimensions");
+  assertEquals(vectors.blockSize, 64, "PDX block size");
+  const row = new Float32Array(dimensions);
+  for (const index of [0, 63, 64, 66]) {
+    vectors.rowInto(index, row);
+    for (let dimension = 0; dimension < dimensions; dimension++) {
+      assertEquals(
+        row[dimension],
+        values[index * dimensions + dimension],
+        `blocked row ${index}:${dimension}`,
+      );
+      assertEquals(vectors.get(index, dimension), row[dimension], "blocked get");
+    }
+  }
+});
+
+Deno.test("BlockedVectorArray squared L2 matches row-major scalar results", () => {
+  const length = 131;
+  const dimensions = 13;
+  const values = Float32Array.from(
+    { length: length * dimensions },
+    (_, index) => ((Math.imul(index + 11, 0x9e37_79b1) >>> 8) & 0xffff) / 32768 - 1,
+  );
+  const query = values.slice(dimensions * 3, dimensions * 4);
+  const output = new Float32Array(length + 1).fill(Number.NaN);
+  using vectors = BlockedVectorArray.from(values, length, dimensions);
+  vectors.squaredDistanceMany(query, output);
+  for (let row = 0; row < length; row++) {
+    let expected = 0;
+    for (let dimension = 0; dimension < dimensions; dimension++) {
+      const delta = values[row * dimensions + dimension]! - query[dimension]!;
+      expected += delta * delta;
+    }
+    assertClose(output[row]!, expected, 1e-5, `blocked L2 row ${row}`);
+  }
+  assertEquals(Number.isNaN(output[length]), true, "blocked L2 output tail");
+});
+
+Deno.test("BlockedVectorArray validates ownership and releases using-owned storage", () => {
+  const before = BlockedVectorArray.allocatorStats();
+  {
+    using vectors = BlockedVectorArray.from(new Float32Array(65 * 3), 65, 3);
+    const output = new Float32Array(vectors.length);
+    vectors.squaredDistanceMany(new Float32Array(3), output);
+  }
+  const after = BlockedVectorArray.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "blocked vectors allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "blocked vectors bytes");
+
+  let shapeThrew = false;
+  try {
+    BlockedVectorArray.from(new Float32Array(5), 2, 3);
+  } catch (error) {
+    shapeThrew = error instanceof RangeError;
+  }
+  assertEquals(shapeThrew, true, "blocked vector shape");
+
+  const disposed = BlockedVectorArray.from(new Float32Array(4), 2, 2);
+  disposed[Symbol.dispose]();
+  let disposedThrew = false;
+  try {
+    disposed.get(0, 0);
+  } catch (error) {
+    disposedThrew = error instanceof Error;
+  }
+  assertEquals(disposedThrew, true, "blocked vector use after dispose");
 });
 
 const I32_TEST_MIN = -0x8000_0000;

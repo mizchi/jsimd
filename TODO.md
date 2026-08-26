@@ -16,6 +16,8 @@ history does not belong in this queue.
 
 ### P2: workload-driven specializations
 
+- [ ] Evaluate L1, inner product, block selection, and dimension pruning for `BlockedVectorArray`
+      only against representative repeated-query workloads.
 - [ ] Add squared distance, norm, cosine similarity, and batched dot to `SimdFloat32Vector` before
       considering another Float32 container.
 - [ ] Evaluate additional adaptive-page encodings independently: Delta, RLE, Dictionary, Sparse, and
