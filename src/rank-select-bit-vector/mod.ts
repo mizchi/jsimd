@@ -1,10 +1,15 @@
 import {
   build_rank_index as wasmBuildRankIndex,
   memory,
+  next0 as wasmNext0,
   next1 as wasmNext1,
+  prev0 as wasmPrev0,
   prev1 as wasmPrev1,
+  rank0_many as wasmRank0Many,
   rank1 as wasmRank1,
   rank1_many as wasmRank1Many,
+  select0 as wasmSelect0,
+  select0_many as wasmSelect0Many,
   select1 as wasmSelect1,
   select1_many as wasmSelect1Many,
 } from "./kernels.wasm";
@@ -15,6 +20,11 @@ import {
 } from "../internal/allocator.ts";
 
 const allocator = new LinearMemoryAllocator(memory);
+
+export interface BitmapWordSource {
+  readonly capacity: number;
+  wordsInto(output: Uint32Array): number;
+}
 
 /** Mutable construction state for an immutable RankSelectBitVector snapshot. */
 export class RankSelectBitVectorBuilder {
@@ -115,8 +125,29 @@ export class RankSelectBitVector {
     return new RankSelectBitVector(capacity, words);
   }
 
+  /** Copies a mutable packed bitmap and builds an independent frozen rank index. */
+  static fromBitmap(source: BitmapWordSource): RankSelectBitVector {
+    if (source === null || typeof source !== "object") {
+      throw new TypeError("source must be a packed bitmap");
+    }
+    validateCapacity(source.capacity);
+    if (typeof source.wordsInto !== "function") {
+      throw new TypeError("source must provide wordsInto(output)");
+    }
+    const words = new Uint32Array(Math.ceil(source.capacity / 32));
+    const written = source.wordsInto(words);
+    if (written !== words.length) {
+      throw new RangeError("bitmap source wrote an unexpected word count");
+    }
+    return RankSelectBitVector.fromUint32Array(source.capacity, words);
+  }
+
   static allocatorStats(): AllocatorStats {
     return allocator.stats();
+  }
+
+  get countZeros(): number {
+    return this.length - this.countOnes;
   }
 
   get(position: number): boolean {
@@ -141,6 +172,8 @@ export class RankSelectBitVector {
     output: Uint32Array = new Uint32Array(ends.length),
   ): Uint32Array {
     this.#assertAlive();
+    if (!(ends instanceof Uint32Array)) throw new TypeError("ends must be a Uint32Array");
+    if (!(output instanceof Uint32Array)) throw new TypeError("output must be a Uint32Array");
     if (output.length !== ends.length) throw new RangeError("output length must match queries");
     for (const end of ends) {
       if (end > this.length) throw new RangeError("rank end out of bounds");
@@ -150,6 +183,35 @@ export class RankSelectBitVector {
       const outputPointer = scratch.pointer + ends.byteLength;
       new Uint32Array(memory.buffer, scratch.pointer, ends.length).set(ends);
       wasmRank1Many(
+        this.#bitsAllocation.pointer,
+        this.#rankAllocation.pointer,
+        scratch.pointer,
+        outputPointer,
+        ends.length,
+      );
+      output.set(new Uint32Array(memory.buffer, outputPointer, ends.length));
+      return output;
+    } finally {
+      allocator.release(scratch);
+    }
+  }
+
+  rank0Many(
+    ends: Uint32Array,
+    output: Uint32Array = new Uint32Array(ends.length),
+  ): Uint32Array {
+    this.#assertAlive();
+    if (!(ends instanceof Uint32Array)) throw new TypeError("ends must be a Uint32Array");
+    if (!(output instanceof Uint32Array)) throw new TypeError("output must be a Uint32Array");
+    if (output.length !== ends.length) throw new RangeError("output length must match queries");
+    for (const end of ends) {
+      if (end > this.length) throw new RangeError("rank end out of bounds");
+    }
+    const scratch = allocator.allocate(ends.byteLength * 2);
+    try {
+      const outputPointer = scratch.pointer + ends.byteLength;
+      new Uint32Array(memory.buffer, scratch.pointer, ends.length).set(ends);
+      wasmRank0Many(
         this.#bitsAllocation.pointer,
         this.#rankAllocation.pointer,
         scratch.pointer,
@@ -180,6 +242,8 @@ export class RankSelectBitVector {
     output: Int32Array = new Int32Array(ranks.length),
   ): Int32Array {
     this.#assertAlive();
+    if (!(ranks instanceof Uint32Array)) throw new TypeError("ranks must be a Uint32Array");
+    if (!(output instanceof Int32Array)) throw new TypeError("output must be an Int32Array");
     if (output.length !== ranks.length) throw new RangeError("output length must match queries");
     const scratch = allocator.allocate(ranks.byteLength * 2);
     try {
@@ -190,6 +254,48 @@ export class RankSelectBitVector {
         this.#rankAllocation.pointer,
         this.#paddedWords,
         this.#superblocks,
+        scratch.pointer,
+        outputPointer,
+        ranks.length,
+      );
+      output.set(new Int32Array(memory.buffer, outputPointer, ranks.length));
+      return output;
+    } finally {
+      allocator.release(scratch);
+    }
+  }
+
+  select0(rank: number): number {
+    this.#assertAlive();
+    if (!Number.isSafeInteger(rank) || rank < 0 || rank >= this.countZeros) return -1;
+    return wasmSelect0(
+      this.#bitsAllocation.pointer,
+      this.#rankAllocation.pointer,
+      this.#paddedWords,
+      this.#superblocks,
+      this.length,
+      rank,
+    );
+  }
+
+  select0Many(
+    ranks: Uint32Array,
+    output: Int32Array = new Int32Array(ranks.length),
+  ): Int32Array {
+    this.#assertAlive();
+    if (!(ranks instanceof Uint32Array)) throw new TypeError("ranks must be a Uint32Array");
+    if (!(output instanceof Int32Array)) throw new TypeError("output must be an Int32Array");
+    if (output.length !== ranks.length) throw new RangeError("output length must match queries");
+    const scratch = allocator.allocate(ranks.byteLength * 2);
+    try {
+      const outputPointer = scratch.pointer + ranks.byteLength;
+      new Uint32Array(memory.buffer, scratch.pointer, ranks.length).set(ranks);
+      wasmSelect0Many(
+        this.#bitsAllocation.pointer,
+        this.#rankAllocation.pointer,
+        this.#paddedWords,
+        this.#superblocks,
+        this.length,
         scratch.pointer,
         outputPointer,
         ranks.length,
@@ -224,6 +330,34 @@ export class RankSelectBitVector {
       this.#paddedWords,
       this.#superblocks,
       this.countOnes,
+      this.length,
+      position,
+    );
+  }
+
+  next0(position: number): number {
+    this.#assertAlive();
+    if (!Number.isSafeInteger(position)) throw new RangeError("invalid bit position");
+    return wasmNext0(
+      this.#bitsAllocation.pointer,
+      this.#rankAllocation.pointer,
+      this.#paddedWords,
+      this.#superblocks,
+      this.countZeros,
+      this.length,
+      position,
+    );
+  }
+
+  prev0(position: number): number {
+    this.#assertAlive();
+    if (!Number.isSafeInteger(position)) throw new RangeError("invalid bit position");
+    return wasmPrev0(
+      this.#bitsAllocation.pointer,
+      this.#rankAllocation.pointer,
+      this.#paddedWords,
+      this.#superblocks,
+      this.countZeros,
       this.length,
       position,
     );

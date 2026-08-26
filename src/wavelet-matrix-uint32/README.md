@@ -32,6 +32,11 @@ keep all 32 level traversals inside one Wasm call and reuse caller-provided outp
 Always declare the frozen matrix with `using`. Construction copies the input, and leaving scope
 returns its three resident allocations to the module-local power-of-two allocator.
 
+`serialize()` captures all 32 bit levels and rank metadata. Restore with
+`WaveletMatrixUint32.fromSnapshot(bytes)` when the matrix is reused across processes or sessions; it
+validates the version/kind/shape before allocation. A 65,536-value snapshot was 278,816 bytes and
+restored about 63x faster than rebuilding in the recorded resident benchmark.
+
 ## Layout and algorithm
 
 Construction performs a stable zero/one partition for each bit from bit 31 down to bit 0. Every
@@ -84,11 +89,12 @@ pnpm bench:compare:wavelet-matrix-uint32
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 2.10 kB Wasm asset (0.97 kB gzip) and a 7.77 kB minified JS
-wrapper (2.85 kB gzip). No other jsimd Wasm module is emitted.
+The isolated Vite fixture emits one 2.10 kB Wasm asset (0.97 kB gzip) and an 11.63 kB minified JS
+wrapper (4.19 kB gzip). No other jsimd Wasm module is emitted.
 
 Vitest baseline JSON and complete sources live in
-[`experiments/wavelet-matrix-uint32`](../../experiments/wavelet-matrix-uint32).
+[`experiments/wavelet-matrix-uint32`](../../experiments/wavelet-matrix-uint32). Cross-structure
+snapshot results are in [`experiments/snapshots`](../../experiments/snapshots/README.md).
 
 Files:
 

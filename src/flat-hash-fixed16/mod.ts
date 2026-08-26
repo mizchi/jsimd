@@ -184,6 +184,73 @@ export class FlatHashMapFixed16U32 {
     return this;
   }
 
+  keysInto(output: Uint8Array): number {
+    this.#assertAlive();
+    if (!(output instanceof Uint8Array)) throw new TypeError("output must be a Uint8Array");
+    if (output.length < this.#size * KEY_BYTES) {
+      throw new RangeError("output is too small for fixed-width keys");
+    }
+    const controls = new Uint8Array(
+      memory.buffer,
+      this.#storage.controls.pointer,
+      this.#storage.capacity,
+    );
+    const keys = new Uint8Array(
+      memory.buffer,
+      this.#storage.keys.pointer,
+      this.#storage.capacity * KEY_BYTES,
+    );
+    let written = 0;
+    for (let slot = 0; slot < this.#storage.capacity; slot++) {
+      if (controls[slot]! >= 128) continue;
+      output.set(keys.subarray(slot * KEY_BYTES, (slot + 1) * KEY_BYTES), written * KEY_BYTES);
+      written++;
+    }
+    return written;
+  }
+
+  entriesInto(keysOutput: Uint8Array, valuesOutput: Uint32Array): number {
+    this.#assertAlive();
+    if (!(valuesOutput instanceof Uint32Array)) {
+      throw new TypeError("valuesOutput must be a Uint32Array");
+    }
+    if (valuesOutput.length < this.#size) {
+      throw new RangeError("valuesOutput must cover every map entry");
+    }
+    if (!(keysOutput instanceof Uint8Array)) {
+      throw new TypeError("keysOutput must be a Uint8Array");
+    }
+    if (keysOutput.length < this.#size * KEY_BYTES) {
+      throw new RangeError("keysOutput is too small for fixed-width keys");
+    }
+    const controls = new Uint8Array(
+      memory.buffer,
+      this.#storage.controls.pointer,
+      this.#storage.capacity,
+    );
+    const keys = new Uint8Array(
+      memory.buffer,
+      this.#storage.keys.pointer,
+      this.#storage.capacity * KEY_BYTES,
+    );
+    const values = new Uint32Array(
+      memory.buffer,
+      this.#storage.values.pointer,
+      this.#storage.capacity,
+    );
+    let written = 0;
+    for (let slot = 0; slot < this.#storage.capacity; slot++) {
+      if (controls[slot]! >= 128) continue;
+      keysOutput.set(
+        keys.subarray(slot * KEY_BYTES, (slot + 1) * KEY_BYTES),
+        written * KEY_BYTES,
+      );
+      valuesOutput[written] = values[slot]!;
+      written++;
+    }
+    return written;
+  }
+
   [Symbol.dispose](): void {
     if (this.#disposed) return;
     this.#disposed = true;
@@ -291,6 +358,10 @@ export class FlatHashSetFixed16 {
   clear(): this {
     this.#map.clear();
     return this;
+  }
+
+  keysInto(output: Uint8Array): number {
+    return this.#map.keysInto(output);
   }
 
   [Symbol.dispose](): void {

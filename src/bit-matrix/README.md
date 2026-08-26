@@ -9,6 +9,8 @@ import { BitMatrix, SparseBitMatrix } from "@mizchi/jsimd/bit-matrix";
 
 using graph = BitMatrix.fromEdges(3, 3, [[0, 1], [1, 2]]);
 graph.row(0).toArray(); // [1]
+const neighbors = new Uint32Array(graph.row(0).countOnes());
+graph.row(0).positionsInto(neighbors);
 
 using twoSteps = graph.multiply(graph);
 twoSteps.row(0).toArray(); // [2]
@@ -71,8 +73,8 @@ pnpm bench:compare:bit-matrix
 
 ## Standalone build size
 
-The isolated Vite fixture using both dense and sparse matrices emits an 8.75 kB minified JavaScript
-wrapper (3.17 kB gzip) and one 0.63 kB Wasm asset (0.41 kB gzip). Importing this subpath emits no
+The isolated Vite fixture using both dense and sparse matrices emits a 9.44 kB minified JavaScript
+wrapper (3.29 kB gzip) and one 0.63 kB Wasm asset (0.41 kB gzip). Importing this subpath emits no
 Bitmap, Roaring, or matrix-float Wasm.
 
 See [`experiments/bit-matrix`](../../experiments/bit-matrix/README.md) for the benchmark source and

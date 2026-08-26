@@ -12,6 +12,22 @@ import {
   type AllocatorStats,
   LinearMemoryAllocator,
 } from "../internal/allocator.ts";
+import {
+  decodeSnapshot,
+  encodeSnapshot,
+  expectPayloadBytes,
+  invalidSnapshot,
+  SnapshotKind,
+  uint32Payload,
+} from "../internal/snapshot.ts";
+import {
+  copyMonotoneSource,
+  MonotoneUint32Builder,
+  type MonotoneUint32Source,
+} from "../internal/monotone-uint32.ts";
+
+export { MonotoneUint32Builder };
+export type { MonotoneUint32Source };
 
 const UINT32_LIMIT = 0x1_0000_0000;
 const allocator = new LinearMemoryAllocator(memory);
@@ -119,8 +135,76 @@ export class EliasFanoSequence {
     return new EliasFanoSequence(encode(values));
   }
 
+  /** Copies a monotone source and freezes it into Elias–Fano form. */
+  static fromMonotone(source: MonotoneUint32Source): EliasFanoSequence {
+    return EliasFanoSequence.fromUint32Array(copyMonotoneSource(source));
+  }
+
+  static fromSnapshot(snapshot: Uint8Array): EliasFanoSequence {
+    const { shape, payloads } = decodeSnapshot(
+      snapshot,
+      SnapshotKind.EliasFanoSequence,
+      4,
+      2,
+    );
+    const length = shape[0]!;
+    const highLength = shape[1]!;
+    const zeroCount = shape[2]!;
+    const lowerBits = shape[3]!;
+    validateLength(length);
+    if (lowerBits > 32 || highLength !== zeroCount + length || highLength > 0x7fff_ffff) {
+      throw invalidSnapshot("invalid Elias-Fano shape");
+    }
+    const highWordCount = Math.ceil(highLength / 32);
+    const lowBitLength = length * lowerBits;
+    if (!Number.isSafeInteger(lowBitLength) || lowBitLength > 0x7fff_ffff * 8) {
+      throw invalidSnapshot("invalid Elias-Fano low-bit length");
+    }
+    expectPayloadBytes(payloads[0]!, highWordCount * 4, "Elias-Fano high bits");
+    expectPayloadBytes(
+      payloads[1]!,
+      Math.ceil(lowBitLength / 32) * 4,
+      "Elias-Fano low bits",
+    );
+    const highWords = uint32Payload(payloads[0]!, "Elias-Fano high bits");
+    let ones = 0;
+    for (const word of highWords) ones += popcount32(word);
+    if (ones !== length) throw invalidSnapshot("incorrect Elias-Fano high-bit cardinality");
+    if (highWordCount !== 0 && (highLength & 31) !== 0) {
+      const validMask = 0xffff_ffff >>> (32 - (highLength & 31));
+      if ((highWords[highWordCount - 1]! & ~validMask) !== 0) {
+        throw invalidSnapshot("set bits outside the Elias-Fano logical length");
+      }
+    }
+    return new EliasFanoSequence({
+      highWords,
+      lowWords: uint32Payload(payloads[1]!, "Elias-Fano low bits"),
+      highLength,
+      zeroCount,
+      lowerBits,
+      length,
+    });
+  }
+
   static allocatorStats(): AllocatorStats {
     return allocator.stats();
+  }
+
+  serialize(): Uint8Array {
+    this.#assertAlive();
+    const highBytes = Math.ceil(this.#highLength / 32) * 4;
+    return encodeSnapshot(
+      SnapshotKind.EliasFanoSequence,
+      [this.length, this.#highLength, this.#zeroCount, this.lowerBits],
+      [
+        new Uint8Array(memory.buffer, this.#highAllocation.pointer, highBytes),
+        new Uint8Array(
+          memory.buffer,
+          this.#lowAllocation.pointer,
+          Math.ceil(this.length * this.lowerBits / 32) * 4,
+        ),
+      ],
+    );
   }
 
   at(index: number): number {
@@ -559,4 +643,10 @@ function validateBound(value: number): void {
   if (!Number.isSafeInteger(value) || value < 0 || value > UINT32_LIMIT) {
     throw new RangeError("value must be in [0, 2^32]");
   }
+}
+
+function popcount32(value: number): number {
+  value -= (value >>> 1) & 0x5555_5555;
+  value = (value & 0x3333_3333) + ((value >>> 2) & 0x3333_3333);
+  return (((value + (value >>> 4)) & 0x0f0f_0f0f) * 0x0101_0101) >>> 24;
 }

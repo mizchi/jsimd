@@ -26,7 +26,9 @@
     "./wavelet-matrix-uint32": "./src/wavelet-matrix-uint32/mod.ts",
     "./wavelet-matrix-uint8": "./src/wavelet-matrix-uint8/mod.ts",
     "./fm-index-bytes": "./src/fm-index-bytes/mod.ts",
-    "./compressed-string-table": "./src/compressed-string-table/mod.ts"
+    "./compressed-string-table": "./src/compressed-string-table/mod.ts",
+    "./columnar": "./src/columnar/mod.ts",
+    "./blocked-bloom-filter": "./src/blocked-bloom-filter/mod.ts"
   },
   "tasks": {
     "build": "just build",

@@ -17,6 +17,10 @@ approaches 1.0625 bytes per input byte, plus padding and eight zero counters. Th
 the same frozen sequence receives many rank/range queries, and is the BWT rank layer used by
 `FmIndexBytes`.
 
+Use `serialize()` and `WaveletMatrixUint8.fromSnapshot(bytes)` to persist the bit levels, rank
+prefixes, and zero boundaries without replaying stable partitions. For 65,536 bytes the snapshot was
+69,728 bytes and restored about 21x faster than rebuilding in the recorded resident benchmark.
+
 ## Performance and trade-offs
 
 On Apple M5 / Node 24.12 / Vitest 4.1.11, for 4,096 queries over 262,144 values:
@@ -32,10 +36,12 @@ also costs slightly more than the raw bytes and has a nontrivial frozen build.
 
 ## Standalone build size
 
-The isolated Vite 8.2 production fixture emits 7.92 kB minified JavaScript (2.92 kB gzip) and one
+The isolated Vite 8.2 production fixture emits 11.77 kB minified JavaScript (4.25 kB gzip) and one
 2.10 kB Wasm asset (0.97 kB gzip).
 
 Sources: the
 [JSAI succinct-data-structure overview](https://www.ai-gakkai.or.jp/resource/my-bookmark/my-bookmark_vol26-no6/),
 [Faster Wavelet Tree Queries](https://arxiv.org/html/2302.09239v2), and the
-[benchmark source](../../experiments/wavelet-matrix-uint8/wavelet-matrix-uint8.bench.ts).
+[benchmark source](../../experiments/wavelet-matrix-uint8/wavelet-matrix-uint8.bench.ts). Snapshot
+format and transport measurements are in
+[`experiments/snapshots`](../../experiments/snapshots/README.md).

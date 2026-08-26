@@ -31,6 +31,7 @@ import { CompressedStringTable } from "./src/compressed-string-table/mod.ts";
 import {
   EliasFanoSequence,
   EliasFanoSequenceBuilder,
+  MonotoneUint32Builder,
   PartitionedEliasFanoSequence,
   PartitionedEliasFanoSequenceBuilder,
 } from "./src/elias-fano-sequence/mod.ts";
@@ -56,6 +57,13 @@ import { BitMatrix, SparseBitMatrix } from "./src/bit-matrix/mod.ts";
 import { FingerprintGroup16, FingerprintTable16 } from "./src/fingerprint-group16/mod.ts";
 import { FlatHashMapFixed16U32, FlatHashSetFixed16 } from "./src/flat-hash-fixed16/mod.ts";
 import { ByteKeyFlatHashMapU32 } from "./src/byte-key-flat-hash/mod.ts";
+import {
+  AdaptiveI32Column,
+  AdaptiveU32Column,
+  BitSlicedU8Column,
+  SelectionMask,
+} from "./src/columnar/mod.ts";
+import { BlockedBloomFilterU32 } from "./src/blocked-bloom-filter/mod.ts";
 
 function assertEquals(actual: unknown, expected: unknown, context: string): void {
   if (!Object.is(actual, expected)) {
@@ -515,6 +523,58 @@ Deno.test("RankSelectBitVector executes rank and select queries in bulk", () => 
   assertEquals(after.liveBytes, before.liveBytes, "bulk scratch bytes");
 });
 
+Deno.test("RankSelectBitVector exposes symmetric zero-bit queries", () => {
+  using bits = RankSelectBitVector.from(20, [0, 1, 3, 7, 8, 15, 19]);
+  assertEquals(bits.select0(0), 2, "first zero");
+  assertEquals(bits.select0(4), 9, "fifth zero");
+  assertEquals(bits.select0(12), 18, "last zero");
+  assertEquals(bits.select0(13), -1, "missing zero");
+  assertEquals(bits.select0(-1), -1, "negative zero rank");
+  assertEquals(bits.next0(-10), 2, "next zero before start");
+  assertEquals(bits.next0(2), 2, "next zero exact");
+  assertEquals(bits.next0(3), 4, "next zero after set bit");
+  assertEquals(bits.next0(19), -1, "next zero after last zero");
+  assertEquals(bits.prev0(100), 18, "previous zero after end");
+  assertEquals(bits.prev0(18), 18, "previous zero exact");
+  assertEquals(bits.prev0(3), 2, "previous zero before set bit");
+  assertEquals(bits.prev0(1), -1, "previous zero before first zero");
+});
+
+Deno.test("RankSelectBitVector bulk zero queries reuse outputs", () => {
+  using bits = RankSelectBitVector.from(20, [0, 1, 3, 7, 8, 15, 19]);
+  const before = RankSelectBitVector.allocatorStats();
+  const rankOutput = new Uint32Array(6);
+  assertEquals(
+    bits.rank0Many(new Uint32Array([0, 1, 8, 9, 20, 20]), rankOutput),
+    rankOutput,
+    "rank0 output reuse",
+  );
+  assertEquals(rankOutput.join(","), "0,0,4,4,13,13", "bulk zero ranks");
+  const selectOutput = new Int32Array(5);
+  assertEquals(
+    bits.select0Many(new Uint32Array([0, 4, 12, 13, 100]), selectOutput),
+    selectOutput,
+    "select0 output reuse",
+  );
+  assertEquals(selectOutput.join(","), "2,9,18,-1,-1", "bulk zero selects");
+  const after = RankSelectBitVector.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "zero bulk scratch allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "zero bulk scratch bytes");
+});
+
+Deno.test("RankSelectBitVector never exposes padded zero bits", () => {
+  for (const length of [0, 1, 31, 32, 33, 127, 128, 129, 511, 512, 513]) {
+    using bits = RankSelectBitVector.from(length, rangeBy(0, length, 1));
+    assertEquals(bits.rank0(length), 0, `rank0 full length=${length}`);
+    assertEquals(bits.select0(0), -1, `select0 padding length=${length}`);
+    assertEquals(bits.next0(0), -1, `next0 padding length=${length}`);
+    assertEquals(bits.prev0(length), -1, `prev0 padding length=${length}`);
+    const output = new Int32Array(2);
+    bits.select0Many(new Uint32Array([0, 0xffff_ffff]), output);
+    assertEquals(output.join(","), "-1,-1", `select0Many padding length=${length}`);
+  }
+});
+
 Deno.test("RankSelectBitVector matches scalar randomized references", () => {
   let state = 0x6d2b_79f5;
   for (const length of [0, 1, 127, 128, 511, 512, 513, 4099]) {
@@ -531,6 +591,28 @@ Deno.test("RankSelectBitVector matches scalar randomized references", () => {
     }
     for (let index = 0; index < expected.length; index++) {
       assertEquals(bits.select1(index), expected[index], `select length=${length} rank=${index}`);
+    }
+    const zeros = rangeBy(0, length, 1).filter((position) => !bits.get(position));
+    for (let index = 0; index < zeros.length; index++) {
+      assertEquals(bits.select0(index), zeros[index], `select0 length=${length} rank=${index}`);
+    }
+    const ends = Uint32Array.from(rangeBy(0, length + 1, Math.max(1, Math.ceil(length / 31))));
+    const rank0Output = bits.rank0Many(ends);
+    for (let index = 0; index < ends.length; index++) {
+      assertEquals(
+        rank0Output[index],
+        ends[index]! - bits.rank1(ends[index]!),
+        `rank0Many length=${length} query=${index}`,
+      );
+    }
+    const zeroRanks = Uint32Array.from([...zeros.keys(), zeros.length, 0xffff_ffff]);
+    const select0Output = bits.select0Many(zeroRanks);
+    for (let index = 0; index < zeroRanks.length; index++) {
+      assertEquals(
+        select0Output[index],
+        zeros[index] ?? -1,
+        `select0Many length=${length} query=${index}`,
+      );
     }
   }
 });
@@ -585,6 +667,149 @@ Deno.test("RoaringBitmap computes non-materializing set queries", () => {
   using emptyLeft = new RoaringBitmap();
   using emptyRight = new RoaringBitmap();
   assertEquals(emptyLeft.jaccard(emptyRight), 1, "empty jaccard");
+});
+
+Deno.test("RoaringBitmap completes cardinality and materializing set algebra", () => {
+  using left = RoaringBitmap.from([0, 1, 2, 65_535, 65_536, 70_000, 0xffff_ffff]);
+  using right = RoaringBitmap.from([1, 3, 65_535, 65_537, 70_000]);
+
+  assertEquals(left.orCardinality(right), 9, "union cardinality");
+  assertEquals(left.xorCardinality(right), 6, "xor cardinality");
+  assertEquals(left.andNotCardinality(right), 4, "difference cardinality");
+
+  using union = left.or(right);
+  using xor = left.xor(right);
+  using difference = left.andNot(right);
+  assertEquals(
+    union.toUint32Array().join(","),
+    "0,1,2,3,65535,65536,65537,70000,4294967295",
+    "union values",
+  );
+  assertEquals(xor.toUint32Array().join(","), "0,2,3,65536,65537,4294967295", "xor values");
+  assertEquals(
+    difference.toUint32Array().join(","),
+    "0,2,65536,4294967295",
+    "difference values",
+  );
+});
+
+Deno.test("RoaringBitmap set algebra covers every array and bitmap container pairing", () => {
+  const cases: Array<[string, number[], number[]]> = [
+    ["array-array", rangeBy(0, 4_000, 2), rangeBy(1, 4_000, 3)],
+    ["array-bitmap", rangeBy(0, 4_000, 2), rangeBy(0, 7_000, 1)],
+    ["bitmap-array", rangeBy(0, 7_000, 1), rangeBy(0, 4_000, 3)],
+    ["bitmap-bitmap", rangeBy(0, 7_000, 1), rangeBy(1_000, 8_000, 1)],
+  ];
+  for (const [name, leftValues, rightValues] of cases) {
+    using left = RoaringBitmap.from(leftValues);
+    using right = RoaringBitmap.from(rightValues);
+    const leftSet = new Set(leftValues);
+    const rightSet = new Set(rightValues);
+    const expectedUnion = new Set([...leftSet, ...rightSet]);
+    const expectedXor = new Set(
+      [...expectedUnion].filter((value) => leftSet.has(value) !== rightSet.has(value)),
+    );
+    const expectedDifference = new Set([...leftSet].filter((value) => !rightSet.has(value)));
+
+    using union = left.or(right);
+    using xor = left.xor(right);
+    using difference = left.andNot(right);
+    assertEquals(union.toUint32Array().join(","), sortedSet(expectedUnion), `${name} union`);
+    assertEquals(xor.toUint32Array().join(","), sortedSet(expectedXor), `${name} xor`);
+    assertEquals(
+      difference.toUint32Array().join(","),
+      sortedSet(expectedDifference),
+      `${name} difference`,
+    );
+  }
+});
+
+Deno.test("RoaringBitmap set algebra handles empty, identical, and threshold results", () => {
+  using empty = new RoaringBitmap();
+  using dense = RoaringBitmap.from(rangeBy(0, 4_097, 1));
+  using identicalXor = dense.xor(dense);
+  using identicalDifference = dense.andNot(dense);
+  using emptyUnion = empty.or(dense);
+  assertEquals(identicalXor.size, 0, "identical xor");
+  assertEquals(identicalDifference.size, 0, "identical difference");
+  assertEquals(
+    emptyUnion.toUint32Array().join(","),
+    dense.toUint32Array().join(","),
+    "empty union",
+  );
+
+  using one = RoaringBitmap.from([4_096]);
+  using threshold = dense.andNot(one);
+  assertEquals(threshold.size, 4_096, "bitmap result canonicalizes at threshold");
+  threshold.insert(65_535);
+  assertEquals(threshold.size, 4_097, "canonical array grows back to bitmap");
+  assertEquals(threshold.has(65_535), true, "value survives threshold conversion");
+});
+
+Deno.test("RoaringBitmap reusable outputs reject aliases and release replaced containers", () => {
+  const before = RoaringBitmap.allocatorStats();
+  {
+    using left = RoaringBitmap.from(rangeBy(0, 7_000, 1));
+    using right = RoaringBitmap.from(rangeBy(3_000, 10_000, 1));
+    using output = RoaringBitmap.from([0xffff_ffff]);
+    assertEquals(left.orInto(right, output), output, "union output reuse");
+    assertEquals(output.size, 10_000, "union output size");
+    assertEquals(left.xorInto(right, output), output, "xor output reuse");
+    assertEquals(output.size, 6_000, "xor output size");
+    assertEquals(left.andNotInto(right, output), output, "difference output reuse");
+    assertEquals(output.size, 3_000, "difference output size");
+
+    for (const operation of ["orInto", "xorInto", "andNotInto"] as const) {
+      let aliased = false;
+      try {
+        left[operation](right, left);
+      } catch (error) {
+        aliased = error instanceof RangeError;
+      }
+      assertEquals(aliased, true, `${operation} aliased output`);
+    }
+  }
+  const after = RoaringBitmap.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "set algebra live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "set algebra live bytes");
+});
+
+Deno.test("RoaringBitmap batches membership into caller-owned output", () => {
+  using values = RoaringBitmap.from([0, 2, 65_536, 0xffff_ffff]);
+  const queries = new Uint32Array([0, 1, 2, 65_535, 65_536, 0xffff_ffff]);
+  const output = new Uint8Array(queries.length + 2).fill(9);
+  assertEquals(values.hasMany(queries, output), output, "membership output reuse");
+  assertEquals(output.join(","), "1,0,1,0,1,1,9,9", "membership values and tail");
+  const unsorted = new Uint32Array([0xffff_ffff, 0, 65_536, 2, 65_536]);
+  const unsortedOutput = new Uint8Array(unsorted.length);
+  values.hasMany(unsorted, unsortedOutput);
+  assertEquals(unsortedOutput.join(","), "1,1,1,1,1", "unsorted and duplicate queries");
+  let undersized = false;
+  try {
+    values.hasMany(queries, new Uint8Array(queries.length - 1));
+  } catch (error) {
+    undersized = error instanceof RangeError;
+  }
+  assertEquals(undersized, true, "undersized membership output");
+});
+
+Deno.test("RoaringBitmap writes values and inclusive ranges into caller-owned outputs", () => {
+  using values = RoaringBitmap.from([1, 2, 3, 10, 12, 13, 65_536]);
+  const positions = new Uint32Array(values.size + 1).fill(0xffff_ffff);
+  assertEquals(values.valuesInto(positions), values.size, "value count");
+  assertEquals(positions.join(","), "1,2,3,10,12,13,65536,4294967295", "value output tail");
+  const starts = new Uint32Array(5).fill(0xffff_ffff);
+  const ends = new Uint32Array(5).fill(0xffff_ffff);
+  assertEquals(values.rangesInto(starts, ends), 4, "range count");
+  assertEquals(starts.join(","), "1,10,12,65536,4294967295", "range starts");
+  assertEquals(ends.join(","), "3,10,13,65536,4294967295", "range ends");
+  let undersized = false;
+  try {
+    values.rangesInto(new Uint32Array(3), new Uint32Array(3));
+  } catch (error) {
+    undersized = error instanceof RangeError;
+  }
+  assertEquals(undersized, true, "undersized ranges");
 });
 
 Deno.test("RoaringBitmap andInto reuses output without aliasing", () => {
@@ -683,6 +908,16 @@ Deno.test("RoaringBitmap releases partial construction after invalid input", () 
   assertEquals(after.liveAllocations, before.liveAllocations, "partial allocations");
   assertEquals(after.liveBytes, before.liveBytes, "partial bytes");
 });
+
+function rangeBy(start: number, end: number, step: number): number[] {
+  const values: number[] = [];
+  for (let value = start; value < end; value += step) values.push(value);
+  return values;
+}
+
+function sortedSet(values: Set<number>): string {
+  return Uint32Array.from(values).sort().join(",");
+}
 
 Deno.test("PackedDeltaUint32List preserves monotone Uint32 values", () => {
   const values = [0, 1, 255, 256, 65_535, 0x7fff_ffff, 0xffff_ffff];
@@ -3011,3 +3246,658 @@ Deno.test("BinaryVectorIndex using lifecycle returns storage", () => {
   assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
   assertEquals(after.liveBytes, before.liveBytes, "live bytes");
 });
+
+Deno.test("bitmap positionsInto writes exact positions without replacing output", () => {
+  using dense = DenseBitmap.from(130, [0, 31, 32, 129]);
+  using growable = Bitmap.from([1, 64, 1_000]);
+  const denseOutput = new Uint32Array(5).fill(0xffff_ffff);
+  const growableOutput = new Uint32Array(4).fill(0xffff_ffff);
+  assertEquals(dense.positionsInto(denseOutput), 4, "dense written count");
+  assertEquals(denseOutput.join(","), "0,31,32,129,4294967295", "dense positions");
+  assertEquals(growable.positionsInto(growableOutput), 3, "growable written count");
+  assertEquals(growableOutput.join(","), "1,64,1000,4294967295", "growable positions");
+  let undersized = false;
+  try {
+    dense.positionsInto(new Uint32Array(3));
+  } catch (error) {
+    undersized = error instanceof RangeError;
+  }
+  assertEquals(undersized, true, "undersized bitmap positions");
+});
+
+Deno.test("flat hash tables enumerate keys and entries into typed outputs", () => {
+  using set = FlatHashSetU32.from([0, 7, 0xffff_ffff]);
+  const setKeys = new Uint32Array(4).fill(123);
+  assertEquals(set.keysInto(setKeys), 3, "set keys count");
+  assertEquals(
+    Array.from(setKeys.subarray(0, 3)).sort((a, b) => a - b).join(","),
+    "0,7,4294967295",
+    "set keys",
+  );
+  assertEquals(setKeys[3], 123, "set output tail");
+
+  using map = FlatHashMapU32U32.from([[1, 10], [2, 20], [0xffff_ffff, 30]]);
+  const mapKeys = new Uint32Array(3);
+  const mapValues = new Uint32Array(3);
+  assertEquals(map.entriesInto(mapKeys, mapValues), 3, "u32 map entries count");
+  const restored = new Map<number, number>();
+  for (let index = 0; index < 3; index++) restored.set(mapKeys[index]!, mapValues[index]!);
+  assertEquals(restored.get(1), 10, "u32 entry one");
+  assertEquals(restored.get(0xffff_ffff), 30, "u32 entry max");
+
+  using u64 = FlatHashMapU64U32.from([[0n, 4], [0xffff_ffff_ffff_ffffn, 9]]);
+  const u64Keys = new BigUint64Array(2);
+  const u64Values = new Uint32Array(2);
+  assertEquals(u64.entriesInto(u64Keys, u64Values), 2, "u64 map entries count");
+  const restoredU64 = new Map<bigint, number>();
+  for (let index = 0; index < 2; index++) restoredU64.set(u64Keys[index]!, u64Values[index]!);
+  assertEquals(restoredU64.get(0xffff_ffff_ffff_ffffn), 9, "u64 entry max");
+});
+
+Deno.test("fixed and variable byte-key maps enumerate entries into flat buffers", () => {
+  const keyA = new Uint8Array(16).fill(0x11);
+  const keyB = new Uint8Array(16).fill(0x22);
+  using fixed = FlatHashMapFixed16U32.from([[keyA, 1], [keyB, 2]]);
+  const fixedKeys = new Uint8Array(32);
+  const fixedValues = new Uint32Array(2);
+  assertEquals(fixed.entriesInto(fixedKeys, fixedValues), 2, "fixed entries count");
+  const fixedRestored = new Map<number, number>();
+  for (let index = 0; index < 2; index++) {
+    fixedRestored.set(fixedKeys[index * 16]!, fixedValues[index]!);
+  }
+  assertEquals(fixedRestored.get(0x11), 1, "fixed key A");
+  assertEquals(fixedRestored.get(0x22), 2, "fixed key B");
+
+  const encoder = new TextEncoder();
+  using bytes = ByteKeyFlatHashMapU32.from([
+    [encoder.encode("a"), 1],
+    [encoder.encode("long"), 2],
+    [new Uint8Array(), 3],
+  ]);
+  const keyBytes = new Uint8Array(5);
+  const offsets = new Uint32Array(4);
+  const values = new Uint32Array(3);
+  assertEquals(bytes.entriesInto(keyBytes, offsets, values), 3, "byte entries count");
+  const restoredBytes = new Map<string, number>();
+  const decoder = new TextDecoder();
+  for (let index = 0; index < 3; index++) {
+    restoredBytes.set(
+      decoder.decode(keyBytes.subarray(offsets[index], offsets[index + 1])),
+      values[index]!,
+    );
+  }
+  assertEquals(restoredBytes.get("a"), 1, "byte key a");
+  assertEquals(restoredBytes.get("long"), 2, "byte key long");
+  assertEquals(restoredBytes.get(""), 3, "empty byte key");
+});
+
+Deno.test("matrix rows write positions into caller-owned outputs", () => {
+  using dense = BitMatrix.fromEdges(2, 10, [[0, 1], [0, 4], [0, 9]]);
+  const denseOutput = new Uint32Array(4).fill(99);
+  assertEquals(dense.row(0).positionsInto(denseOutput), 3, "dense row count");
+  assertEquals(denseOutput.join(","), "1,4,9,99", "dense row output");
+
+  using sparse = SparseBitMatrix.fromEdges(2, 10, [[1, 2], [1, 8], [1, 2]]);
+  const sparseOutput = new Uint32Array(3).fill(99);
+  assertEquals(sparse.row(1).positionsInto(sparseOutput), 2, "sparse row count");
+  assertEquals(sparseOutput.join(","), "2,8,99", "sparse row output");
+});
+
+Deno.test("versioned snapshots restore frozen indexes without their construction input", () => {
+  const encoder = new TextEncoder();
+  const text = encoder.encode("banana bandana");
+  const fmSnapshot = (() => {
+    using index = FmIndexBytes.from(text);
+    return index.serialize();
+  })();
+  using fm = FmIndexBytes.fromSnapshot(fmSnapshot);
+  assertEquals(fm.count(encoder.encode("ana")), 3, "restored FM count");
+  assertEquals(fm.locate(encoder.encode("band")).join(","), "7", "restored FM locate");
+
+  const u8Values = Uint8Array.of(9, 1, 7, 1, 5, 1, 3);
+  const u8Snapshot = (() => {
+    using matrix = WaveletMatrixUint8.from(u8Values);
+    return matrix.serialize();
+  })();
+  using u8 = WaveletMatrixUint8.fromSnapshot(u8Snapshot);
+  assertEquals(u8.access(4), 5, "restored u8 access");
+  assertEquals(u8.rank(1, u8.length), 3, "restored u8 rank");
+
+  const u32Values = Uint32Array.of(0xffff_ffff, 3, 1, 3, 0x8000_0000);
+  const u32Snapshot = (() => {
+    using matrix = WaveletMatrixUint32.from(u32Values);
+    return matrix.serialize();
+  })();
+  using u32 = WaveletMatrixUint32.fromSnapshot(u32Snapshot);
+  assertEquals(u32.access(4), 0x8000_0000, "restored u32 access");
+  assertEquals(u32.rank(3, u32.length), 2, "restored u32 rank");
+});
+
+Deno.test("versioned snapshots preserve compact tables and ordered sequences", () => {
+  const keys = Uint32Array.of(3, 7, 11, 0xffff_ffff);
+  const mphfSnapshot = (() => {
+    using index = StaticMphfU32.fromUint32Array(keys);
+    return index.serialize();
+  })();
+  using mphf = StaticMphfU32.fromSnapshot(mphfSnapshot);
+  const ids = Array.from(keys, (key) => mphf.lookup(key));
+  assertEquals(new Set(ids).size, keys.length, "restored MPHF unique IDs");
+
+  const strings = ["alpha", "alphabet", "alpine", "beta", "betamax"];
+  const tableSnapshot = (() => {
+    using table = CompressedStringTable.fromUtf8(strings);
+    return table.serialize();
+  })();
+  using table = CompressedStringTable.fromSnapshot(tableSnapshot);
+  assertEquals(new TextDecoder().decode(table.get(2)), "alpine", "restored string table");
+
+  const values = Uint32Array.of(0, 1, 1, 8, 1024, 0xffff_ffff);
+  const sequenceSnapshot = (() => {
+    using sequence = EliasFanoSequence.fromUint32Array(values);
+    return sequence.serialize();
+  })();
+  using sequence = EliasFanoSequence.fromSnapshot(sequenceSnapshot);
+  assertEquals(sequence.toUint32Array().join(","), values.join(","), "restored EF values");
+  assertEquals(sequence.rank(9), 4, "restored EF rank");
+});
+
+Deno.test("versioned snapshots preserve binary signatures and logical dimensions", () => {
+  const values = Float32Array.of(
+    1,
+    -1,
+    1,
+    -1,
+    1,
+    -1,
+    1,
+    -1,
+    1,
+    -1,
+    1,
+    1,
+    -1,
+    -1,
+    1,
+  );
+  const snapshot = (() => {
+    using index = BinaryVectorIndex.fromFloat32(values, 3, 5);
+    return index.serialize();
+  })();
+  using restored = BinaryVectorIndex.fromSnapshot(snapshot);
+  assertEquals(restored.length, 3, "restored vector count");
+  assertEquals(restored.dimensions, 5, "restored logical dimensions");
+  assertEquals(
+    restored.distanceMany(Uint8Array.of(0b0001_0101), new Uint32Array(3)).join(","),
+    "0,5,2",
+    "restored Hamming distances",
+  );
+});
+
+Deno.test("versioned snapshots reject incompatible and truncated inputs before allocation", () => {
+  const snapshot = (() => {
+    using matrix = WaveletMatrixUint8.from(Uint8Array.of(1, 2, 3, 2, 1));
+    return matrix.serialize();
+  })();
+  const beforeU8 = WaveletMatrixUint8.allocatorStats();
+  const beforeU32 = WaveletMatrixUint32.allocatorStats();
+
+  const invalidVersion = snapshot.slice();
+  invalidVersion[4] = 0xff;
+  const invalidPayload = snapshot.slice();
+  invalidPayload[32] ^= 1;
+  for (
+    const attempt of [
+      () => WaveletMatrixUint8.fromSnapshot(snapshot.subarray(0, snapshot.length - 1)),
+      () => WaveletMatrixUint8.fromSnapshot(invalidVersion),
+      () => WaveletMatrixUint8.fromSnapshot(invalidPayload),
+      () => WaveletMatrixUint32.fromSnapshot(snapshot),
+    ]
+  ) {
+    let threw = false;
+    try {
+      attempt();
+    } catch (error) {
+      threw = error instanceof RangeError;
+    }
+    assertEquals(threw, true, "invalid snapshot rejected");
+  }
+
+  const afterU8 = WaveletMatrixUint8.allocatorStats();
+  const afterU32 = WaveletMatrixUint32.allocatorStats();
+  assertEquals(afterU8.liveAllocations, beforeU8.liveAllocations, "u8 failed restore allocations");
+  assertEquals(afterU8.liveBytes, beforeU8.liveBytes, "u8 failed restore bytes");
+  assertEquals(afterU32.liveAllocations, beforeU32.liveAllocations, "u32 cross-kind allocations");
+  assertEquals(afterU32.liveBytes, beforeU32.liveBytes, "u32 cross-kind bytes");
+});
+
+Deno.test("snapshot restore validates structure metadata and accepts unaligned byte views", () => {
+  const mphfSnapshot = (() => {
+    using index = StaticMphfU32.from([3, 7, 11, 19]);
+    return index.serialize();
+  })();
+  const unaligned = new Uint8Array(mphfSnapshot.length + 1);
+  unaligned.set(mphfSnapshot, 1);
+  using mphf = StaticMphfU32.fromSnapshot(unaligned.subarray(1));
+  assertEquals(mphf.lookup(11) >= 0, true, "unaligned snapshot view");
+
+  const fmSnapshot = (() => {
+    using index = FmIndexBytes.from(new TextEncoder().encode("banana"));
+    return index.serialize();
+  })();
+  const invalidFmShape = fmSnapshot.slice();
+  new DataView(invalidFmShape.buffer).setUint32(20, 99, true);
+  const beforeFm = FmIndexBytes.allocatorStats();
+  let fmThrew = false;
+  try {
+    FmIndexBytes.fromSnapshot(invalidFmShape);
+  } catch (error) {
+    fmThrew = error instanceof RangeError;
+  }
+  assertEquals(fmThrew, true, "invalid FM shape rejected");
+  assertEquals(
+    FmIndexBytes.allocatorStats().liveAllocations,
+    beforeFm.liveAllocations,
+    "invalid FM restore allocations",
+  );
+
+  const binarySnapshot = (() => {
+    using index = BinaryVectorIndex.fromFloat32(Float32Array.of(1, -1, 1, -1, 1), 1, 5);
+    return index.serialize();
+  })();
+  const invalidPadding = binarySnapshot.slice();
+  invalidPadding[33] = 1; // Header is 32 bytes; byte 1 of the resident row is padding.
+  const beforeBinary = BinaryVectorIndex.allocatorStats();
+  let binaryThrew = false;
+  try {
+    BinaryVectorIndex.fromSnapshot(invalidPadding);
+  } catch (error) {
+    binaryThrew = error instanceof RangeError;
+  }
+  assertEquals(binaryThrew, true, "non-zero binary padding rejected");
+  assertEquals(
+    BinaryVectorIndex.allocatorStats().liveAllocations,
+    beforeBinary.liveAllocations,
+    "invalid binary restore allocations",
+  );
+});
+
+Deno.test("columnar predicates compose i32 and u8 columns in one resident mask", () => {
+  const length = 777;
+  const numbers = Int32Array.from({ length }, (_, index) => {
+    const page = index >>> 8;
+    return page * 1_000 + (index & 255);
+  });
+  const categories = Uint8Array.from({ length }, (_, index) => index & 7);
+  const validity = Uint8Array.from({ length }, (_, index) => Number(index % 13 !== 0));
+  using numberColumn = AdaptiveI32Column.from(numbers);
+  using categoryColumn = BitSlicedU8Column.from(categories, 3, validity);
+  using selection = new SelectionMask(length);
+  using temporary = new SelectionMask(length);
+
+  numberColumn.scanBetween(1_040, 2_090, selection);
+  categoryColumn.scanEq(3, temporary);
+  selection.andAssign(temporary);
+
+  const expected: number[] = [];
+  for (let index = 0; index < length; index++) {
+    if (
+      numbers[index]! >= 1_040 && numbers[index]! < 2_090 && categories[index] === 3 &&
+      validity[index] !== 0
+    ) expected.push(index);
+  }
+  const output = new Uint32Array(expected.length + 1).fill(0xffff_ffff);
+  assertEquals(selection.positionsInto(output), expected.length, "composed position count");
+  assertEquals(
+    output.subarray(0, expected.length).join(","),
+    expected.join(","),
+    "composed positions",
+  );
+  assertEquals(output[expected.length], 0xffff_ffff, "position output tail");
+});
+
+Deno.test("SelectionMask provides complete reusable Boolean algebra", () => {
+  using left = new SelectionMask(131);
+  using right = new SelectionMask(131);
+  left.fill();
+  right.clear();
+  assertEquals(left.countOnes(), 131, "filled count");
+  assertEquals(right.countOnes(), 0, "cleared count");
+
+  const values = Uint8Array.from({ length: 131 }, (_, index) => index & 3);
+  using column = BitSlicedU8Column.from(values, 2);
+  column.scanLt(2, right);
+  left.andNotAssign(right);
+  assertEquals(left.countOnes(), 65, "and-not count");
+  left.invert();
+  assertEquals(left.countOnes(), 66, "logical-tail invert");
+  left.orAssign(right);
+  assertEquals(left.countOnes(), 66, "or count");
+
+  using equal = new SelectionMask(131);
+  column.scanEq(3, equal);
+  left.andAssign(equal);
+  assertEquals(left.countOnes(), 0, "and count");
+});
+
+Deno.test("columnar shared allocator returns all storage after using", () => {
+  const before = SelectionMask.allocatorStats();
+  {
+    const length = 65_536;
+    using numbers = AdaptiveI32Column.from(
+      Int32Array.from({ length }, (_, index) => (index >>> 8) * 100 + (index & 255)),
+    );
+    using categories = BitSlicedU8Column.from(
+      Uint8Array.from({ length }, (_, index) => index & 15),
+      4,
+    );
+    using output = new SelectionMask(length);
+    numbers.scanLt(10_000, output);
+    categories.scanEq(7, output);
+  }
+  const after = SelectionMask.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "columnar live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "columnar live bytes");
+});
+
+Deno.test("columnar predicates match scalar results across randomized tails", () => {
+  let randomState = 0x6d2b_79f5;
+  const random = (): number => {
+    randomState = (Math.imul(randomState, 1_664_525) + 1_013_904_223) >>> 0;
+    return randomState;
+  };
+  for (const length of [0, 1, 3, 31, 32, 33, 127, 255, 256, 257, 511, 777]) {
+    const numbers = Int32Array.from(
+      { length },
+      (_, index) => ((random() & 1) === 0 ? (random() & 0xffff) - 0x8000 : index * 100_003),
+    );
+    const categories = Uint8Array.from({ length }, () => random() & 15);
+    const validity = Uint8Array.from({ length }, () => Number((random() & 7) !== 0));
+    using numberColumn = AdaptiveI32Column.from(numbers);
+    using categoryColumn = BitSlicedU8Column.from(categories, 4, validity);
+    using actual = new SelectionMask(length);
+    using temporary = new SelectionMask(length);
+
+    for (
+      const [minimum, maximum] of [
+        [-20_000, 20_000],
+        [0, 0],
+        [I32_TEST_MIN, I32_TEST_MAX],
+        [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
+      ] as const
+    ) {
+      numberColumn.scanBetween(minimum, maximum, actual);
+      const expected: number[] = [];
+      for (let index = 0; index < length; index++) {
+        if (numbers[index]! >= minimum && numbers[index]! < maximum) expected.push(index);
+      }
+      assertEquals(
+        actual.toIndices().join(","),
+        expected.join(","),
+        `i32 between length ${length}`,
+      );
+    }
+
+    numberColumn.scanLt(Number.MAX_SAFE_INTEGER, actual);
+    assertEquals(actual.countOnes(), length, `wide i32 lt length ${length}`);
+    numberColumn.scanEq(Number.MAX_SAFE_INTEGER, actual);
+    assertEquals(actual.countOnes(), 0, `wide i32 eq length ${length}`);
+
+    numberColumn.scanLt(12_345, actual);
+    categoryColumn.scanBetween(3, 11, temporary);
+    actual.andAssign(temporary);
+    const expected: number[] = [];
+    for (let index = 0; index < length; index++) {
+      if (
+        numbers[index]! < 12_345 && categories[index]! >= 3 && categories[index]! < 11 &&
+        validity[index] !== 0
+      ) expected.push(index);
+    }
+    assertEquals(actual.toIndices().join(","), expected.join(","), `composed length ${length}`);
+
+    for (const index of [0, Math.max(0, length - 1)]) {
+      if (length > 0) {
+        assertEquals(numberColumn.get(index), numbers[index], `i32 get length ${length}`);
+        assertEquals(
+          categoryColumn.get(index),
+          validity[index] === 0 ? undefined : categories[index],
+          `u8 get length ${length}`,
+        );
+      }
+    }
+  }
+});
+
+Deno.test("columnar rejects incompatible masks, small outputs, and use after using", () => {
+  using column = AdaptiveI32Column.from(Int32Array.of(1, 2, 3));
+  using wrong = new SelectionMask(2);
+  let incompatibleThrew = false;
+  try {
+    column.scanEq(1, wrong);
+  } catch (error) {
+    incompatibleThrew = error instanceof RangeError;
+  }
+  assertEquals(incompatibleThrew, true, "incompatible mask rejected");
+
+  using mask = new SelectionMask(3);
+  mask.fill();
+  let outputThrew = false;
+  try {
+    mask.positionsInto(new Uint32Array(2));
+  } catch (error) {
+    outputThrew = error instanceof RangeError;
+  }
+  assertEquals(outputThrew, true, "undersized output rejected");
+
+  const disposed = new SelectionMask(3);
+  disposed[Symbol.dispose]();
+  let disposedThrew = false;
+  try {
+    disposed.countOnes();
+  } catch (error) {
+    disposedThrew = error instanceof Error;
+  }
+  assertEquals(disposedThrew, true, "disposed mask rejected");
+});
+
+Deno.test("AdaptiveU32Column preserves unsigned ordering across the sign boundary", () => {
+  const values = new Uint32Array(768);
+  values.fill(0xffff_ff00, 0, 256);
+  for (let index = 256; index < 512; index++) values[index] = 0xffff_0000 + (index & 255);
+  for (let index = 512; index < 768; index++) {
+    values[index] = index & 1 ? index : (0x8000_0000 + index) >>> 0;
+  }
+
+  using column = AdaptiveU32Column.from(values);
+  using selected = new SelectionMask(values.length);
+  assertEquals(column.min, 513, "u32 minimum");
+  assertEquals(column.max, 0xffff_ff00, "u32 maximum");
+  assertEquals(column.get(0), 0xffff_ff00, "constant get");
+  assertEquals(column.get(300), values[300], "FOR get");
+  assertEquals(column.get(700), values[700], "raw get");
+  assertEquals(
+    JSON.stringify(column.encodingCounts()),
+    JSON.stringify({ constant: 1, frameOfReference: 1, raw: 1 }),
+    "u32 encoding counts",
+  );
+
+  column.scanLt(0x8000_0000, selected);
+  assertEquals(selected.countOnes(), 128, "unsigned less-than count");
+  column.scanBetween(0xffff_0000, 0xffff_ff01, selected);
+  assertEquals(selected.countOnes(), 512, "unsigned range count");
+  column.scanEq(0xffff_ff00, selected);
+  assertEquals(selected.countOnes(), 256, "unsigned equality count");
+});
+
+Deno.test("AdaptiveU32Column matches scalar predicates and releases using-owned pages", () => {
+  const before = AdaptiveU32Column.allocatorStats();
+  {
+    const values = Uint32Array.from(
+      { length: 1_037 },
+      (_, index) => (Math.imul(index, 0x9e37_79b1) ^ 0x8000_0000) >>> 0,
+    );
+    using column = AdaptiveU32Column.from(values);
+    using selected = new SelectionMask(values.length);
+    for (
+      const [minimum, maximum] of [
+        [0, 1],
+        [0x7fff_ff00, 0x8000_0100],
+        [0xf000_0000, 0x1_0000_0000],
+      ] as const
+    ) {
+      column.scanBetween(minimum, maximum, selected);
+      let expected = 0;
+      for (const value of values) expected += Number(value >= minimum && value < maximum);
+      assertEquals(selected.countOnes(), expected, `u32 range ${minimum}:${maximum}`);
+    }
+  }
+  const after = AdaptiveU32Column.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "u32 live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "u32 live bytes");
+
+  for (const invalid of [-1, 0x1_0000_0000, 1.5]) {
+    let threw = false;
+    try {
+      AdaptiveU32Column.from([invalid]);
+    } catch (error) {
+      threw = error instanceof RangeError;
+    }
+    assertEquals(threw, true, `invalid u32 ${invalid}`);
+  }
+
+  const disposed = AdaptiveU32Column.from(Uint32Array.of(1, 2, 3));
+  disposed[Symbol.dispose]();
+  let disposedThrew = false;
+  try {
+    disposed.get(0);
+  } catch (error) {
+    disposedThrew = error instanceof Error;
+  }
+  assertEquals(disposedThrew, true, "u32 use after dispose");
+});
+
+Deno.test("Bitmap freezes into an independent RankSelectBitVector through packed words", () => {
+  using mutable = Bitmap.from([1, 31, 32, 100]);
+  using frozen = RankSelectBitVector.fromBitmap(mutable);
+  assertEquals(frozen.length, mutable.capacity, "bitmap bridge capacity");
+  assertEquals(frozen.countOnes, 4, "bitmap bridge cardinality");
+  assertEquals(frozen.select1(2), 32, "bitmap bridge select");
+  mutable.insert(101).remove(1);
+  assertEquals(frozen.get(1), true, "frozen bitmap snapshot keeps removed bit");
+  assertEquals(frozen.get(101), false, "frozen bitmap snapshot ignores later insert");
+
+  const words = new Uint32Array(Math.ceil(mutable.capacity / 32) + 1).fill(0xdead_beef);
+  assertEquals(mutable.wordsInto(words), Math.ceil(mutable.capacity / 32), "bitmap word count");
+  assertEquals(words.at(-1), 0xdead_beef, "bitmap word output tail");
+});
+
+Deno.test("FlatHashSetU32 freezes into an independent StaticMphfU32", () => {
+  using mutable = FlatHashSetU32.from([7, 11, 42, 1_000_000]);
+  using frozen = StaticMphfU32.fromFlatHashSet(mutable);
+  assertEquals(frozen.length, 4, "flat hash bridge length");
+  for (const key of [7, 11, 42, 1_000_000]) {
+    assertEquals(frozen.lookup(key) >= 0, true, `flat hash bridge key ${key}`);
+  }
+  mutable.delete(7);
+  mutable.insert(99);
+  assertEquals(frozen.lookup(7) >= 0, true, "MPHF snapshot keeps removed key");
+  assertEquals(frozen.lookup(99), -1, "MPHF snapshot ignores later key");
+});
+
+Deno.test("MonotoneUint32Builder explicitly freezes into either ordered encoding", () => {
+  const source = new MonotoneUint32Builder();
+  for (const value of [3, 8, 20, 100, 1_000]) source.append(value);
+  using eliasFano = EliasFanoSequence.fromMonotone(source);
+  using packedDelta = PackedDeltaUint32List.fromMonotone(source);
+  assertEquals(eliasFano.toUint32Array().join(","), "3,8,20,100,1000", "EF bridge");
+  assertEquals(packedDelta.toUint32Array().join(","), "3,8,20,100,1000", "delta bridge");
+
+  const duplicates = new MonotoneUint32Builder().append(1).append(1);
+  using duplicateEf = EliasFanoSequence.fromMonotone(duplicates);
+  assertEquals(duplicateEf.length, 2, "EF accepts duplicate source");
+  let strictThrew = false;
+  try {
+    PackedDeltaUint32List.fromMonotone(duplicates);
+  } catch (error) {
+    strictThrew = error instanceof RangeError;
+  }
+  assertEquals(strictThrew, true, "PackedDelta rejects duplicate source");
+});
+
+Deno.test("BlockedBloomFilterU32 has no false negatives and merges compatible blocks", () => {
+  const leftKeys = Uint32Array.from({ length: 2_048 }, (_, index) => index * 17);
+  const rightKeys = Uint32Array.from({ length: 2_048 }, (_, index) => index * 17 + 1);
+  using left = BlockedBloomFilterU32.from(leftKeys, 12);
+  using right = BlockedBloomFilterU32.from(rightKeys, 12);
+  const output = new Uint8Array(leftKeys.length + 1).fill(0xff);
+  assertEquals(left.mayContainMany(leftKeys, output), leftKeys.length, "left hit count");
+  assertEquals(
+    output.subarray(0, leftKeys.length).every((value) => value === 1),
+    true,
+    "left has no false negatives",
+  );
+  assertEquals(output.at(-1), 0xff, "bulk output tail");
+  left.merge(right);
+  assertEquals(left.mayContainMany(rightKeys, output), rightKeys.length, "merged hit count");
+  left.clear();
+  assertEquals(left.mayContainMany(leftKeys, output), 0, "cleared filter");
+});
+
+Deno.test("BlockedBloomFilterU32 bounds false positives and releases using-owned blocks", () => {
+  const before = BlockedBloomFilterU32.allocatorStats();
+  {
+    const keys = Uint32Array.from({ length: 8_192 }, (_, index) => Math.imul(index, 17) >>> 0);
+    const misses = Uint32Array.from(
+      { length: 65_536 },
+      (_, index) => (0x8000_0000 + Math.imul(index, 31)) >>> 0,
+    );
+    using filter = BlockedBloomFilterU32.from(keys, 12);
+    const output = new Uint8Array(misses.length);
+    const falsePositives = filter.mayContainMany(misses, output);
+    assertEquals(falsePositives < misses.length * 0.05, true, "false-positive bound");
+  }
+  const after = BlockedBloomFilterU32.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "Bloom live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "Bloom live bytes");
+});
+
+Deno.test("BlockedBloomFilterU32 rejects incompatible and invalid operations", () => {
+  using small = new BlockedBloomFilterU32(16, 8);
+  using large = new BlockedBloomFilterU32(1_024, 8);
+
+  let mergeThrew = false;
+  try {
+    small.merge(large);
+  } catch (error) {
+    mergeThrew = error instanceof RangeError;
+  }
+  assertEquals(mergeThrew, true, "incompatible merge");
+
+  let outputThrew = false;
+  try {
+    small.mayContainMany(Uint32Array.of(1, 2), new Uint8Array(1));
+  } catch (error) {
+    outputThrew = error instanceof RangeError;
+  }
+  assertEquals(outputThrew, true, "undersized output");
+
+  const disposed = new BlockedBloomFilterU32(16);
+  disposed[Symbol.dispose]();
+  let disposedThrew = false;
+  try {
+    disposed.addMany(Uint32Array.of(1));
+  } catch (error) {
+    disposedThrew = error instanceof Error;
+  }
+  assertEquals(disposedThrew, true, "use after dispose");
+
+  let allocationThrew = false;
+  try {
+    new BlockedBloomFilterU32(0x0400_0001, 128);
+  } catch (error) {
+    allocationThrew = error instanceof RangeError;
+  }
+  assertEquals(allocationThrew, true, "Wasm allocation bound");
+});
+
+const I32_TEST_MIN = -0x8000_0000;
+const I32_TEST_MAX = 0x7fff_ffff;

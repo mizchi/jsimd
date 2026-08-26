@@ -11,6 +11,14 @@ import {
   type AllocatorStats,
   LinearMemoryAllocator,
 } from "../internal/allocator.ts";
+import {
+  copyMonotoneSource,
+  MonotoneUint32Builder,
+  type MonotoneUint32Source,
+} from "../internal/monotone-uint32.ts";
+
+export { MonotoneUint32Builder };
+export type { MonotoneUint32Source };
 
 const SHUFFLE_TABLE_BYTES = 4_096;
 wasmInitShuffleTable(0);
@@ -107,6 +115,11 @@ export class PackedDeltaUint32List {
       }
     }
     return new PackedDeltaUint32List(encode(values));
+  }
+
+  /** Copies a strict-monotone source and freezes it into Stream-VByte delta form. */
+  static fromMonotone(source: MonotoneUint32Source): PackedDeltaUint32List {
+    return PackedDeltaUint32List.fromUint32Array(copyMonotoneSource(source));
   }
 
   static allocatorStats(): AllocatorStats {

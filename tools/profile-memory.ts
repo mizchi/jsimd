@@ -7,12 +7,19 @@ import {
   PdxFloat32Index,
 } from "../src/binary-vector-index/mod.ts";
 import { BitMatrix, SparseBitMatrix } from "../src/bit-matrix/mod.ts";
+import { BlockedBloomFilterU32 } from "../src/blocked-bloom-filter/mod.ts";
 import { BitSlicedColumnU8, BitSliceMask } from "../src/bit-sliced-column/mod.ts";
 import { Bitmap, DenseBitmap } from "../src/bitmap/mod.ts";
 import { memory as bytesMemory } from "../src/bytes/kernels.wasm";
 import { bytesEqual } from "../src/bytes/mod.ts";
 import { ByteKeyFlatHashMapU32 } from "../src/byte-key-flat-hash/mod.ts";
 import { CompressedStringTable } from "../src/compressed-string-table/mod.ts";
+import {
+  AdaptiveI32Column,
+  AdaptiveU32Column,
+  BitSlicedU8Column,
+  SelectionMask,
+} from "../src/columnar/mod.ts";
 import { EliasFanoSequence, PartitionedEliasFanoSequence } from "../src/elias-fano-sequence/mod.ts";
 import { memory as endianMemory } from "../src/endian/kernels.wasm";
 import { decodeUint32BE } from "../src/endian/mod.ts";
@@ -158,6 +165,15 @@ const denseEdges = Array.from(
   { length: 512 },
   (_, index) => [index & 63, Math.imul(index, 13) & 63] as const,
 );
+const waveletU8Snapshot = makeSnapshot(() => WaveletMatrixUint8.from(u8Values));
+const fmSnapshot = makeSnapshot(() => FmIndexBytes.from(fmText));
+const compressedStringsSnapshot = makeSnapshot(() => CompressedStringTable.from(byteKeys));
+const waveletU32Snapshot = makeSnapshot(() => WaveletMatrixUint32.from(u32Keys));
+const eliasFanoSnapshot = makeSnapshot(() => EliasFanoSequence.fromUint32Array(monotoneValues));
+const binaryVectorSnapshot = makeSnapshot(() =>
+  BinaryVectorIndex.fromFloat32(vectorValues, VECTOR_COUNT, VECTOR_DIMENSIONS)
+);
+const staticMphfSnapshot = makeSnapshot(() => StaticMphfU32.fromUint32Array(u32Keys));
 
 let sink = 0;
 
@@ -243,6 +259,16 @@ const scenarios: readonly Scenario[] = [
       sink += intersection.size;
     },
     stats: () => RoaringBitmap.allocatorStats(),
+  },
+  {
+    name: "blocked-bloom-filter",
+    iterations: 250,
+    run() {
+      using value = BlockedBloomFilterU32.from(u32Keys, 12);
+      const output = new Uint8Array(u32Keys.length);
+      sink += value.mayContainMany(u32Keys, output);
+    },
+    stats: () => BlockedBloomFilterU32.allocatorStats(),
   },
   {
     name: "packed-delta",
@@ -336,6 +362,30 @@ const scenarios: readonly Scenario[] = [
       sink += value.between(50, 150, mask).countOnes();
     },
     stats: () => BitSlicedColumnU8.allocatorStats(),
+  },
+  {
+    name: "columnar",
+    iterations: 250,
+    run() {
+      using numbers = AdaptiveI32Column.from(i32Values);
+      using categories = BitSlicedU8Column.from(u8Values);
+      using output = new SelectionMask(U32_LENGTH);
+      using temporary = new SelectionMask(U32_LENGTH);
+      numbers.scanLt(1_000_000, output);
+      categories.scanBetween(50, 150, temporary);
+      sink += output.andAssign(temporary).countOnes();
+    },
+    stats: () => SelectionMask.allocatorStats(),
+  },
+  {
+    name: "columnar-u32",
+    iterations: 100,
+    run() {
+      using unsigned = AdaptiveU32Column.from(u32Keys);
+      using output = new SelectionMask(U32_LENGTH);
+      sink += unsigned.scanBetween(0x4000_0000, 0xc000_0000, output).countOnes();
+    },
+    stats: () => AdaptiveU32Column.allocatorStats(),
   },
   {
     name: "dense-bitmap",
@@ -502,7 +552,75 @@ const scenarios: readonly Scenario[] = [
     },
     stats: () => SparseBitMatrix.allocatorStats(),
   },
+  {
+    name: "snapshot-wavelet-matrix-u8",
+    iterations: 500,
+    run() {
+      using value = WaveletMatrixUint8.fromSnapshot(waveletU8Snapshot);
+      sink += value.length;
+    },
+    stats: () => WaveletMatrixUint8.allocatorStats(),
+  },
+  {
+    name: "snapshot-fm-index-bytes",
+    iterations: 250,
+    run() {
+      using value = FmIndexBytes.fromSnapshot(fmSnapshot);
+      sink += value.length;
+    },
+    stats: () => FmIndexBytes.allocatorStats(),
+  },
+  {
+    name: "snapshot-compressed-string-table",
+    iterations: 500,
+    run() {
+      using value = CompressedStringTable.fromSnapshot(compressedStringsSnapshot);
+      sink += value.length;
+    },
+    stats: () => CompressedStringTable.allocatorStats(),
+  },
+  {
+    name: "snapshot-wavelet-matrix-u32",
+    iterations: 250,
+    run() {
+      using value = WaveletMatrixUint32.fromSnapshot(waveletU32Snapshot);
+      sink += value.length;
+    },
+    stats: () => WaveletMatrixUint32.allocatorStats(),
+  },
+  {
+    name: "snapshot-elias-fano",
+    iterations: 500,
+    run() {
+      using value = EliasFanoSequence.fromSnapshot(eliasFanoSnapshot);
+      sink += value.length;
+    },
+    stats: () => EliasFanoSequence.allocatorStats(),
+  },
+  {
+    name: "snapshot-binary-vector-index",
+    iterations: 500,
+    run() {
+      using value = BinaryVectorIndex.fromSnapshot(binaryVectorSnapshot);
+      sink += value.length;
+    },
+    stats: () => BinaryVectorIndex.allocatorStats(),
+  },
+  {
+    name: "snapshot-static-mphf-u32",
+    iterations: 500,
+    run() {
+      using value = StaticMphfU32.fromSnapshot(staticMphfSnapshot);
+      sink += value.length;
+    },
+    stats: () => StaticMphfU32.allocatorStats(),
+  },
 ];
+
+function makeSnapshot<T extends Disposable & { serialize(): Uint8Array }>(build: () => T) {
+  using value = build();
+  return value.serialize();
+}
 
 function forceGc(): void {
   const gc = (globalThis as { gc?: () => void }).gc;

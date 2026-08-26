@@ -14,6 +14,9 @@ using right = DenseBitmap.from(1_000_000, [10, 20]);
 
 left.intersectionCount(right); // 1
 left.unionWith(right);
+
+const positions = new Uint32Array(left.countOnes());
+left.positionsInto(positions); // returns the written count
 ```
 
 Both types provide insertion/removal, membership, union, intersection, difference, symmetric
@@ -50,6 +53,11 @@ performance after growth, but construction can copy its backing words several ti
 `DenseBitmap` when the universe size is known; prefer `Bitmap` when it is not. Neither is always
 faster than JavaScript: point-heavy or small workloads should use `Set<number>` or BigInt.
 
+`wordsInto(output)` copies the logical packed words into caller-owned storage. Its main purpose is
+the explicit `RankSelectBitVector.fromBitmap(bitmap)` bridge: the frozen target copies these words
+again into its own Wasm memory and builds rank metadata. The mutable bitmap remains independently
+owned and may be changed or released after freezing.
+
 ```sh
 pnpm bench:bitmap
 pnpm bench:record:bitset
@@ -58,7 +66,7 @@ pnpm bench:compare:bitset
 
 ## Standalone build size
 
-The isolated Vite fixture importing both classes emits an 8.84 kB minified JS wrapper (2.79 kB gzip)
+The isolated Vite fixture importing both classes emits a 9.52 kB minified JS wrapper (2.94 kB gzip)
 and one 0.50 kB Wasm asset (0.26 kB gzip). Both classes share that binary, so adding `Bitmap` does
 not add a second Wasm module.
 

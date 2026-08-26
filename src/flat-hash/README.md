@@ -15,6 +15,8 @@ selected.delete(1); // true
 const queryKeys = new Uint32Array([10, 11, 100]);
 const present = new Uint8Array(queryKeys.length);
 selected.lookupMany(queryKeys, present); // 2; present = [1, 0, 1]
+const selectedKeys = new Uint32Array(selected.size);
+selected.keysInto(selectedKeys);
 
 using offsets = FlatHashMapU32U32.from([
   [10, 1_000],
@@ -24,6 +26,9 @@ offsets.set(30, 3_000);
 
 const values = new Uint32Array(queryKeys.length);
 offsets.lookupMany(queryKeys, values, present);
+const entryKeys = new Uint32Array(offsets.size);
+const entryValues = new Uint32Array(offsets.size);
+offsets.entriesInto(entryKeys, entryValues);
 
 using wideIds = FlatHashMapU64U32.from([[0x1_0000_0000n, 42]]);
 wideIds.get(0x1_0000_0000n); // 42
@@ -88,7 +93,7 @@ pnpm bench:compare:flat-hash
 ## Standalone build size
 
 The isolated Vite fixture using u32 set and u64 map emits one 2.12 kB Wasm asset (0.95 kB gzip) and
-a 10.10 kB minified JS wrapper (3.21 kB gzip). The JS size includes allocator and ownership code.
+a 10.89 kB minified JS wrapper (3.35 kB gzip). The JS size includes allocator and ownership code.
 `just check` rejects accidental imports of other jsimd kernels.
 
 See [`experiments/flat-hash`](../../experiments/flat-hash/README.md) for benchmark source and the

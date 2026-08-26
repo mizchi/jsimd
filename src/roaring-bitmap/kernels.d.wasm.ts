@@ -2,6 +2,9 @@ export const memory: WebAssembly.Memory;
 export function bitmap_and_count(left: number, right: number): number;
 export function bitmap_intersects(left: number, right: number): number;
 export function bitmap_and_into(left: number, right: number, output: number): number;
+export function bitmap_or_into(left: number, right: number, output: number): number;
+export function bitmap_xor_into(left: number, right: number, output: number): number;
+export function bitmap_and_not_into(left: number, right: number, output: number): number;
 export function array_array_count(
   left: number,
   leftLength: number,

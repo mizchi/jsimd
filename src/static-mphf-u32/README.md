@@ -26,6 +26,11 @@ IDs are stable only for one built snapshot. They do not preserve input order and
 key set or implementation changes. To build a static dictionary, arrange the associated values by
 calling `lookup` once per known key during construction, then use `lookupMany` at runtime.
 
+`serialize()` preserves the displacement and fingerprint tables, including the dense-ID mapping.
+`StaticMphfU32.fromSnapshot(bytes)` therefore restores the same IDs without repeating displacement
+search. At 16,384 keys, a 49,184-byte snapshot restored about 2,074x faster than construction. The
+16-bit false-positive contract remains unchanged after restore.
+
 ## Membership semantics
 
 An MPHF defines collision-free results only for its construction set. An arbitrary unknown key also
@@ -39,6 +44,22 @@ required.
 
 Duplicate construction keys throw. The complete `Uint32` domain, including `0xffffffff`, is
 supported.
+
+An existing mutable flat hash set can be frozen explicitly:
+
+```ts
+import { FlatHashSetU32 } from "@mizchi/jsimd/flat-hash";
+import { StaticMphfU32 } from "@mizchi/jsimd/static-mphf-u32";
+
+using mutable = FlatHashSetU32.from([10, 20, 30, 40]);
+using frozen = StaticMphfU32.fromFlatHashSet(mutable);
+```
+
+The bridge enumerates and copies all keys, then runs the complete hash-and-displace construction. It
+does not transfer ownership or reuse the mutable table layout; later changes to `mutable` do not
+affect `frozen`. At 4,096 keys the recorded bridge was about 12.1 ms. Construction-order variance
+dominated the direct-array comparison, so this API is a lifecycle convenience rather than a faster
+MPHF builder.
 
 ## Layout and construction
 
@@ -89,11 +110,12 @@ pnpm bench:compare:static-mphf-u32
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 0.68 kB Wasm asset (0.39 kB gzip) and a 7.27 kB minified JS
-wrapper (2.97 kB gzip). It does not emit FlatHash or any other entrypoint's Wasm.
+The isolated Vite fixture emits one 0.68 kB Wasm asset (0.39 kB gzip) and a 10.79 kB minified JS
+wrapper (4.09 kB gzip). It does not emit FlatHash or any other entrypoint's Wasm.
 
 Vitest baseline JSON and benchmark sources live in
-[`experiments/static-mphf-u32`](../../experiments/static-mphf-u32).
+[`experiments/static-mphf-u32`](../../experiments/static-mphf-u32). Cross-structure snapshot results
+are in [`experiments/snapshots`](../../experiments/snapshots/README.md).
 
 Files:
 

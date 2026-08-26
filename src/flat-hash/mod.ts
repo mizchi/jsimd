@@ -174,6 +174,14 @@ export class FlatHashSetU32 {
   toUint32Array(): Uint32Array {
     this.#assertAlive();
     const output = new Uint32Array(this.#size);
+    this.keysInto(output);
+    return output;
+  }
+
+  keysInto(output: Uint32Array): number {
+    this.#assertAlive();
+    if (!(output instanceof Uint32Array)) throw new TypeError("output must be a Uint32Array");
+    if (output.length < this.#size) throw new RangeError("output is too small for set keys");
     const controls = new Uint8Array(
       memory.buffer,
       this.#storage.controls.pointer,
@@ -188,7 +196,7 @@ export class FlatHashSetU32 {
     for (let slot = 0; slot < this.#storage.capacity; slot++) {
       if (controls[slot]! < 128) output[written++] = keys[slot]!;
     }
-    return output;
+    return written;
   }
 
   dispose(): void {
@@ -367,6 +375,38 @@ export class FlatHashMapU32U32 {
     wasmInitControls(this.#storage.controls.pointer, this.#storage.capacity);
     this.#size = 0;
     return this;
+  }
+
+  entriesInto(keysOutput: Uint32Array, valuesOutput: Uint32Array): number {
+    this.#assertAlive();
+    if (!(keysOutput instanceof Uint32Array)) {
+      throw new TypeError("keysOutput must be a Uint32Array");
+    }
+    if (!(valuesOutput instanceof Uint32Array)) {
+      throw new TypeError("valuesOutput must be a Uint32Array");
+    }
+    if (keysOutput.length < this.#size || valuesOutput.length < this.#size) {
+      throw new RangeError("entry outputs must cover every map entry");
+    }
+    const controls = new Uint8Array(
+      memory.buffer,
+      this.#storage.controls.pointer,
+      this.#storage.capacity,
+    );
+    const keys = new Uint32Array(memory.buffer, this.#storage.keys.pointer, this.#storage.capacity);
+    const values = new Uint32Array(
+      memory.buffer,
+      this.#storage.values.pointer,
+      this.#storage.capacity,
+    );
+    let written = 0;
+    for (let slot = 0; slot < this.#storage.capacity; slot++) {
+      if (controls[slot]! >= 128) continue;
+      keysOutput[written] = keys[slot]!;
+      valuesOutput[written] = values[slot]!;
+      written++;
+    }
+    return written;
   }
 
   dispose(): void {
@@ -557,6 +597,42 @@ export class FlatHashMapU64U32 {
     wasmInitControls(this.#storage.controls.pointer, this.#storage.capacity);
     this.#size = 0;
     return this;
+  }
+
+  entriesInto(keysOutput: BigUint64Array, valuesOutput: Uint32Array): number {
+    this.#assertAlive();
+    if (!(keysOutput instanceof BigUint64Array)) {
+      throw new TypeError("keysOutput must be a BigUint64Array");
+    }
+    if (!(valuesOutput instanceof Uint32Array)) {
+      throw new TypeError("valuesOutput must be a Uint32Array");
+    }
+    if (keysOutput.length < this.#size || valuesOutput.length < this.#size) {
+      throw new RangeError("entry outputs must cover every map entry");
+    }
+    const controls = new Uint8Array(
+      memory.buffer,
+      this.#storage.controls.pointer,
+      this.#storage.capacity,
+    );
+    const keys = new BigUint64Array(
+      memory.buffer,
+      this.#storage.keys.pointer,
+      this.#storage.capacity,
+    );
+    const values = new Uint32Array(
+      memory.buffer,
+      this.#storage.values.pointer,
+      this.#storage.capacity,
+    );
+    let written = 0;
+    for (let slot = 0; slot < this.#storage.capacity; slot++) {
+      if (controls[slot]! >= 128) continue;
+      keysOutput[written] = keys[slot]!;
+      valuesOutput[written] = values[slot]!;
+      written++;
+    }
+    return written;
   }
 
   dispose(): void {

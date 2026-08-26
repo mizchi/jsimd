@@ -23,6 +23,10 @@ queries.set(id, 0);
 const values = new Uint32Array(2);
 const present = new Uint8Array(2);
 map.lookupMany(queries, values, present);
+
+const storedKeys = new Uint8Array(map.size * 16);
+const storedValues = new Uint32Array(map.size);
+map.entriesInto(storedKeys, storedValues);
 ```
 
 Keys must contain exactly 16 bytes. Bulk key arrays contain consecutive keys and therefore have a
@@ -62,8 +66,8 @@ pnpm bench:compare:flat-hash-fixed16
 
 ## Standalone build size
 
-The isolated Vite fixture emits a 7.54 kB minified JavaScript wrapper (2.82 kB gzip) and one 0.98 kB
-Wasm asset (0.64 kB gzip). It emits neither the generic `flat-hash` nor fingerprint-only Wasm.
+The isolated Vite fixture emits an 8.64 kB minified JavaScript wrapper (3.02 kB gzip) and one 0.97
+kB Wasm asset (0.62 kB gzip). It emits neither the generic `flat-hash` nor fingerprint-only Wasm.
 
 See [`experiments/flat-hash-fixed16`](../../experiments/flat-hash-fixed16/README.md) for benchmark
 source and the committed baseline.

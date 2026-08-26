@@ -30,6 +30,22 @@ clustered.rank(query);
 clustered.encodingCounts(); // contiguous blocks vs local Elias-Fano blocks
 ```
 
+When the physical representation is chosen later, use the shared host-side builder and name the
+target explicitly:
+
+```ts
+import { EliasFanoSequence, MonotoneUint32Builder } from "@mizchi/jsimd/elias-fano-sequence";
+
+const source = new MonotoneUint32Builder().append(1).append(1).append(3).append(10);
+using values = EliasFanoSequence.fromMonotone(source);
+```
+
+`fromMonotone` copies all values before encoding; it does not consume or share the builder. The
+builder permits duplicates because Elias–Fano does. The same builder can be passed to
+`PackedDeltaUint32List.fromMonotone` only when it is strictly increasing. At 65,536 values the
+recorded EF bridge took about 2.50 ms versus 2.58 ms from an existing `Uint32Array`; the difference
+was within benchmark noise, while both include the complete encoding build.
+
 `rank(value)` is the lower-bound index. `nextGEQ` returns the first stored value greater than or
 equal to the query, while `predecessor` returns the largest strictly smaller value. Both return `-1`
 when no result exists. Query bounds may use `2^32`, allowing `rank(2 ** 32)` to return the complete
@@ -38,6 +54,11 @@ length even when the sequence contains `0xffffffff`.
 Inputs must already be non-decreasing. Descending input throws instead of sorting silently. The
 builder produces independent frozen snapshots. Always bind each frozen sequence with `using` so its
 high bits, lower bits, and rank-index allocations return to the free list at scope exit.
+
+The persistence API is distinct from the builder's immutable “snapshot” terminology: `serialize()`
+returns a versioned byte representation, and `EliasFanoSequence.fromSnapshot(bytes)` restores it.
+The packed high/low bits are copied directly, while the small 512-bit rank prefix is rebuilt and
+validated. For 65,536 values, the 39,140-byte snapshot restored about 51x faster than construction.
 
 ## Layout and algorithm
 
@@ -100,11 +121,12 @@ pnpm bench:compare:elias-fano-sequence
 ## Standalone build size
 
 The isolated Vite fixture using global and partitioned sequences emits one 1.64 kB Wasm asset (0.86
-kB gzip) and a 10.98 kB minified JS wrapper (3.75 kB gzip). It does not emit PackedDelta or
+kB gzip) and a 14.89 kB minified JS wrapper (5.09 kB gzip). It does not emit PackedDelta or
 RankSelectBitVector Wasm.
 
 Vitest baseline JSON and benchmark sources live in
-[`experiments/elias-fano-sequence`](../../experiments/elias-fano-sequence).
+[`experiments/elias-fano-sequence`](../../experiments/elias-fano-sequence). Cross-structure snapshot
+results are in [`experiments/snapshots`](../../experiments/snapshots/README.md).
 
 Files:
 

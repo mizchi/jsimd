@@ -28,4 +28,6 @@ examples/tree-shake-wavelet-matrix-uint32/dist/
 examples/tree-shake-wavelet-matrix-uint8/dist/
 examples/tree-shake-fm-index-bytes/dist/
 examples/tree-shake-compressed-string-table/dist/
+examples/tree-shake-columnar/dist/
+examples/tree-shake-blocked-bloom-filter/dist/
 src/**/*.wasm

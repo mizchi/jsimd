@@ -80,18 +80,35 @@ function has(storage: BitSetStorage, bit: number): boolean {
   return (storage.view()[bit >>> 5]! & (1 << (bit & 31))) !== 0;
 }
 
-function toArray(storage: BitSetStorage): number[] {
-  const result: number[] = [];
+function positionsInto(storage: BitSetStorage, output: Uint32Array): number {
+  if (!(output instanceof Uint32Array)) throw new TypeError("output must be a Uint32Array");
+  const count = wasmCount(storage.allocation.pointer, storage.paddedWords);
+  if (output.length < count) throw new RangeError("output is too small for bitmap positions");
   const words = storage.view();
+  let written = 0;
   for (let wordIndex = 0; wordIndex < storage.words; wordIndex++) {
     let word = words[wordIndex]!;
     while (word !== 0) {
       const lowest = word & -word;
-      result.push((wordIndex << 5) + 31 - Math.clz32(lowest));
+      output[written++] = (wordIndex << 5) + 31 - Math.clz32(lowest);
       word = (word & (word - 1)) >>> 0;
     }
   }
-  return result;
+  return written;
+}
+
+function wordsInto(storage: BitSetStorage, output: Uint32Array): number {
+  if (!(output instanceof Uint32Array)) throw new TypeError("output must be a Uint32Array");
+  storage.assertAlive();
+  if (output.length < storage.words) throw new RangeError("output is too small for bitmap words");
+  output.set(storage.view().subarray(0, storage.words), 0);
+  return storage.words;
+}
+
+function toArray(storage: BitSetStorage): number[] {
+  const output = new Uint32Array(wasmCount(storage.allocation.pointer, storage.paddedWords));
+  positionsInto(storage, output);
+  return Array.from(output);
 }
 
 /** A fixed-universe dense bitmap. Operations between bitmaps require identical capacities. */
@@ -224,6 +241,15 @@ export class DenseBitmap {
 
   toArray(): number[] {
     return toArray(this.#storage);
+  }
+
+  positionsInto(output: Uint32Array): number {
+    return positionsInto(this.#storage, output);
+  }
+
+  /** Copies packed logical words for an explicit frozen-representation bridge. */
+  wordsInto(output: Uint32Array): number {
+    return wordsInto(this.#storage, output);
   }
 
   dispose(): void {
@@ -379,6 +405,15 @@ export class Bitmap {
 
   toArray(): number[] {
     return toArray(this.#storage);
+  }
+
+  positionsInto(output: Uint32Array): number {
+    return positionsInto(this.#storage, output);
+  }
+
+  /** Copies packed logical words for an explicit frozen-representation bridge. */
+  wordsInto(output: Uint32Array): number {
+    return wordsInto(this.#storage, output);
   }
 
   dispose(): void {

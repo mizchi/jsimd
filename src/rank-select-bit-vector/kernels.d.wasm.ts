@@ -13,6 +13,13 @@ export function rank1_many(
   output: number,
   count: number,
 ): void;
+export function rank0_many(
+  bits: number,
+  rankIndex: number,
+  ends: number,
+  output: number,
+  count: number,
+): void;
 export function select1(
   bits: number,
   rankIndex: number,
@@ -25,6 +32,24 @@ export function select1_many(
   rankIndex: number,
   paddedWords: number,
   superblocks: number,
+  ranks: number,
+  output: number,
+  count: number,
+): void;
+export function select0(
+  bits: number,
+  rankIndex: number,
+  paddedWords: number,
+  superblocks: number,
+  length: number,
+  rank: number,
+): number;
+export function select0_many(
+  bits: number,
+  rankIndex: number,
+  paddedWords: number,
+  superblocks: number,
+  length: number,
   ranks: number,
   output: number,
   count: number,
@@ -44,6 +69,24 @@ export function prev1(
   paddedWords: number,
   superblocks: number,
   countOnes: number,
+  length: number,
+  position: number,
+): number;
+export function next0(
+  bits: number,
+  rankIndex: number,
+  paddedWords: number,
+  superblocks: number,
+  countZeros: number,
+  length: number,
+  position: number,
+): number;
+export function prev0(
+  bits: number,
+  rankIndex: number,
+  paddedWords: number,
+  superblocks: number,
+  countZeros: number,
   length: number,
   position: number,
 ): number;

@@ -27,6 +27,22 @@ const count = postings.intersectInto(selected, intersection); // 2
 intersection.subarray(0, count); // [9, 1000]
 ```
 
+`MonotoneUint32Builder` is also exported when the codec is selected only at freeze time:
+
+```ts
+import {
+  MonotoneUint32Builder,
+  PackedDeltaUint32List,
+} from "@mizchi/jsimd/packed-delta-uint32-list";
+
+const source = new MonotoneUint32Builder().append(3).append(9).append(100).append(1_000);
+using postings = PackedDeltaUint32List.fromMonotone(source);
+```
+
+The bridge copies all values and then validates the stricter no-duplicates contract. It does not
+consume the builder. At 65,536 values the recorded bridge took about 1.56 ms versus 1.23 ms from an
+existing `Uint32Array`; use direct typed-array construction when that array already exists.
+
 Input must already be strictly increasing. Duplicate or descending values throw instead of being
 silently normalized. `decodeInto` and `intersectInto` write at most the output capacity and return
 the number written. Declare every owning list with `using`; scope exit returns its Wasm allocations
@@ -70,8 +86,8 @@ pnpm bench:compare:packed-delta-uint32-list
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 1.49 kB Wasm asset (0.88 kB gzip) and a 6.96 kB minified JS
-wrapper (2.76 kB gzip). Importing this subpath does not emit Roaring, FlatHash, or byte-scanner
+The isolated Vite fixture emits one 1.49 kB Wasm asset (0.88 kB gzip) and a 7.45 kB minified JS
+wrapper (2.91 kB gzip). Importing this subpath does not emit Roaring, FlatHash, or byte-scanner
 Wasm.
 
 See [`experiments/packed-delta-uint32-list`](../../experiments/packed-delta-uint32-list/README.md)

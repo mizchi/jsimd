@@ -19,6 +19,11 @@ const present = new Uint8Array(3);
 symbols.lookupMany(queries, offsets, values, present);
 // values  = [1, 0, 2]
 // present = [1, 0, 1]
+
+const storedBytes = new Uint8Array(symbols.arenaBytes);
+const storedOffsets = new Uint32Array(symbols.size + 1);
+const storedValues = new Uint32Array(symbols.size);
+symbols.entriesInto(storedBytes, storedOffsets, storedValues);
 ```
 
 `insertMany(bytes, offsets, values)` and `lookupMany(bytes, offsets, values, present)` encode key
@@ -60,8 +65,8 @@ pnpm bench:compare:byte-key-flat-hash
 
 ## Standalone build size
 
-The isolated Vite fixture emits a 9.07 kB minified JavaScript wrapper (3.10 kB gzip) and one 1.26 kB
-Wasm asset (0.73 kB gzip). No other `jsimd` Wasm entrypoint is included.
+The isolated Vite fixture emits a 10.08 kB minified JavaScript wrapper (3.37 kB gzip) and one 1.25
+kB Wasm asset (0.73 kB gzip). No other `jsimd` Wasm entrypoint is included.
 
 See [`experiments/byte-key-flat-hash`](../../experiments/byte-key-flat-hash/README.md) for the
 benchmark source and committed baseline.

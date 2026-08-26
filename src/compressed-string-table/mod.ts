@@ -9,6 +9,14 @@ import {
   type AllocatorStats,
   LinearMemoryAllocator,
 } from "../internal/allocator.ts";
+import {
+  decodeSnapshot,
+  encodeSnapshot,
+  expectPayloadBytes,
+  invalidSnapshot,
+  SnapshotKind,
+  uint32Payload,
+} from "../internal/snapshot.ts";
 
 const BLOCK_SHIFT = 4;
 const BLOCK_SIZE = 1 << BLOCK_SHIFT;
@@ -81,8 +89,54 @@ export class CompressedStringTable {
     return CompressedStringTable.from(Array.from(strings, (value) => encoder.encode(value)));
   }
 
+  static fromSnapshot(snapshot: Uint8Array): CompressedStringTable {
+    const { shape, payloads } = decodeSnapshot(
+      snapshot,
+      SnapshotKind.CompressedStringTable,
+      2,
+      5,
+    );
+    const length = shape[0]!;
+    const uncompressedBytes = shape[1]!;
+    const blockCount = Math.ceil(length / BLOCK_SIZE);
+    expectPayloadBytes(payloads[0]!, blockCount * 4, "string anchor offsets");
+    expectPayloadBytes(payloads[1]!, length * 4, "string prefix lengths");
+    expectPayloadBytes(payloads[2]!, length * 4, "string suffix offsets");
+    expectPayloadBytes(payloads[3]!, length * 4, "string suffix lengths");
+    const layout: Layout = {
+      anchorOffsets: uint32Payload(payloads[0]!, "string anchor offsets"),
+      prefixLengths: uint32Payload(payloads[1]!, "string prefix lengths"),
+      suffixOffsets: uint32Payload(payloads[2]!, "string suffix offsets"),
+      suffixLengths: uint32Payload(payloads[3]!, "string suffix lengths"),
+      arena: payloads[4]!,
+      uncompressedBytes,
+    };
+    validateLayout(layout);
+    return new CompressedStringTable(layout);
+  }
+
   static allocatorStats(): AllocatorStats {
     return allocator.stats();
+  }
+
+  serialize(): Uint8Array {
+    this.#assertAlive();
+    const blockCount = Math.ceil(this.length / BLOCK_SIZE);
+    return encodeSnapshot(
+      SnapshotKind.CompressedStringTable,
+      [this.length, this.uncompressedBytes],
+      [
+        new Uint8Array(memory.buffer, this.#anchorOffsetsPointer, blockCount * 4),
+        new Uint8Array(memory.buffer, this.#prefixLengthsPointer, this.length * 4),
+        new Uint8Array(memory.buffer, this.#suffixOffsetsPointer, this.length * 4),
+        new Uint8Array(memory.buffer, this.#suffixLengthsPointer, this.length * 4),
+        new Uint8Array(
+          memory.buffer,
+          this.#arenaPointer,
+          this.encodedBytes - (blockCount + this.length * 3) * 4,
+        ),
+      ],
+    );
   }
 
   byteLengthAt(id: number): number {
@@ -243,6 +297,36 @@ function commonPrefix(left: Uint8Array, right: Uint8Array): number {
   let index = 0;
   while (index < length && left[index] === right[index]) index++;
   return index;
+}
+
+function validateLayout(layout: Layout): void {
+  let decodedBytes = 0;
+  for (let id = 0; id < layout.prefixLengths.length; id++) {
+    const block = id >>> BLOCK_SHIFT;
+    const anchorId = block << BLOCK_SHIFT;
+    const anchorLength = layout.suffixLengths[anchorId]!;
+    const prefixLength = layout.prefixLengths[id]!;
+    const suffixOffset = layout.suffixOffsets[id]!;
+    const suffixLength = layout.suffixLengths[id]!;
+    if (prefixLength > anchorLength || suffixOffset + suffixLength > layout.arena.length) {
+      throw invalidSnapshot("invalid front-coded string segment");
+    }
+    if (id === anchorId) {
+      if (
+        prefixLength !== 0 || layout.anchorOffsets[block] !== suffixOffset ||
+        suffixLength !== anchorLength
+      ) {
+        throw invalidSnapshot("invalid front-coded string anchor");
+      }
+    }
+    decodedBytes += prefixLength + suffixLength;
+    if (!Number.isSafeInteger(decodedBytes) || decodedBytes > 0xffff_ffff) {
+      throw invalidSnapshot("decoded string bytes overflow");
+    }
+  }
+  if (decodedBytes !== layout.uncompressedBytes) {
+    throw invalidSnapshot("incorrect uncompressed string byte length");
+  }
 }
 
 function validateBatch(queries: Uint8Array, offsets: Uint32Array): number {

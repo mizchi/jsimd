@@ -4,6 +4,14 @@ import {
   type AllocatorStats,
   LinearMemoryAllocator,
 } from "../internal/allocator.ts";
+import {
+  decodeSnapshot,
+  encodeSnapshot,
+  expectPayloadBytes,
+  int32Payload,
+  SnapshotKind,
+  uint16Payload,
+} from "../internal/snapshot.ts";
 
 const UINT32_LIMIT = 0x1_0000_0000;
 const EMPTY_BUCKET = -0x8000_0000;
@@ -15,6 +23,11 @@ const allocator = new LinearMemoryAllocator(memory);
 interface MphfLayout {
   readonly displacements: Int32Array;
   readonly fingerprints: Uint16Array;
+}
+
+export interface FlatHashSetU32Source {
+  readonly size: number;
+  keysInto(output: Uint32Array): number;
 }
 
 /** Mutable unique-key construction state for a frozen minimal perfect hash function. */
@@ -90,8 +103,70 @@ export class StaticMphfU32 {
     return new StaticMphfU32(buildLayout(keys));
   }
 
+  /** Copies a mutable flat-hash set and rebuilds it as an independent frozen MPHF. */
+  static fromFlatHashSet(source: FlatHashSetU32Source): StaticMphfU32 {
+    if (source === null || typeof source !== "object") {
+      throw new TypeError("source must be a Uint32 flat hash set");
+    }
+    validateLength(source.size);
+    if (typeof source.keysInto !== "function") {
+      throw new TypeError("source must provide keysInto(output)");
+    }
+    const keys = new Uint32Array(source.size);
+    const written = source.keysInto(keys);
+    if (written !== keys.length) {
+      throw new RangeError("flat hash source wrote an unexpected key count");
+    }
+    return StaticMphfU32.fromUint32Array(keys);
+  }
+
+  static fromSnapshot(snapshot: Uint8Array): StaticMphfU32 {
+    const { shape, payloads } = decodeSnapshot(snapshot, SnapshotKind.StaticMphfU32, 2, 2);
+    const length = shape[0]!;
+    const bucketCount = shape[1]!;
+    validateLength(length);
+    if (bucketCount !== (length === 0 ? 0 : Math.ceil(length / BUCKET_TARGET_SIZE))) {
+      throw new RangeError("invalid snapshot: incorrect MPHF bucket count");
+    }
+    expectPayloadBytes(payloads[0]!, bucketCount * 4, "MPHF displacements");
+    expectPayloadBytes(payloads[1]!, length * 2, "MPHF fingerprints");
+    const displacements = int32Payload(payloads[0]!, "MPHF displacements");
+    for (const displacement of displacements) {
+      if (
+        displacement !== EMPTY_BUCKET &&
+        (displacement === 0 || displacement > MAX_DISPLACEMENT || displacement < -length)
+      ) {
+        throw new RangeError("invalid snapshot: invalid MPHF displacement");
+      }
+    }
+    return new StaticMphfU32({
+      displacements,
+      fingerprints: uint16Payload(payloads[1]!, "MPHF fingerprints"),
+    });
+  }
+
   static allocatorStats(): AllocatorStats {
     return allocator.stats();
+  }
+
+  serialize(): Uint8Array {
+    this.#assertAlive();
+    return encodeSnapshot(
+      SnapshotKind.StaticMphfU32,
+      [this.length, this.bucketCount],
+      [
+        new Uint8Array(
+          memory.buffer,
+          this.#allocation.pointer,
+          this.#fingerprintOffset,
+        ),
+        new Uint8Array(
+          memory.buffer,
+          this.#allocation.pointer + this.#fingerprintOffset,
+          this.length * 2,
+        ),
+      ],
+    );
   }
 
   /** Returns a dense implementation-defined ID, or `-1` on fingerprint mismatch. */

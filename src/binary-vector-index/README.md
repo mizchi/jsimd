@@ -39,6 +39,12 @@ index.topK(query, 10, 100, ids, exactSquaredL2);
 dimension-major order so one `f32x4` accumulator scores four candidates. `distanceSelected` reuses
 that layout for reranking. Bind all owning types with `using`.
 
+`BinaryVectorIndex.serialize()` preserves row padding and non-byte-aligned logical dimensions;
+restore with `BinaryVectorIndex.fromSnapshot(bytes)`. The loader rejects non-zero padding or bits
+outside the declared dimensions before allocation. An 8,192 x 256-bit snapshot was 262,176 bytes and
+restored about 205x faster than re-quantizing Float32 input. Snapshots currently cover the binary
+index itself, not `PdxFloat32Index` or the combined reranking wrapper.
+
 The hot loop follows the binary-candidate stage used by systems such as
 [QuIVer](https://arxiv.org/html/2605.02171v3): XOR followed by population count. This implementation
 is deliberately smaller in scope—it performs an exact exhaustive Hamming scan and does not include
@@ -75,5 +81,8 @@ pnpm bench:compare:binary-vector-index
 ```
 
 The isolated Vite fixture using binary and PDX scans emits one 0.85 kB Wasm asset (0.43 kB gzip) and
-an 8.65 kB minified JS wrapper (3.11 kB gzip). It emits no other entrypoint's Wasm. `kernels.wat` is
-the source; the stripped and validated `kernels.wasm` remains Git-ignored.
+an 11.74 kB minified JS wrapper (4.17 kB gzip). It emits no other entrypoint's Wasm. `kernels.wat`
+is the source; the stripped and validated `kernels.wasm` remains Git-ignored.
+
+Cross-structure snapshot and transport results are in
+[`experiments/snapshots`](../../experiments/snapshots/README.md).

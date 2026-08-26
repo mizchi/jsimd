@@ -28,7 +28,9 @@
     "./wavelet-matrix-uint32": "./dist/wavelet-matrix-uint32/mod.js",
     "./wavelet-matrix-uint8": "./dist/wavelet-matrix-uint8/mod.js",
     "./fm-index-bytes": "./dist/fm-index-bytes/mod.js",
-    "./compressed-string-table": "./dist/compressed-string-table/mod.js"
+    "./compressed-string-table": "./dist/compressed-string-table/mod.js",
+    "./columnar": "./dist/columnar/mod.js",
+    "./blocked-bloom-filter": "./dist/blocked-bloom-filter/mod.js"
   },
   "sideEffects": false,
   "files": [
@@ -65,6 +67,10 @@
     "bench:wavelet-matrix-uint8": "vitest bench experiments/wavelet-matrix-uint8",
     "bench:fm-index-bytes": "vitest bench experiments/fm-index-bytes",
     "bench:compressed-string-table": "vitest bench experiments/compressed-string-table",
+    "bench:snapshots": "vitest bench experiments/snapshots",
+    "bench:columnar": "vitest bench experiments/columnar",
+    "bench:freeze-bridges": "vitest bench experiments/freeze-bridges",
+    "bench:blocked-bloom-filter": "vitest bench experiments/blocked-bloom-filter",
     "bench:record:bitmap": "vitest bench experiments/bitmap --outputJson experiments/bitmap/benchmarks/baseline.json",
     "bench:record:bit-matrix": "vitest bench experiments/bit-matrix --outputJson experiments/bit-matrix/benchmarks/baseline.json",
     "bench:record:byte-key-flat-hash": "vitest bench experiments/byte-key-flat-hash --outputJson experiments/byte-key-flat-hash/benchmarks/baseline.json",
@@ -89,6 +95,10 @@
     "bench:record:wavelet-matrix-uint8": "vitest bench experiments/wavelet-matrix-uint8 --outputJson experiments/wavelet-matrix-uint8/benchmarks/baseline.json",
     "bench:record:fm-index-bytes": "vitest bench experiments/fm-index-bytes --outputJson experiments/fm-index-bytes/benchmarks/baseline.json",
     "bench:record:compressed-string-table": "vitest bench experiments/compressed-string-table --outputJson experiments/compressed-string-table/benchmarks/baseline.json",
+    "bench:record:snapshots": "vitest bench experiments/snapshots --outputJson experiments/snapshots/benchmarks/baseline.json",
+    "bench:record:columnar": "vitest bench experiments/columnar --outputJson experiments/columnar/benchmarks/baseline.json",
+    "bench:record:freeze-bridges": "vitest bench experiments/freeze-bridges --outputJson experiments/freeze-bridges/benchmarks/baseline.json",
+    "bench:record:blocked-bloom-filter": "vitest bench experiments/blocked-bloom-filter --outputJson experiments/blocked-bloom-filter/benchmarks/baseline.json",
     "bench:compare:bitmap": "vitest bench experiments/bitmap --compare experiments/bitmap/benchmarks/baseline.json",
     "bench:compare:bit-matrix": "vitest bench experiments/bit-matrix --compare experiments/bit-matrix/benchmarks/baseline.json",
     "bench:compare:byte-key-flat-hash": "vitest bench experiments/byte-key-flat-hash --compare experiments/byte-key-flat-hash/benchmarks/baseline.json",
@@ -112,7 +122,11 @@
     "bench:compare:wavelet-matrix-uint32": "vitest bench experiments/wavelet-matrix-uint32 --compare experiments/wavelet-matrix-uint32/benchmarks/baseline.json",
     "bench:compare:wavelet-matrix-uint8": "vitest bench experiments/wavelet-matrix-uint8 --compare experiments/wavelet-matrix-uint8/benchmarks/baseline.json",
     "bench:compare:fm-index-bytes": "vitest bench experiments/fm-index-bytes --compare experiments/fm-index-bytes/benchmarks/baseline.json",
-    "bench:compare:compressed-string-table": "vitest bench experiments/compressed-string-table --compare experiments/compressed-string-table/benchmarks/baseline.json"
+    "bench:compare:compressed-string-table": "vitest bench experiments/compressed-string-table --compare experiments/compressed-string-table/benchmarks/baseline.json",
+    "bench:compare:snapshots": "vitest bench experiments/snapshots --compare experiments/snapshots/benchmarks/baseline.json",
+    "bench:compare:columnar": "vitest bench experiments/columnar --compare experiments/columnar/benchmarks/baseline.json",
+    "bench:compare:freeze-bridges": "vitest bench experiments/freeze-bridges --compare experiments/freeze-bridges/benchmarks/baseline.json",
+    "bench:compare:blocked-bloom-filter": "vitest bench experiments/blocked-bloom-filter --compare experiments/blocked-bloom-filter/benchmarks/baseline.json"
   },
   "license": "MIT",
   "publishConfig": {

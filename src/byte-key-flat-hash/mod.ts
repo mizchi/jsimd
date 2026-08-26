@@ -237,6 +237,67 @@ export class ByteKeyFlatHashMapU32 {
     return this;
   }
 
+  entriesInto(
+    bytesOutput: Uint8Array,
+    offsetsOutput: Uint32Array,
+    valuesOutput: Uint32Array,
+  ): number {
+    this.#assertAlive();
+    if (!(bytesOutput instanceof Uint8Array)) {
+      throw new TypeError("bytesOutput must be a Uint8Array");
+    }
+    if (!(offsetsOutput instanceof Uint32Array)) {
+      throw new TypeError("offsetsOutput must be a Uint32Array");
+    }
+    if (!(valuesOutput instanceof Uint32Array)) {
+      throw new TypeError("valuesOutput must be a Uint32Array");
+    }
+    if (offsetsOutput.length < this.#size + 1 || valuesOutput.length < this.#size) {
+      throw new RangeError("entry outputs must cover every map entry");
+    }
+    const controls = new Uint8Array(
+      memory.buffer,
+      this.#table.controls.pointer,
+      this.#table.capacity,
+    );
+    const keyOffsets = new Uint32Array(
+      memory.buffer,
+      this.#table.offsets.pointer,
+      this.#table.capacity,
+    );
+    const keyLengths = new Uint32Array(
+      memory.buffer,
+      this.#table.lengths.pointer,
+      this.#table.capacity,
+    );
+    let requiredBytes = 0;
+    for (let slot = 0; slot < this.#table.capacity; slot++) {
+      if (controls[slot]! < 128) requiredBytes += keyLengths[slot]!;
+    }
+    if (bytesOutput.length < requiredBytes) {
+      throw new RangeError("bytesOutput is too small for live key bytes");
+    }
+    const arena = new Uint8Array(memory.buffer, this.#arena.pointer, this.#arenaLength);
+    const values = new Uint32Array(
+      memory.buffer,
+      this.#table.values.pointer,
+      this.#table.capacity,
+    );
+    let written = 0;
+    let byteOffset = 0;
+    offsetsOutput[0] = 0;
+    for (let slot = 0; slot < this.#table.capacity; slot++) {
+      if (controls[slot]! >= 128) continue;
+      const keyOffset = keyOffsets[slot]!;
+      const keyLength = keyLengths[slot]!;
+      bytesOutput.set(arena.subarray(keyOffset, keyOffset + keyLength), byteOffset);
+      byteOffset += keyLength;
+      valuesOutput[written] = values[slot]!;
+      offsetsOutput[++written] = byteOffset;
+    }
+    return written;
+  }
+
   [Symbol.dispose](): void {
     if (this.#disposed) return;
     this.#disposed = true;

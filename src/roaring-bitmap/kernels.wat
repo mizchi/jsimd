@@ -56,6 +56,54 @@
     local.get $count
   )
 
+  (func (export "bitmap_or_into")
+    (param $left i32) (param $right i32) (param $output i32) (result i32)
+    (local $offset i32) (local $value v128) (local $count i32)
+    block $done
+      loop $loop
+        local.get $offset i32.const 8192 i32.ge_u br_if $done
+        local.get $left local.get $offset i32.add v128.load
+        local.get $right local.get $offset i32.add v128.load v128.or local.set $value
+        local.get $output local.get $offset i32.add local.get $value v128.store
+        local.get $count local.get $value call $horizontal_popcount i32.add local.set $count
+        local.get $offset i32.const 16 i32.add local.set $offset br $loop
+      end
+    end
+    local.get $count
+  )
+
+  (func (export "bitmap_xor_into")
+    (param $left i32) (param $right i32) (param $output i32) (result i32)
+    (local $offset i32) (local $value v128) (local $count i32)
+    block $done
+      loop $loop
+        local.get $offset i32.const 8192 i32.ge_u br_if $done
+        local.get $left local.get $offset i32.add v128.load
+        local.get $right local.get $offset i32.add v128.load v128.xor local.set $value
+        local.get $output local.get $offset i32.add local.get $value v128.store
+        local.get $count local.get $value call $horizontal_popcount i32.add local.set $count
+        local.get $offset i32.const 16 i32.add local.set $offset br $loop
+      end
+    end
+    local.get $count
+  )
+
+  (func (export "bitmap_and_not_into")
+    (param $left i32) (param $right i32) (param $output i32) (result i32)
+    (local $offset i32) (local $value v128) (local $count i32)
+    block $done
+      loop $loop
+        local.get $offset i32.const 8192 i32.ge_u br_if $done
+        local.get $left local.get $offset i32.add v128.load
+        local.get $right local.get $offset i32.add v128.load v128.andnot local.set $value
+        local.get $output local.get $offset i32.add local.get $value v128.store
+        local.get $count local.get $value call $horizontal_popcount i32.add local.set $count
+        local.get $offset i32.const 16 i32.add local.set $offset br $loop
+      end
+    end
+    local.get $count
+  )
+
   (func (export "array_array_count")
     (param $left i32) (param $left_length i32)
     (param $right i32) (param $right_length i32) (result i32)

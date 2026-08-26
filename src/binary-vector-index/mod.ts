@@ -9,8 +9,28 @@ import {
   type AllocatorStats,
   LinearMemoryAllocator,
 } from "../internal/allocator.ts";
+import {
+  decodeSnapshot,
+  encodeSnapshot,
+  expectPayloadBytes,
+  invalidSnapshot,
+  SnapshotKind,
+} from "../internal/snapshot.ts";
 
 const allocator = new LinearMemoryAllocator(memory);
+
+type BinaryVectorSource =
+  | {
+    readonly signatures: readonly Uint8Array[];
+    readonly byteLength: number;
+    readonly dimensions: number;
+  }
+  | {
+    readonly storage: Uint8Array;
+    readonly length: number;
+    readonly byteLength: number;
+    readonly dimensions: number;
+  };
 
 /** A frozen row-major index for exact Hamming search over fixed-width binary signatures. */
 export class BinaryVectorIndex {
@@ -22,17 +42,21 @@ export class BinaryVectorIndex {
   readonly #allocation: Allocation;
   #disposed = false;
 
-  private constructor(signatures: readonly Uint8Array[], byteLength: number, dimensions: number) {
-    this.length = signatures.length;
-    this.#byteLength = byteLength;
-    this.dimensions = dimensions;
-    this.#stride = (byteLength + 15) & ~15;
-    this.encodedBytes = signatures.length * byteLength;
-    const allocation = allocator.allocate(signatures.length * this.#stride);
+  private constructor(source: BinaryVectorSource) {
+    this.length = "storage" in source ? source.length : source.signatures.length;
+    this.#byteLength = source.byteLength;
+    this.dimensions = source.dimensions;
+    this.#stride = (source.byteLength + 15) & ~15;
+    this.encodedBytes = this.length * source.byteLength;
+    const allocation = allocator.allocate(this.length * this.#stride);
     try {
       const storage = new Uint8Array(memory.buffer, allocation.pointer, allocation.byteLength);
-      for (let index = 0; index < signatures.length; index++) {
-        storage.set(signatures[index]!, index * this.#stride);
+      if ("storage" in source) {
+        storage.set(source.storage);
+      } else {
+        for (let index = 0; index < source.signatures.length; index++) {
+          storage.set(source.signatures[index]!, index * this.#stride);
+        }
       }
     } catch (error) {
       allocator.release(allocation);
@@ -52,7 +76,7 @@ export class BinaryVectorIndex {
         throw new RangeError("binary signatures must be equal-length Uint8Arrays");
       }
     }
-    return new BinaryVectorIndex(signatures, byteLength, byteLength * 8);
+    return new BinaryVectorIndex({ signatures, byteLength, dimensions: byteLength * 8 });
   }
 
   /** Quantizes each Float32 lane to one bit using `value > threshold`. */
@@ -82,11 +106,62 @@ export class BinaryVectorIndex {
         }
       }
     }
-    return new BinaryVectorIndex(signatures, byteLength, dimensions);
+    return new BinaryVectorIndex({ signatures, byteLength, dimensions });
+  }
+
+  static fromSnapshot(snapshot: Uint8Array): BinaryVectorIndex {
+    const { shape, payloads } = decodeSnapshot(
+      snapshot,
+      SnapshotKind.BinaryVectorIndex,
+      3,
+      1,
+    );
+    const length = shape[0]!;
+    const dimensions = shape[1]!;
+    const byteLength = shape[2]!;
+    if (length === 0 || dimensions === 0 || byteLength !== Math.ceil(dimensions / 8)) {
+      throw invalidSnapshot("invalid binary vector shape");
+    }
+    const stride = (byteLength + 15) & ~15;
+    const residentBytes = length * stride;
+    if (!Number.isSafeInteger(residentBytes) || residentBytes > 0x7fff_ffff) {
+      throw invalidSnapshot("binary vector storage is too large");
+    }
+    const storage = payloads[0]!;
+    expectPayloadBytes(storage, residentBytes, "binary vector storage");
+    const tailBits = dimensions & 7;
+    const tailMask = tailBits === 0 ? 0xff : (1 << tailBits) - 1;
+    for (let row = 0; row < length; row++) {
+      const offset = row * stride;
+      if ((storage[offset + byteLength - 1]! & ~tailMask) !== 0) {
+        throw invalidSnapshot("set bits outside binary vector dimensions");
+      }
+      for (let byte = byteLength; byte < stride; byte++) {
+        if (storage[offset + byte] !== 0) {
+          throw invalidSnapshot("non-zero binary vector padding");
+        }
+      }
+    }
+    return new BinaryVectorIndex({ storage, length, byteLength, dimensions });
   }
 
   static allocatorStats(): AllocatorStats {
     return allocator.stats();
+  }
+
+  serialize(): Uint8Array {
+    this.#assertAlive();
+    return encodeSnapshot(
+      SnapshotKind.BinaryVectorIndex,
+      [this.length, this.dimensions, this.#byteLength],
+      [
+        new Uint8Array(
+          memory.buffer,
+          this.#allocation.pointer,
+          this.length * this.#stride,
+        ),
+      ],
+    );
   }
 
   distanceMany(query: Uint8Array, output: Uint32Array): Uint32Array {

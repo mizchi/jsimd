@@ -78,20 +78,29 @@ export class BitMatrix {
   }
 
   rowToArray(row: number): number[] {
+    const output = new Uint32Array(this.countRowOnes(row));
+    this.rowPositionsInto(row, output);
+    return Array.from(output);
+  }
+
+  rowPositionsInto(row: number, output: Uint32Array): number {
     this.#checkRow(row);
-    const result: number[] = [];
+    if (!(output instanceof Uint32Array)) throw new TypeError("output must be a Uint32Array");
+    const count = this.countRowOnes(row);
+    if (output.length < count) throw new RangeError("output is too small for row positions");
     const words = this.#words();
     const offset = row * this.#strideWords;
     const wordCount = Math.ceil(this.columns / 32);
+    let written = 0;
     for (let wordIndex = 0; wordIndex < wordCount; wordIndex++) {
       let word = words[offset + wordIndex]!;
       while (word !== 0) {
         const lowest = word & -word;
-        result.push((wordIndex << 5) + 31 - Math.clz32(lowest));
+        output[written++] = (wordIndex << 5) + 31 - Math.clz32(lowest);
         word = (word & (word - 1)) >>> 0;
       }
     }
-    return result;
+    return written;
   }
 
   transpose(): BitMatrix {
@@ -188,6 +197,10 @@ export class BitMatrixRowView {
 
   toArray(): number[] {
     return this.#matrix.rowToArray(this.#row);
+  }
+
+  positionsInto(output: Uint32Array): number {
+    return this.#matrix.rowPositionsInto(this.#row, output);
   }
 }
 
@@ -332,9 +345,21 @@ export class SparseBitMatrix {
   }
 
   rowToArray(row: number): number[] {
+    const output = new Uint32Array(this.countRowOnes(row));
+    this.rowPositionsInto(row, output);
+    return Array.from(output);
+  }
+
+  rowPositionsInto(row: number, output: Uint32Array): number {
     this.#checkRow(row);
+    if (!(output instanceof Uint32Array)) throw new TypeError("output must be a Uint32Array");
     const offsets = this.#offsets();
-    return Array.from(this.#columnValues().subarray(offsets[row]!, offsets[row + 1]!));
+    const start = offsets[row]!;
+    const end = offsets[row + 1]!;
+    const count = end - start;
+    if (output.length < count) throw new RangeError("output is too small for row positions");
+    output.set(this.#columnValues().subarray(start, end), 0);
+    return count;
   }
 
   transpose(): SparseBitMatrix {
@@ -410,6 +435,10 @@ export class SparseBitMatrixRowView {
 
   toArray(): number[] {
     return this.#matrix.rowToArray(this.#row);
+  }
+
+  positionsInto(output: Uint32Array): number {
+    return this.#matrix.rowPositionsInto(this.#row, output);
   }
 }
 

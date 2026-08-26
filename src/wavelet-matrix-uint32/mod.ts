@@ -15,10 +15,26 @@ import {
   type AllocatorStats,
   LinearMemoryAllocator,
 } from "../internal/allocator.ts";
+import {
+  decodeSnapshot,
+  encodeSnapshot,
+  expectPayloadBytes,
+  SnapshotKind,
+  validateWaveletPayloads,
+} from "../internal/snapshot.ts";
 
 const LEVELS = 32;
 const UINT32_LIMIT = 0x1_0000_0000;
 const allocator = new LinearMemoryAllocator(memory);
+
+type WaveletSource =
+  | { readonly values: ArrayLike<number> }
+  | {
+    readonly length: number;
+    readonly bits: Uint8Array;
+    readonly ranks: Uint8Array;
+    readonly zeros: Uint8Array;
+  };
 
 /** An immutable binary wavelet matrix over the complete unsigned 32-bit value domain. */
 export class WaveletMatrixUint32 {
@@ -30,10 +46,12 @@ export class WaveletMatrixUint32 {
   readonly #zeroAllocation: Allocation;
   #disposed = false;
 
-  private constructor(values: ArrayLike<number>) {
-    validateLength(values.length);
-    validateValues(values);
-    this.length = values.length;
+  private constructor(source: WaveletSource) {
+    const values = "values" in source ? source.values : undefined;
+    const length = "values" in source ? source.values.length : source.length;
+    validateLength(length);
+    if (values !== undefined) validateValues(values);
+    this.length = length;
     const words = Math.ceil(this.length / 32);
     this.#paddedWords = (words + 3) & ~3;
     this.#superblocks = Math.ceil(this.#paddedWords / 16);
@@ -53,35 +71,107 @@ export class WaveletMatrixUint32 {
       throw error;
     }
 
-    const scratch = allocator.allocate(this.length * 8);
     try {
-      new Uint32Array(memory.buffer, scratch.pointer, this.length).set(values);
-      wasmBuild(
-        scratch.pointer,
-        scratch.pointer + this.length * 4,
-        this.#bitsAllocation.pointer,
-        this.#rankAllocation.pointer,
-        this.#zeroAllocation.pointer,
-        this.length,
-        this.#paddedWords,
-        this.#superblocks,
-      );
+      if ("bits" in source) {
+        new Uint8Array(
+          memory.buffer,
+          this.#bitsAllocation.pointer,
+          this.#bitsAllocation.byteLength,
+        ).set(source.bits);
+        new Uint8Array(
+          memory.buffer,
+          this.#rankAllocation.pointer,
+          this.#rankAllocation.byteLength,
+        ).set(source.ranks);
+        new Uint8Array(
+          memory.buffer,
+          this.#zeroAllocation.pointer,
+          this.#zeroAllocation.byteLength,
+        ).set(source.zeros);
+      } else {
+        const scratch = allocator.allocate(this.length * 8);
+        try {
+          new Uint32Array(memory.buffer, scratch.pointer, this.length).set(source.values);
+          wasmBuild(
+            scratch.pointer,
+            scratch.pointer + this.length * 4,
+            this.#bitsAllocation.pointer,
+            this.#rankAllocation.pointer,
+            this.#zeroAllocation.pointer,
+            this.length,
+            this.#paddedWords,
+            this.#superblocks,
+          );
+        } finally {
+          allocator.release(scratch);
+        }
+      }
     } catch (error) {
       allocator.release(this.#zeroAllocation);
       allocator.release(this.#rankAllocation);
       allocator.release(this.#bitsAllocation);
       throw error;
-    } finally {
-      allocator.release(scratch);
     }
   }
 
   static from(values: ArrayLike<number>): WaveletMatrixUint32 {
-    return new WaveletMatrixUint32(values);
+    return new WaveletMatrixUint32({ values });
+  }
+
+  static fromSnapshot(snapshot: Uint8Array): WaveletMatrixUint32 {
+    const { shape, payloads } = decodeSnapshot(
+      snapshot,
+      SnapshotKind.WaveletMatrixUint32,
+      1,
+      3,
+    );
+    const length = shape[0]!;
+    validateLength(length);
+    const paddedWords = (Math.ceil(length / 32) + 3) & ~3;
+    const superblocks = Math.ceil(paddedWords / 16);
+    expectPayloadBytes(payloads[0]!, LEVELS * paddedWords * 4, "wavelet bits");
+    expectPayloadBytes(payloads[1]!, LEVELS * (superblocks + 1) * 4, "wavelet ranks");
+    expectPayloadBytes(payloads[2]!, LEVELS * 4, "wavelet zeros");
+    validateWaveletPayloads(
+      length,
+      LEVELS,
+      paddedWords,
+      superblocks,
+      payloads[0]!,
+      payloads[1]!,
+      payloads[2]!,
+    );
+    return new WaveletMatrixUint32({
+      length,
+      bits: payloads[0]!,
+      ranks: payloads[1]!,
+      zeros: payloads[2]!,
+    });
   }
 
   static allocatorStats(): AllocatorStats {
     return allocator.stats();
+  }
+
+  serialize(): Uint8Array {
+    this.#assertAlive();
+    return encodeSnapshot(SnapshotKind.WaveletMatrixUint32, [this.length], [
+      new Uint8Array(
+        memory.buffer,
+        this.#bitsAllocation.pointer,
+        LEVELS * this.#paddedWords * 4,
+      ),
+      new Uint8Array(
+        memory.buffer,
+        this.#rankAllocation.pointer,
+        LEVELS * (this.#superblocks + 1) * 4,
+      ),
+      new Uint8Array(
+        memory.buffer,
+        this.#zeroAllocation.pointer,
+        LEVELS * 4,
+      ),
+    ]);
   }
 
   access(index: number): number {

@@ -7,7 +7,10 @@ import {
   array_bitmap_intersects as wasmArrayBitmapIntersects,
   bitmap_and_count as wasmBitmapAndCount,
   bitmap_and_into as wasmBitmapAndInto,
+  bitmap_and_not_into as wasmBitmapAndNotInto,
   bitmap_intersects as wasmBitmapIntersects,
+  bitmap_or_into as wasmBitmapOrInto,
+  bitmap_xor_into as wasmBitmapXorInto,
   memory,
 } from "./kernels.wasm";
 import {
@@ -37,6 +40,7 @@ interface BitmapContainer {
 }
 
 type Container = ArrayContainer | BitmapContainer;
+type SetOperation = "or" | "xor" | "andNot";
 
 /** A mutable Roaring-style set for unsigned 32-bit integer keys. */
 export class RoaringBitmap {
@@ -78,6 +82,60 @@ export class RoaringBitmap {
       return index < container.length && values[index] === low;
     }
     return (this.#bitmapView(container)[low >>> 5]! & (1 << (low & 31))) !== 0;
+  }
+
+  hasMany(values: Uint32Array, output: Uint8Array): Uint8Array {
+    this.#assertAlive();
+    if (!(values instanceof Uint32Array)) throw new TypeError("values must be a Uint32Array");
+    if (!(output instanceof Uint8Array)) throw new TypeError("output must be a Uint8Array");
+    if (output.length < values.length) {
+      throw new RangeError("output must have at least values.length elements");
+    }
+    let containerIndex = 0;
+    let previousKey = -1;
+    let cachedKey = -1;
+    let cachedContainer: Container | undefined;
+    let cachedArray: Uint16Array | undefined;
+    let cachedBitmap: Uint32Array | undefined;
+    let cachedLength = 0;
+    for (let index = 0; index < values.length; index++) {
+      const value = values[index]!;
+      const key = value >>> 16;
+      if (key !== cachedKey) {
+        if (key >= previousKey) {
+          while (
+            containerIndex < this.#containers.length &&
+            this.#containers[containerIndex]!.key < key
+          ) {
+            containerIndex++;
+          }
+        } else {
+          containerIndex = this.#findContainer(key).index;
+        }
+        const candidate = this.#containers[containerIndex];
+        cachedContainer = candidate?.key === key ? candidate : undefined;
+        cachedArray = cachedContainer?.kind === "array"
+          ? this.#arrayView(cachedContainer)
+          : undefined;
+        cachedBitmap = cachedContainer?.kind === "bitmap"
+          ? this.#bitmapView(cachedContainer)
+          : undefined;
+        cachedLength = cachedContainer?.kind === "array" ? cachedContainer.length : 0;
+        cachedKey = key;
+      }
+      if (cachedContainer === undefined) output[index] = 0;
+      else {
+        const low = value & 0xffff;
+        if (cachedArray !== undefined) {
+          const found = lowerBound(cachedArray, cachedLength, low);
+          output[index] = found < cachedLength && cachedArray[found] === low ? 1 : 0;
+        } else {
+          output[index] = (cachedBitmap![low >>> 5]! & (1 << (low & 31))) !== 0 ? 1 : 0;
+        }
+      }
+      previousKey = key;
+    }
+    return output;
   }
 
   insert(value: number): this {
@@ -190,6 +248,21 @@ export class RoaringBitmap {
     return count;
   }
 
+  orCardinality(other: RoaringBitmap): number {
+    this.#checkOther(other);
+    return this.#size + other.#size - this.andCardinality(other);
+  }
+
+  xorCardinality(other: RoaringBitmap): number {
+    this.#checkOther(other);
+    return this.#size + other.#size - 2 * this.andCardinality(other);
+  }
+
+  andNotCardinality(other: RoaringBitmap): number {
+    this.#checkOther(other);
+    return this.#size - this.andCardinality(other);
+  }
+
   intersects(other: RoaringBitmap): boolean {
     this.#checkOther(other);
     let leftIndex = 0;
@@ -257,18 +330,73 @@ export class RoaringBitmap {
     }
   }
 
+  or(other: RoaringBitmap): RoaringBitmap {
+    return this.#setOperation(other, "or");
+  }
+
+  orInto(other: RoaringBitmap, output: RoaringBitmap): RoaringBitmap {
+    return this.#setOperationInto(other, output, "or");
+  }
+
+  xor(other: RoaringBitmap): RoaringBitmap {
+    return this.#setOperation(other, "xor");
+  }
+
+  xorInto(other: RoaringBitmap, output: RoaringBitmap): RoaringBitmap {
+    return this.#setOperationInto(other, output, "xor");
+  }
+
+  andNot(other: RoaringBitmap): RoaringBitmap {
+    return this.#setOperation(other, "andNot");
+  }
+
+  andNotInto(other: RoaringBitmap, output: RoaringBitmap): RoaringBitmap {
+    return this.#setOperationInto(other, output, "andNot");
+  }
+
   toUint32Array(): Uint32Array {
     this.#assertAlive();
     const output = new Uint32Array(this.#size);
+    this.valuesInto(output);
+    return output;
+  }
+
+  valuesInto(output: Uint32Array): number {
+    this.#assertAlive();
+    if (!(output instanceof Uint32Array)) throw new TypeError("output must be a Uint32Array");
+    if (output.length < this.#size) throw new RangeError("output is too small for bitmap values");
     let index = 0;
     this.#forEachValue((value) => {
       output[index++] = value;
     });
-    return output;
+    return index;
   }
 
   forEachRange(callback: (start: number, end: number) => void): void {
     this.#assertAlive();
+    this.#forEachRange(callback);
+  }
+
+  rangesInto(starts: Uint32Array, ends: Uint32Array): number {
+    this.#assertAlive();
+    if (!(starts instanceof Uint32Array) || !(ends instanceof Uint32Array)) {
+      throw new TypeError("range outputs must be Uint32Array instances");
+    }
+    let count = 0;
+    this.#forEachRange(() => count++);
+    if (starts.length < count || ends.length < count) {
+      throw new RangeError("range outputs are too small");
+    }
+    let written = 0;
+    this.#forEachRange((start, end) => {
+      starts[written] = start;
+      ends[written] = end;
+      written++;
+    });
+    return written;
+  }
+
+  #forEachRange(callback: (start: number, end: number) => void): void {
     let start = -1;
     let previous = -1;
     this.#forEachValue((value) => {
@@ -417,6 +545,227 @@ export class RoaringBitmap {
       return undefined;
     }
     return result;
+  }
+
+  #setOperation(other: RoaringBitmap, operation: SetOperation): RoaringBitmap {
+    const output = new RoaringBitmap();
+    try {
+      return this.#setOperationInto(other, output, operation);
+    } catch (error) {
+      output.dispose();
+      throw error;
+    }
+  }
+
+  #setOperationInto(
+    other: RoaringBitmap,
+    output: RoaringBitmap,
+    operation: SetOperation,
+  ): RoaringBitmap {
+    this.#checkOther(other);
+    output.#assertAlive();
+    if (output === this || output === other) {
+      throw new RangeError("output must not alias either input set");
+    }
+    output.#clearContainers();
+    let leftIndex = 0;
+    let rightIndex = 0;
+    try {
+      while (leftIndex < this.#containers.length || rightIndex < other.#containers.length) {
+        const left = this.#containers[leftIndex];
+        const right = other.#containers[rightIndex];
+        let result: Container | undefined;
+        if (right === undefined || (left !== undefined && left.key < right.key)) {
+          result = output.#cloneContainer(left!);
+          leftIndex++;
+        } else if (left === undefined || right.key < left.key) {
+          if (operation !== "andNot") result = output.#cloneContainer(right);
+          rightIndex++;
+        } else {
+          result = output.#combineContainers(left, right, operation);
+          leftIndex++;
+          rightIndex++;
+        }
+        if (result !== undefined) {
+          output.#containers.push(result);
+          output.#size += containerCardinality(result);
+        }
+      }
+      return output;
+    } catch (error) {
+      output.#clearContainers();
+      throw error;
+    }
+  }
+
+  #cloneContainer(container: Container): Container {
+    if (container.kind === "array") {
+      const result = this.#allocateArray(container.key, container.length);
+      this.#arrayView(result).set(this.#arrayView(container).subarray(0, container.length));
+      result.length = container.length;
+      return result;
+    }
+    const result = this.#allocateBitmap(container.key);
+    this.#bitmapView(result).set(this.#bitmapView(container));
+    result.cardinality = container.cardinality;
+    return result;
+  }
+
+  #combineContainers(
+    left: Container,
+    right: Container,
+    operation: SetOperation,
+  ): Container | undefined {
+    if (left.kind === "bitmap" && right.kind === "bitmap") {
+      const result = this.#allocateBitmap(left.key);
+      const kernel = operation === "or"
+        ? wasmBitmapOrInto
+        : operation === "xor"
+        ? wasmBitmapXorInto
+        : wasmBitmapAndNotInto;
+      result.cardinality = kernel(
+        left.allocation.pointer,
+        right.allocation.pointer,
+        result.allocation.pointer,
+      );
+      return this.#canonicalizeBitmap(result);
+    }
+
+    if (left.kind === "array" && right.kind === "array") {
+      return this.#combineArrays(left, right, operation);
+    }
+
+    if (left.kind === "array") {
+      if (operation === "andNot") return this.#arrayAndNotBitmap(left, right as BitmapContainer);
+      return this.#combineArrayBitmap(left, right as BitmapContainer, operation);
+    }
+    if (operation === "andNot") return this.#bitmapAndNotArray(left, right as ArrayContainer);
+    return this.#combineArrayBitmap(right as ArrayContainer, left, operation);
+  }
+
+  #combineArrays(
+    left: ArrayContainer,
+    right: ArrayContainer,
+    operation: SetOperation,
+  ): Container | undefined {
+    const leftValues = this.#arrayView(left);
+    const rightValues = this.#arrayView(right);
+    const intersection = wasmArrayArrayCount(
+      left.allocation.pointer,
+      left.length,
+      right.allocation.pointer,
+      right.length,
+    );
+    const cardinality = operation === "or"
+      ? left.length + right.length - intersection
+      : operation === "xor"
+      ? left.length + right.length - 2 * intersection
+      : left.length - intersection;
+    if (cardinality === 0) return undefined;
+    const result = cardinality <= ARRAY_LIMIT
+      ? this.#allocateArray(left.key, cardinality)
+      : this.#allocateBitmap(left.key);
+    const arrayOutput = result.kind === "array" ? this.#arrayView(result) : undefined;
+    const bitmapOutput = result.kind === "bitmap" ? this.#bitmapView(result) : undefined;
+    let outputIndex = 0;
+    const append = (value: number): void => {
+      if (arrayOutput !== undefined) arrayOutput[outputIndex] = value;
+      else {
+        const wordIndex = value >>> 5;
+        bitmapOutput![wordIndex] = (bitmapOutput![wordIndex]! | (1 << (value & 31))) >>> 0;
+      }
+      outputIndex++;
+    };
+    let leftIndex = 0;
+    let rightIndex = 0;
+    while (leftIndex < left.length || rightIndex < right.length) {
+      const leftValue = leftIndex < left.length ? leftValues[leftIndex]! : 65_536;
+      const rightValue = rightIndex < right.length ? rightValues[rightIndex]! : 65_536;
+      if (leftValue === rightValue) {
+        if (operation === "or") append(leftValue);
+        leftIndex++;
+        rightIndex++;
+      } else if (leftValue < rightValue) {
+        append(leftValue);
+        leftIndex++;
+      } else {
+        if (operation !== "andNot") append(rightValue);
+        rightIndex++;
+      }
+    }
+    if (result.kind === "array") result.length = cardinality;
+    else result.cardinality = cardinality;
+    return result;
+  }
+
+  #combineArrayBitmap(
+    array: ArrayContainer,
+    bitmap: BitmapContainer,
+    operation: "or" | "xor",
+  ): Container | undefined {
+    const result = this.#cloneContainer(bitmap) as BitmapContainer;
+    const words = this.#bitmapView(result);
+    const values = this.#arrayView(array);
+    for (let index = 0; index < array.length; index++) {
+      const value = values[index]!;
+      const wordIndex = value >>> 5;
+      const mask = 1 << (value & 31);
+      const present = (words[wordIndex]! & mask) !== 0;
+      if (operation === "or") {
+        if (!present) {
+          words[wordIndex] = (words[wordIndex]! | mask) >>> 0;
+          result.cardinality++;
+        }
+      } else {
+        words[wordIndex] = (words[wordIndex]! ^ mask) >>> 0;
+        result.cardinality += present ? -1 : 1;
+      }
+    }
+    return this.#canonicalizeBitmap(result);
+  }
+
+  #arrayAndNotBitmap(
+    array: ArrayContainer,
+    bitmap: BitmapContainer,
+  ): ArrayContainer | undefined {
+    const values = this.#arrayView(array);
+    const words = this.#bitmapView(bitmap);
+    const result = this.#allocateArray(array.key, array.length);
+    const output = this.#arrayView(result);
+    for (let index = 0; index < array.length; index++) {
+      const value = values[index]!;
+      if ((words[value >>> 5]! & (1 << (value & 31))) === 0) output[result.length++] = value;
+    }
+    if (result.length !== 0) return result;
+    allocator.release(result.allocation);
+    return undefined;
+  }
+
+  #bitmapAndNotArray(
+    bitmap: BitmapContainer,
+    array: ArrayContainer,
+  ): Container | undefined {
+    const result = this.#cloneContainer(bitmap) as BitmapContainer;
+    const words = this.#bitmapView(result);
+    const values = this.#arrayView(array);
+    for (let index = 0; index < array.length; index++) {
+      const value = values[index]!;
+      const wordIndex = value >>> 5;
+      const mask = 1 << (value & 31);
+      if ((words[wordIndex]! & mask) !== 0) {
+        words[wordIndex] = (words[wordIndex]! & ~mask) >>> 0;
+        result.cardinality--;
+      }
+    }
+    return this.#canonicalizeBitmap(result);
+  }
+
+  #canonicalizeBitmap(result: BitmapContainer): Container | undefined {
+    if (result.cardinality === 0) {
+      allocator.release(result.allocation);
+      return undefined;
+    }
+    return result.cardinality <= ARRAY_LIMIT ? this.#bitmapToArray(result) : result;
   }
 
   #containerAndCardinality(left: Container, right: Container): number {

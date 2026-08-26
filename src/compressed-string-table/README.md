@@ -19,6 +19,12 @@ new TextDecoder().decode(paths.get(1));
 memory with 16-byte SIMD blocks; it does not decode strings. `get` and `decodeInto` reconstruct a
 value and copy it back to JavaScript.
 
+`serialize()` keeps IDs, front-coding metadata, and the suffix arena. Restore with
+`CompressedStringTable.fromSnapshot(bytes)`; the loader validates every segment against its anchor
+and arena before allocating Wasm memory. The recorded 16,384-path snapshot was 320,822 bytes and
+restored about 100x faster than rebuilding. Persisting poorly clustered strings retains their same
+metadata overhead, so a snapshot does not improve compression.
+
 ## Performance, compression, and trade-offs
 
 The recorded corpus contains 65,536 generated source paths. Front coding used 1,313,706 bytes for
@@ -40,7 +46,7 @@ array of bytes remains better for random `get`.
 
 ## Standalone build size
 
-The isolated Vite 8.2 production fixture emits 8.06 kB minified JavaScript (3.05 kB gzip) and one
+The isolated Vite 8.2 production fixture emits 11.75 kB minified JavaScript (4.18 kB gzip) and one
 0.66 kB Wasm asset (0.34 kB gzip).
 
 The design is deliberately simpler than FSST/OnPair and keeps independently decodable block-local
@@ -48,3 +54,5 @@ entries. Sources: [OnPair](https://arxiv.org/html/2508.02280v1), the
 [JSAI succinct-data-structure overview](https://www.ai-gakkai.or.jp/resource/my-bookmark/my-bookmark_vol26-no6/),
 and the
 [benchmark source](../../experiments/compressed-string-table/compressed-string-table.bench.ts).
+Snapshot format and transport measurements are in
+[`experiments/snapshots`](../../experiments/snapshots/README.md).

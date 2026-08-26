@@ -19,6 +19,11 @@ and then allocates all positions; use `countMany` first when the result cardinal
 Located positions are in suffix-array row order, not text order. The empty pattern has `length + 1`
 matches, including the suffix at the end of the text.
 
+`serialize()` persists the complete BWT, rank metadata, cumulative counts, and suffix-array sample.
+`FmIndexBytes.fromSnapshot(bytes)` validates the versioned envelope and copies that resident state
+without rebuilding or retaining the source text. On the 8,192-byte snapshot benchmark, restore took
+0.003 ms versus 3.897 ms to rebuild; storage I/O can dominate this in practice.
+
 ## Layout
 
 Construction produces a BWT, an eight-level byte wavelet matrix, cumulative symbol counts, and a
@@ -48,9 +53,11 @@ needing text-ordered results favor native strings or another index.
 
 ## Standalone build size
 
-The isolated Vite 8.2 production fixture emits 8.92 kB minified JavaScript (3.47 kB gzip) and one
+The isolated Vite 8.2 production fixture emits 13.34 kB minified JavaScript (4.95 kB gzip) and one
 2.91 kB Wasm asset (1.31 kB gzip).
 
 Sources: the [FM-index authors' project page](https://people.unipmn.it/manzini/fmindex/), the
 [JSAI succinct-data-structure overview](https://www.ai-gakkai.or.jp/resource/my-bookmark/my-bookmark_vol26-no6/),
 and the [benchmark source](../../experiments/fm-index-bytes/fm-index-bytes.bench.ts).
+Cross-structure snapshot measurements are in
+[`experiments/snapshots`](../../experiments/snapshots/README.md).

@@ -10,11 +10,27 @@ import {
   type AllocatorStats,
   LinearMemoryAllocator,
 } from "../internal/allocator.ts";
+import {
+  decodeSnapshot,
+  encodeSnapshot,
+  expectPayloadBytes,
+  invalidSnapshot,
+  SnapshotKind,
+  uint32Payload,
+} from "../internal/snapshot.ts";
 
 const LEVELS = 8;
 const ALPHABET_SIZE = 256;
 const SAMPLE_RATE = 32;
 const allocator = new LinearMemoryAllocator(memory);
+
+interface FmSnapshotLayout {
+  readonly length: number;
+  readonly sentinelRow: number;
+  readonly paddedWords: number;
+  readonly superblocks: number;
+  readonly payloads: readonly Uint8Array[];
+}
 
 /** A frozen FM-index over arbitrary bytes, optimized for repeated batched occurrence counts. */
 export class FmIndexBytes {
@@ -31,7 +47,44 @@ export class FmIndexBytes {
   readonly #sampleValues: Allocation;
   #disposed = false;
 
-  private constructor(text: Uint8Array) {
+  private constructor(text: Uint8Array, restored?: FmSnapshotLayout) {
+    if (restored !== undefined) {
+      this.length = restored.length;
+      this.sentinelRow = restored.sentinelRow;
+      this.#paddedWords = restored.paddedWords;
+      this.#superblocks = restored.superblocks;
+      const allocations: Allocation[] = [];
+      try {
+        for (const payload of restored.payloads) {
+          const allocation = allocator.allocate(payload.byteLength);
+          allocations.push(allocation);
+          new Uint8Array(memory.buffer, allocation.pointer, payload.byteLength).set(payload);
+        }
+      } catch (error) {
+        for (let index = allocations.length - 1; index >= 0; index--) {
+          allocator.release(allocations[index]!);
+        }
+        throw error;
+      }
+      [
+        this.#bits,
+        this.#ranks,
+        this.#zeros,
+        this.#cumulative,
+        this.#sampleBits,
+        this.#sampleRanks,
+        this.#sampleValues,
+      ] = allocations as [
+        Allocation,
+        Allocation,
+        Allocation,
+        Allocation,
+        Allocation,
+        Allocation,
+        Allocation,
+      ];
+      return;
+    }
     if (!(text instanceof Uint8Array)) throw new TypeError("text must be a Uint8Array");
     if (text.length > 0x7fff_fffe) throw new RangeError("text is too large");
     this.length = text.length;
@@ -109,6 +162,39 @@ export class FmIndexBytes {
     return new FmIndexBytes(text);
   }
 
+  static fromSnapshot(snapshot: Uint8Array): FmIndexBytes {
+    const { shape, payloads } = decodeSnapshot(snapshot, SnapshotKind.FmIndexBytes, 2, 7);
+    const length = shape[0]!;
+    const sentinelRow = shape[1]!;
+    if (length > 0x7fff_fffe || sentinelRow > length) {
+      throw invalidSnapshot("invalid FM-index shape");
+    }
+    const transformedLength = length + 1;
+    const paddedWords = Math.ceil(Math.ceil(transformedLength / 32) / 4) * 4;
+    const superblocks = Math.ceil(paddedWords / 16);
+    const sampleCount = Math.floor(length / SAMPLE_RATE) + 1;
+    const expectedBytes = [
+      LEVELS * paddedWords * 4,
+      LEVELS * (superblocks + 1) * 4,
+      LEVELS * 4,
+      ALPHABET_SIZE * 4,
+      paddedWords * 4,
+      (superblocks + 1) * 4,
+      sampleCount * 4,
+    ];
+    for (let index = 0; index < payloads.length; index++) {
+      expectPayloadBytes(payloads[index]!, expectedBytes[index]!, `FM payload ${index}`);
+    }
+    validateFmMetadata(length, paddedWords, superblocks, payloads);
+    return new FmIndexBytes(new Uint8Array(), {
+      length,
+      sentinelRow,
+      paddedWords,
+      superblocks,
+      payloads,
+    });
+  }
+
   static allocatorStats(): AllocatorStats {
     return allocator.stats();
   }
@@ -120,6 +206,23 @@ export class FmIndexBytes {
 
   get sampleRate(): number {
     return SAMPLE_RATE;
+  }
+
+  serialize(): Uint8Array {
+    this.#assertAlive();
+    return encodeSnapshot(
+      SnapshotKind.FmIndexBytes,
+      [this.length, this.sentinelRow],
+      [
+        allocationBytes(this.#bits, LEVELS * this.#paddedWords * 4),
+        allocationBytes(this.#ranks, LEVELS * (this.#superblocks + 1) * 4),
+        allocationBytes(this.#zeros, LEVELS * 4),
+        allocationBytes(this.#cumulative, ALPHABET_SIZE * 4),
+        allocationBytes(this.#sampleBits, this.#paddedWords * 4),
+        allocationBytes(this.#sampleRanks, (this.#superblocks + 1) * 4),
+        allocationBytes(this.#sampleValues, (Math.floor(this.length / SAMPLE_RATE) + 1) * 4),
+      ],
+    );
   }
 
   count(pattern: Uint8Array): number {
@@ -355,4 +458,63 @@ function validateBatch(patterns: Uint8Array, offsets: Uint32Array): number {
 
 function align4(value: number): number {
   return Math.ceil(value / 4) * 4;
+}
+
+function allocationBytes(allocation: Allocation, logicalBytes: number): Uint8Array {
+  return new Uint8Array(memory.buffer, allocation.pointer, logicalBytes);
+}
+
+function validateFmMetadata(
+  length: number,
+  paddedWords: number,
+  superblocks: number,
+  payloads: readonly Uint8Array[],
+): void {
+  const transformedLength = length + 1;
+  const zeros = uint32Payload(payloads[2]!, "FM zeros");
+  for (const zero of zeros) {
+    if (zero > transformedLength) throw invalidSnapshot("invalid FM zero partition");
+  }
+  const cumulative = uint32Payload(payloads[3]!, "FM cumulative counts");
+  if (cumulative[0] !== 1) throw invalidSnapshot("invalid FM cumulative counts");
+  for (let index = 1; index < cumulative.length; index++) {
+    if (cumulative[index]! < cumulative[index - 1]! || cumulative[index]! > transformedLength) {
+      throw invalidSnapshot("invalid FM cumulative counts");
+    }
+  }
+
+  const sampleBits = uint32Payload(payloads[4]!, "FM sample bits");
+  const sampleRanks = uint32Payload(payloads[5]!, "FM sample ranks");
+  let samples = 0;
+  for (let superblock = 0; superblock < superblocks; superblock++) {
+    if (sampleRanks[superblock] !== samples) {
+      throw invalidSnapshot("invalid FM sample rank index");
+    }
+    const end = Math.min((superblock + 1) * 16, paddedWords);
+    for (let word = superblock * 16; word < end; word++) samples += popcount32(sampleBits[word]!);
+  }
+  if (sampleRanks[superblocks] !== samples || samples !== Math.floor(length / SAMPLE_RATE) + 1) {
+    throw invalidSnapshot("invalid FM sample cardinality");
+  }
+  const tailBits = transformedLength & 31;
+  const logicalWords = Math.ceil(transformedLength / 32);
+  if (tailBits !== 0 && logicalWords !== 0) {
+    const mask = 0xffff_ffff >>> (32 - tailBits);
+    if ((sampleBits[logicalWords - 1]! & ~mask) !== 0) {
+      throw invalidSnapshot("set FM samples outside the logical length");
+    }
+  }
+  for (let word = logicalWords; word < sampleBits.length; word++) {
+    if (sampleBits[word] !== 0) throw invalidSnapshot("set FM samples in padding");
+  }
+  const sampleValues = uint32Payload(payloads[6]!, "FM sample values");
+  const seen = new Uint8Array(sampleValues.length);
+  for (const value of sampleValues) {
+    if (value > length || value % SAMPLE_RATE !== 0) {
+      throw invalidSnapshot("invalid FM suffix-array sample");
+    }
+    const index = value / SAMPLE_RATE;
+    if (seen[index] !== 0) throw invalidSnapshot("duplicate FM suffix-array sample");
+    seen[index] = 1;
+  }
 }
