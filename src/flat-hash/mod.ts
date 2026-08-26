@@ -1,16 +1,22 @@
 import {
   find as wasmFind,
+  find_u64 as wasmFindU64,
   init_controls as wasmInitControls,
   insert_map as wasmInsertMap,
   insert_map_many as wasmInsertMapMany,
+  insert_map_many_u64 as wasmInsertMapManyU64,
+  insert_map_u64 as wasmInsertMapU64,
   insert_set as wasmInsertSet,
   insert_set_many as wasmInsertSetMany,
   lookup_many as wasmLookupMany,
   map_lookup_many as wasmMapLookupMany,
+  map_lookup_many_u64 as wasmMapLookupManyU64,
   memory,
   rehash_map as wasmRehashMap,
+  rehash_map_u64 as wasmRehashMapU64,
   rehash_set as wasmRehashSet,
   remove as wasmRemove,
+  remove_u64 as wasmRemoveU64,
 } from "./kernels.wasm";
 import {
   type Allocation,
@@ -30,6 +36,13 @@ interface SetStorage {
 
 interface MapStorage extends SetStorage {
   readonly values: Allocation;
+}
+
+interface MapU64Storage {
+  readonly controls: Allocation;
+  readonly keys: Allocation;
+  readonly values: Allocation;
+  readonly capacity: number;
 }
 
 /** A mutable Wasm-resident flat hash set for unsigned 32-bit keys. */
@@ -400,6 +413,195 @@ export class FlatHashMapU32U32 {
   }
 }
 
+/** A mutable Wasm-resident flat hash map from unsigned 64-bit keys to u32 values. */
+export class FlatHashMapU64U32 {
+  #storage: MapU64Storage;
+  #size = 0;
+  #disposed = false;
+
+  constructor(initialCapacity = MIN_CAPACITY) {
+    this.#storage = allocateMapU64Storage(normalizeCapacity(initialCapacity));
+  }
+
+  static from(entries: Iterable<readonly [bigint, number]>): FlatHashMapU64U32 {
+    const map = new FlatHashMapU64U32();
+    try {
+      for (const [key, value] of entries) map.set(key, value);
+      return map;
+    } catch (error) {
+      map.dispose();
+      throw error;
+    }
+  }
+
+  static allocatorStats(): AllocatorStats {
+    return allocator.stats();
+  }
+
+  get size(): number {
+    this.#assertAlive();
+    return this.#size;
+  }
+
+  get capacity(): number {
+    this.#assertAlive();
+    return this.#storage.capacity;
+  }
+
+  has(key: bigint): boolean {
+    return this.#findSlot(key) >= 0;
+  }
+
+  get(key: bigint): number | undefined {
+    const slot = this.#findSlot(key);
+    if (slot < 0) return undefined;
+    return new Uint32Array(
+      memory.buffer,
+      this.#storage.values.pointer,
+      this.#storage.capacity,
+    )[slot]!;
+  }
+
+  set(key: bigint, value: number): this {
+    this.#assertAlive();
+    const normalizedKey = validateUint64(key, "key");
+    const normalizedValue = validateUint32(value, "value");
+    this.#ensureCapacity(this.#size + 1);
+    this.#size += wasmInsertMapU64(
+      this.#storage.controls.pointer,
+      this.#storage.keys.pointer,
+      this.#storage.values.pointer,
+      this.#storage.capacity,
+      normalizedKey,
+      normalizedValue,
+    );
+    return this;
+  }
+
+  insertMany(keys: BigUint64Array, values: Uint32Array): this {
+    this.#assertAlive();
+    if (!(keys instanceof BigUint64Array)) throw new TypeError("keys must be a BigUint64Array");
+    assertUint32Array(values, "values");
+    if (keys.length !== values.length) {
+      throw new RangeError("keys and values must have equal length");
+    }
+    if (keys.length === 0) return this;
+    this.#ensureCapacity(this.#size + keys.length);
+    const scratch = allocator.allocate(keys.byteLength + values.byteLength);
+    const valuesPointer = scratch.pointer + keys.byteLength;
+    try {
+      new BigUint64Array(memory.buffer, scratch.pointer, keys.length).set(keys);
+      new Uint32Array(memory.buffer, valuesPointer, values.length).set(values);
+      this.#size += wasmInsertMapManyU64(
+        this.#storage.controls.pointer,
+        this.#storage.keys.pointer,
+        this.#storage.values.pointer,
+        this.#storage.capacity,
+        scratch.pointer,
+        valuesPointer,
+        keys.length,
+      );
+      return this;
+    } finally {
+      allocator.release(scratch);
+    }
+  }
+
+  lookupMany(keys: BigUint64Array, values: Uint32Array, present: Uint8Array): number {
+    this.#assertAlive();
+    if (!(keys instanceof BigUint64Array)) throw new TypeError("keys must be a BigUint64Array");
+    if (!(values instanceof Uint32Array) || values.length < keys.length) {
+      throw new RangeError("values output must cover every key");
+    }
+    if (!(present instanceof Uint8Array) || present.length < keys.length) {
+      throw new RangeError("present output must cover every key");
+    }
+    if (keys.length === 0) return 0;
+    const valuesOffset = keys.byteLength;
+    const presentOffset = valuesOffset + keys.length * 4;
+    const scratch = allocator.allocate(presentOffset + keys.length);
+    try {
+      new BigUint64Array(memory.buffer, scratch.pointer, keys.length).set(keys);
+      const found = wasmMapLookupManyU64(
+        this.#storage.controls.pointer,
+        this.#storage.keys.pointer,
+        this.#storage.values.pointer,
+        this.#storage.capacity,
+        scratch.pointer,
+        keys.length,
+        scratch.pointer + valuesOffset,
+        scratch.pointer + presentOffset,
+      );
+      values.set(new Uint32Array(memory.buffer, scratch.pointer + valuesOffset, keys.length), 0);
+      present.set(new Uint8Array(memory.buffer, scratch.pointer + presentOffset, keys.length), 0);
+      return found;
+    } finally {
+      allocator.release(scratch);
+    }
+  }
+
+  delete(key: bigint): boolean {
+    this.#assertAlive();
+    const removed = wasmRemoveU64(
+      this.#storage.controls.pointer,
+      this.#storage.keys.pointer,
+      this.#storage.capacity,
+      validateUint64(key, "key"),
+    ) !== 0;
+    if (removed) this.#size--;
+    return removed;
+  }
+
+  clear(): this {
+    this.#assertAlive();
+    wasmInitControls(this.#storage.controls.pointer, this.#storage.capacity);
+    this.#size = 0;
+    return this;
+  }
+
+  dispose(): void {
+    if (this.#disposed) return;
+    this.#disposed = true;
+    releaseMapU64Storage(this.#storage);
+  }
+
+  [Symbol.dispose](): void {
+    this.dispose();
+  }
+
+  #findSlot(key: bigint): number {
+    this.#assertAlive();
+    return wasmFindU64(
+      this.#storage.controls.pointer,
+      this.#storage.keys.pointer,
+      this.#storage.capacity,
+      validateUint64(key, "key"),
+    );
+  }
+
+  #ensureCapacity(requiredSize: number): void {
+    const capacity = requiredCapacity(requiredSize, this.#storage.capacity);
+    if (capacity === this.#storage.capacity) return;
+    const next = allocateMapU64Storage(capacity);
+    wasmRehashMapU64(
+      this.#storage.controls.pointer,
+      this.#storage.keys.pointer,
+      this.#storage.values.pointer,
+      this.#storage.capacity,
+      next.controls.pointer,
+      next.keys.pointer,
+      next.values.pointer,
+      next.capacity,
+    );
+    releaseMapU64Storage(this.#storage);
+    this.#storage = next;
+  }
+
+  #assertAlive(): void {
+    if (this.#disposed) throw new Error("FlatHashMapU64U32 has been disposed");
+  }
+}
+
 function allocateSetStorage(capacity: number): SetStorage {
   let controls: Allocation | undefined;
   let keys: Allocation | undefined;
@@ -426,6 +628,24 @@ function allocateMapStorage(capacity: number): MapStorage {
   }
 }
 
+function allocateMapU64Storage(capacity: number): MapU64Storage {
+  let controls: Allocation | undefined;
+  let keys: Allocation | undefined;
+  let values: Allocation | undefined;
+  try {
+    controls = allocator.allocate(capacity);
+    keys = allocator.allocate(capacity * 8);
+    values = allocator.allocate(capacity * 4);
+    wasmInitControls(controls.pointer, capacity);
+    return { controls, keys, values, capacity };
+  } catch (error) {
+    if (values !== undefined) allocator.release(values);
+    if (keys !== undefined) allocator.release(keys);
+    if (controls !== undefined) allocator.release(controls);
+    throw error;
+  }
+}
+
 function releaseSetStorage(storage: SetStorage): void {
   allocator.release(storage.keys);
   allocator.release(storage.controls);
@@ -434,6 +654,12 @@ function releaseSetStorage(storage: SetStorage): void {
 function releaseMapStorage(storage: MapStorage): void {
   allocator.release(storage.values);
   releaseSetStorage(storage);
+}
+
+function releaseMapU64Storage(storage: MapU64Storage): void {
+  allocator.release(storage.values);
+  allocator.release(storage.keys);
+  allocator.release(storage.controls);
 }
 
 function requiredCapacity(requiredSize: number, currentCapacity: number): number {
@@ -457,6 +683,13 @@ function normalizeCapacity(requested: number): number {
 function validateUint32(value: number, label: string): number {
   if (!Number.isSafeInteger(value) || value < 0 || value > 0xffff_ffff) {
     throw new RangeError(`${label} must be an unsigned 32-bit integer`);
+  }
+  return value;
+}
+
+function validateUint64(value: bigint, label: string): bigint {
+  if (typeof value !== "bigint" || value < 0n || value > 0xffff_ffff_ffff_ffffn) {
+    throw new RangeError(`${label} must be an unsigned 64-bit bigint`);
   }
   return value;
 }

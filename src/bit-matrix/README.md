@@ -5,7 +5,7 @@ boundaries, and Boolean-semiring multiplication tests four 32-bit words at a tim
 and `v128.any_true`.
 
 ```ts
-import { BitMatrix } from "@mizchi/jsimd/bit-matrix";
+import { BitMatrix, SparseBitMatrix } from "@mizchi/jsimd/bit-matrix";
 
 using graph = BitMatrix.fromEdges(3, 3, [[0, 1], [1, 2]]);
 graph.row(0).toArray(); // [1]
@@ -15,6 +15,9 @@ twoSteps.row(0).toArray(); // [2]
 
 using reversed = graph.transpose();
 reversed.has(2, 1); // true
+
+using sparse = SparseBitMatrix.fromEdges(100_000, 100_000, edges);
+sparse.row(42).toArray(); // sorted CSR neighbors
 ```
 
 `row()` returns a non-owning view and allocates no Wasm storage. The view becomes invalid when its
@@ -47,7 +50,13 @@ exclude input construction.
 
 The comparison is against a direct dense typed-array implementation, not a tuned sparse graph
 library. Small matrices can lose to JavaScript because allocation and the Wasm boundary dominate;
-large sparse matrices lose on memory before kernel speed matters.
+large sparse matrices lose on memory before kernel speed matters. `SparseBitMatrix` stores frozen,
+sorted, deduplicated CSR rows and provides `has`, row views, and transpose. It is a storage choice,
+not a claim that random CSR probes beat native collections.
+
+A bulk CSR reachability kernel was prototyped but removed: on 16,384 vertices with degree four it
+took 0.209 ms, while a direct JavaScript adjacency BFS took 0.123 ms (JS 1.70x faster). BFS and
+reachability therefore remain outside the public API.
 
 ```sh
 pnpm bench:bit-matrix
@@ -57,8 +66,9 @@ pnpm bench:compare:bit-matrix
 
 ## Standalone build size
 
-The isolated Vite fixture emits a 5.99 kB minified JavaScript wrapper (2.53 kB gzip) and one 0.51 kB
-Wasm asset (0.36 kB gzip). Importing this subpath emits no BitSet, Roaring, or matrix-float Wasm.
+The isolated Vite fixture using both dense and sparse matrices emits an 8.21 kB minified JavaScript
+wrapper (2.99 kB gzip) and one 0.63 kB Wasm asset (0.41 kB gzip). Importing this subpath emits no
+BitSet, Roaring, or matrix-float Wasm.
 
 See [`experiments/bit-matrix`](../../experiments/bit-matrix/README.md) for the benchmark source and
 committed baseline.

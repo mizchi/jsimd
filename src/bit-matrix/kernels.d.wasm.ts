@@ -19,3 +19,9 @@ export function boolean_multiply(
   rightStrideWords: number,
   outputStrideWords: number,
 ): void;
+export function sparse_has(
+  offsets: number,
+  values: number,
+  row: number,
+  target: number,
+): number;

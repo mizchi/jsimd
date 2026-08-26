@@ -83,4 +83,26 @@
       end end
       local.get $row i32.const 1 i32.add local.set $row br $rows_loop
     end end)
+
+  (func (export "sparse_has")
+    (param $offsets i32) (param $values i32) (param $row i32) (param $target i32)
+    (result i32)
+    (local $low i32) (local $high i32) (local $middle i32) (local $value i32)
+    local.get $offsets local.get $row i32.const 2 i32.shl i32.add i32.load local.set $low
+    local.get $offsets local.get $row i32.const 1 i32.add i32.const 2 i32.shl i32.add
+    i32.load local.set $high
+    block $done loop $search
+      local.get $low local.get $high i32.ge_u br_if $done
+      local.get $low local.get $high local.get $low i32.sub i32.const 1 i32.shr_u i32.add
+      local.set $middle
+      local.get $values local.get $middle i32.const 2 i32.shl i32.add i32.load local.tee $value
+      local.get $target i32.eq
+      if i32.const 1 return end
+      local.get $value local.get $target i32.lt_u
+      if local.get $middle i32.const 1 i32.add local.set $low
+      else local.get $middle local.set $high end
+      br $search
+    end end
+    i32.const 0)
+
 )

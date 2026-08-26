@@ -1,5 +1,10 @@
 import { afterAll, bench, describe } from "vitest";
-import { AdaptiveSimdPageI32, SimdPageMask } from "../../src/adaptive-simd-page-i32/mod.ts";
+import {
+  AdaptiveSimdColumnI32,
+  AdaptiveSimdPageI32,
+  SimdColumnMask,
+  SimdPageMask,
+} from "../../src/adaptive-simd-page-i32/mod.ts";
 
 let sink = 0;
 
@@ -75,5 +80,31 @@ describe.each(cases)("AdaptiveSimdPageI32 %s", (_name, values, minimum, maximum)
   bench("Int32Array copy", () => {
     decoded.set(values);
     sink ^= decoded.length;
+  });
+});
+
+const columnValues = Int32Array.from({ length: 65_536 }, (_, index) => {
+  const page = index >>> 8;
+  return page % 4 === 0 ? page : page * 1000 + (index & 255);
+});
+describe("AdaptiveSimdColumnI32 65K locally clustered values", () => {
+  const column = AdaptiveSimdColumnI32.from(columnValues);
+  const selection = new SimdColumnMask(column.length);
+  const scalarMask = new Uint32Array(Math.ceil(column.length / 32));
+  afterAll(() => {
+    selection[Symbol.dispose]();
+    column[Symbol.dispose]();
+  });
+  bench("adaptive column between + count", () => {
+    sink ^= column.scanBetween(100_000, 120_000, selection).countOnes();
+  });
+  bench("Int32Array between + mask + count", () => {
+    sink ^= scalarBetween(columnValues, 100_000, 120_000, scalarMask);
+  });
+  bench("adaptive column sum", () => {
+    sink ^= column.sum();
+  });
+  bench("Int32Array scalar sum", () => {
+    sink ^= scalarSum(columnValues);
   });
 });

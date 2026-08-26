@@ -4,7 +4,11 @@ An immutable Elias–Fano encoding for non-decreasing unsigned 32-bit sequences.
 duplicates and supports point access and ordered queries without decoding the complete sequence.
 
 ```ts
-import { EliasFanoSequence, EliasFanoSequenceBuilder } from "@mizchi/jsimd/elias-fano-sequence";
+import {
+  EliasFanoSequence,
+  EliasFanoSequenceBuilder,
+  PartitionedEliasFanoSequence,
+} from "@mizchi/jsimd/elias-fano-sequence";
 
 const builder = new EliasFanoSequenceBuilder();
 builder.append(1).append(1).append(3).append(10).append(100);
@@ -20,6 +24,10 @@ offsets.rankMany(new Uint32Array([0, 3, 11]), ranks); // [0, 2, 4]
 
 const decoded = new Uint32Array(offsets.length);
 offsets.decodeInto(decoded);
+
+using clustered = PartitionedEliasFanoSequence.from(values, 256);
+clustered.rank(query);
+clustered.encodingCounts(); // contiguous blocks vs local Elias-Fano blocks
 ```
 
 `rank(value)` is the lower-bound index. `nextGEQ` returns the first stored value greater than or
@@ -53,10 +61,11 @@ query-many workloads.
 ## Design source
 
 The high-unary/low-packed representation and its use for monotone postings are described in
-[“Techniques for Inverted Index Compression”](https://arxiv.org/html/1908.10598v2). This initial
-implementation uses one global Elias–Fano choice. Partitioned Elias–Fano, which can select dense
-bitmap or contiguous-range representations for local blocks, remains a later adaptive-page
-experiment.
+[“Techniques for Inverted Index Compression”](https://arxiv.org/html/1908.10598v2).
+`PartitionedEliasFanoSequence` applies the representation locally. A strictly contiguous block
+stores only base/length metadata; every other block subtracts its local base and builds an
+independent Elias–Fano sequence. Each block costs 16 logical metadata bytes, so global EF remains
+preferable without useful local structure.
 
 ## Benchmark
 
@@ -78,6 +87,10 @@ about 2.5x faster than PackedDelta, and optimized EF rank was 2.0–2.2x faster 
 landing near typed-array binary search. PackedDelta remains preferable for faster sequential decode
 and its SIMD postings intersection.
 
+On 262,144 values arranged as 256-value contiguous clusters separated by one million, 1,024
+partitioned ranks took 0.0158 ms. Global EF took 0.1777 ms and typed-array lower bounds took 0.0395
+ms: partitioning was respectively 11.22x and 2.49x faster. Uniform values can lose through metadata.
+
 ```sh
 pnpm bench:elias-fano-sequence
 pnpm bench:record:elias-fano-sequence
@@ -86,8 +99,9 @@ pnpm bench:compare:elias-fano-sequence
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 1.64 kB Wasm asset (0.86 kB gzip) and an 8.24 kB minified JS
-wrapper (3.09 kB gzip). It does not emit PackedDelta or RankSelectBitVector Wasm.
+The isolated Vite fixture using global and partitioned sequences emits one 1.64 kB Wasm asset (0.86
+kB gzip) and a 10.98 kB minified JS wrapper (3.75 kB gzip). It does not emit PackedDelta or
+RankSelectBitVector Wasm.
 
 Vitest baseline JSON and benchmark sources live in
 [`experiments/elias-fano-sequence`](../../experiments/elias-fano-sequence).

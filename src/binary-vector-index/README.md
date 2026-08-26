@@ -3,7 +3,11 @@
 A frozen Wasm-resident index for exhaustive Hamming search over equal-width binary signatures.
 
 ```ts
-import { BinaryVectorIndex } from "@mizchi/jsimd/binary-vector-index";
+import {
+  BinaryVectorIndex,
+  BinaryVectorIndexWithRerank,
+  PdxFloat32Index,
+} from "@mizchi/jsimd/binary-vector-index";
 
 using index = BinaryVectorIndex.fromSignatures([
   new Uint8Array([0x00, 0x00]),
@@ -20,8 +24,20 @@ index.topK(new Uint8Array([0, 0]), 2, ids, nearestDistances);
 
 `fromFloat32(values, count, dimensions)` also produces one bit per dimension using `value > 0`. This
 is sign quantization: Hamming order is only an approximation of the original Float32 metric.
-Applications should rerank the returned candidates with their original vectors when recall matters.
-Non-byte-aligned dimensions are preserved; unused high bits in the final query byte are ignored.
+Applications can use `BinaryVectorIndexWithRerank` to retain original vectors in a PDX layout and
+rerank a caller-selected candidate count when recall matters. Non-byte-aligned dimensions are
+preserved; unused high bits in the final query byte are ignored.
+
+```ts
+using index = BinaryVectorIndexWithRerank.fromFloat32(vectors, count, dimensions);
+const ids = new Uint32Array(10);
+const exactSquaredL2 = new Float32Array(10);
+index.topK(query, 10, 100, ids, exactSquaredL2);
+```
+
+`PdxFloat32Index` is also public for exact exhaustive search. Four vectors are interleaved in
+dimension-major order so one `f32x4` accumulator scores four candidates. `distanceSelected` reuses
+that layout for reranking. Bind all owning types with `using`.
 
 The hot loop follows the binary-candidate stage used by systems such as
 [QuIVer](https://arxiv.org/html/2605.02171v3): XOR followed by population count. This implementation
@@ -41,12 +57,16 @@ Vitest 4.1.11 / Node 24 / Apple M5, 65,536 signatures of 256 bits:
 
 | implementation | full distance scan |
 | :------------- | -----------------: |
-| Wasm SIMD      |           152.4 us |
-| JS scalar      |         1,192.2 us |
+| Wasm SIMD      |           203.0 us |
+| JS scalar      |         1,983.8 us |
 
-The resident SIMD scan was 7.82x faster. Construction and final output copying are excluded; a
+The resident SIMD scan was 9.77x faster. Construction and final output copying are excluded; a
 one-shot workload must include those costs. Binary signatures use 1/32 of the bytes of their source
 Float32 vectors, but quantization can change nearest-neighbor quality.
+
+Exact L2 over 16,384 vectors × 64 dimensions took 0.156 ms with PDX versus 1.007 ms for the scalar
+`Float32Array` loop (6.46x faster). Reranking is not exact over the full collection if the binary
+stage excludes a true neighbor. Larger `candidateCount` improves recall at proportional cost.
 
 ```sh
 pnpm bench:binary-vector-index
@@ -54,6 +74,6 @@ pnpm bench:record:binary-vector-index
 pnpm bench:compare:binary-vector-index
 ```
 
-The isolated Vite fixture emits one 0.21 kB Wasm asset (0.18 kB gzip) and a 6.33 kB minified JS
-wrapper (2.64 kB gzip). It emits no other entrypoint's Wasm. `kernels.wat` is the source; the
-stripped and validated `kernels.wasm` remains Git-ignored.
+The isolated Vite fixture using binary and PDX scans emits one 0.85 kB Wasm asset (0.43 kB gzip) and
+an 8.65 kB minified JS wrapper (3.11 kB gzip). It emits no other entrypoint's Wasm. `kernels.wat` is
+the source; the stripped and validated `kernels.wasm` remains Git-ignored.

@@ -25,17 +25,24 @@ import {
   PackedDeltaUint32List,
   PackedDeltaUint32ListBuilder,
 } from "./src/packed-delta-uint32-list/mod.ts";
-import { FlatHashMapU32U32, FlatHashSetU32 } from "./src/flat-hash/mod.ts";
+import { FlatHashMapU32U32, FlatHashMapU64U32, FlatHashSetU32 } from "./src/flat-hash/mod.ts";
 import { BitSlicedColumnU8, BitSliceMask } from "./src/bit-sliced-column/mod.ts";
 import { jsonTokenStarts } from "./src/json/mod.ts";
 import { WaveletMatrixUint32 } from "./src/wavelet-matrix-uint32/mod.ts";
 import { WaveletMatrixUint8 } from "./src/wavelet-matrix-uint8/mod.ts";
 import { FmIndexBytes } from "./src/fm-index-bytes/mod.ts";
 import { CompressedStringTable } from "./src/compressed-string-table/mod.ts";
-import { EliasFanoSequence, EliasFanoSequenceBuilder } from "./src/elias-fano-sequence/mod.ts";
+import {
+  EliasFanoSequence,
+  EliasFanoSequenceBuilder,
+  PartitionedEliasFanoSequence,
+  PartitionedEliasFanoSequenceBuilder,
+} from "./src/elias-fano-sequence/mod.ts";
 import {
   AdaptivePageEncoding,
+  AdaptiveSimdColumnI32,
   AdaptiveSimdPageI32,
+  SimdColumnMask,
   SimdPageMask,
 } from "./src/adaptive-simd-page-i32/mod.ts";
 import { StaticMphfU32, StaticMphfU32Builder } from "./src/static-mphf-u32/mod.ts";
@@ -44,8 +51,12 @@ import {
   StaticMphfBytes,
   StaticMphfBytesBuilder,
 } from "./src/static-mphf-bytes/mod.ts";
-import { BinaryVectorIndex } from "./src/binary-vector-index/mod.ts";
-import { BitMatrix } from "./src/bit-matrix/mod.ts";
+import {
+  BinaryVectorIndex,
+  BinaryVectorIndexWithRerank,
+  PdxFloat32Index,
+} from "./src/binary-vector-index/mod.ts";
+import { BitMatrix, SparseBitMatrix } from "./src/bit-matrix/mod.ts";
 import { FingerprintGroup16, FingerprintTable16 } from "./src/fingerprint-group16/mod.ts";
 import { FlatHashMapFixed16U32, FlatHashSetFixed16 } from "./src/flat-hash-fixed16/mod.ts";
 import { ByteKeyFlatHashMapU32 } from "./src/byte-key-flat-hash/mod.ts";
@@ -2371,6 +2382,320 @@ Deno.test("AdaptiveSimdPageI32 using lifecycle returns allocator storage", () =>
       `adaptive page storage did not plateau: ${before.reservedBytes} -> ${after.reservedBytes}`,
     );
   }
+});
+
+Deno.test("AdaptiveSimdColumnI32 partitions values into independently encoded pages", () => {
+  const values = Int32Array.from({ length: 600 }, (_, index) => {
+    if (index < 256) return 7;
+    if (index < 512) return -1000 + (index & 63);
+    return index % 2 === 0 ? -0x8000_0000 : 0x7fff_ffff;
+  });
+  using column = AdaptiveSimdColumnI32.from(values);
+  assertEquals(column.length, 600, "length");
+  assertEquals(column.pageSize, 256, "page size");
+  assertEquals(column.pageCount, 3, "page count");
+  assertEquals(column.get(255), 7, "get before boundary");
+  assertEquals(column.get(256), -1000, "get after boundary");
+  assertEquals(column.min, -0x8000_0000, "minimum");
+  assertEquals(column.max, 0x7fff_ffff, "maximum");
+  assertEquals(column.toInt32Array().join(","), values.join(","), "decode");
+  assertEquals(
+    column.sum(),
+    values.reduce((sum, value) => sum + value, 0),
+    "sum",
+  );
+  const encodings = column.encodingCounts();
+  assertEquals(encodings.constant, 1, "constant pages");
+  assertEquals(encodings.frameOfReference, 1, "FOR pages");
+  assertEquals(encodings.raw, 1, "raw pages");
+});
+
+Deno.test("AdaptiveSimdColumnI32 scans, composes masks, and gathers across pages", () => {
+  const values = Int32Array.from({ length: 777 }, (_, index) => (index * 17 % 101) - 50);
+  using column = AdaptiveSimdColumnI32.from(values, 129);
+  using equal = new SimdColumnMask(values.length, 129);
+  using less = new SimdColumnMask(values.length, 129);
+  using range = new SimdColumnMask(values.length, 129);
+
+  const expectedEqual = Array.from(values.keys()).filter((index) => values[index] === 7);
+  assertEquals(column.scanEq(7, equal).toIndices().join(","), expectedEqual.join(","), "equal");
+  const expectedLess = Array.from(values.keys()).filter((index) => values[index]! < -13);
+  assertEquals(column.scanLt(-13, less).toIndices().join(","), expectedLess.join(","), "less");
+  const expectedRange = Array.from(values.keys()).filter((index) =>
+    values[index]! >= -5 && values[index]! < 19
+  );
+  assertEquals(
+    column.scanBetween(-5, 19, range).toIndices().join(","),
+    expectedRange.join(","),
+    "between",
+  );
+
+  equal.orAssign(less).differenceAssign(range);
+  const expectedComposed = Array.from(values.keys()).filter((index) =>
+    (values[index] === 7 || values[index]! < -13) &&
+    !(values[index]! >= -5 && values[index]! < 19)
+  );
+  assertEquals(equal.toIndices().join(","), expectedComposed.join(","), "composition");
+
+  column.scanBetween(-5, 19, range);
+  const gathered = new Int32Array(range.countOnes());
+  assertEquals(column.gatherInto(range, gathered), expectedRange.length, "gather count");
+  assertEquals(
+    gathered.join(","),
+    expectedRange.map((index) => values[index]).join(","),
+    "gather values",
+  );
+});
+
+Deno.test("AdaptiveSimdColumnI32 matches scalar predicates across page tails", () => {
+  let state = 0x85eb_ca6b;
+  for (const length of [0, 1, 128, 129, 130, 255, 256, 257, 513, 1025]) {
+    const values = Int32Array.from({ length }, () => {
+      state = (Math.imul(state, 1_664_525) + 1_013_904_223) | 0;
+      return state;
+    });
+    using column = AdaptiveSimdColumnI32.from(values, 129);
+    using mask = new SimdColumnMask(length, 129);
+    const target = values[length >>> 1] ?? 0;
+    const expected = Array.from(values.keys()).filter((index) => values[index]! < target);
+    assertEquals(
+      column.scanLt(target, mask).toIndices().join(","),
+      expected.join(","),
+      `length=${length}`,
+    );
+  }
+});
+
+Deno.test("AdaptiveSimdColumnI32 using lifecycle releases every page and mask", () => {
+  const before = AdaptiveSimdPageI32.allocatorStats();
+  {
+    using column = AdaptiveSimdColumnI32.from(
+      Int32Array.from({ length: 1025 }, (_, index) => index - 512),
+      129,
+    );
+    using mask = new SimdColumnMask(column.length, column.pageSize);
+    assertEquals(column.scanLt(0, mask).countOnes(), 512, "live column");
+  }
+  const after = AdaptiveSimdPageI32.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+Deno.test("SparseBitMatrix canonicalizes CSR rows and transposes", () => {
+  using matrix = SparseBitMatrix.fromEdges(4, 5, [
+    [0, 3],
+    [0, 1],
+    [0, 3],
+    [2, 4],
+    [3, 0],
+  ]);
+  assertEquals(matrix.edgeCount, 4, "deduplicated edges");
+  assertEquals(matrix.row(0).toArray().join(","), "1,3", "sorted row");
+  assertEquals(matrix.row(1).countOnes(), 0, "empty row");
+  assertEquals(matrix.has(2, 4), true, "present edge");
+  assertEquals(matrix.has(2, 3), false, "missing edge");
+  using transposed = matrix.transpose();
+  assertEquals(transposed.rows, 5, "transpose rows");
+  assertEquals(transposed.columns, 4, "transpose columns");
+  assertEquals(transposed.row(3).toArray().join(","), "0", "transpose edge");
+});
+
+Deno.test("SparseBitMatrix using lifecycle returns CSR storage", () => {
+  const before = SparseBitMatrix.allocatorStats();
+  {
+    using graph = SparseBitMatrix.fromEdges(
+      1024,
+      1024,
+      Array.from(
+        { length: 4096 },
+        (_, index) => [index & 1023, (Math.imul(index, 17) + 1) & 1023] as const,
+      ),
+    );
+    assertEquals(graph.countRowOnes(0) > 0, true, "live graph");
+  }
+  const after = SparseBitMatrix.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+Deno.test("PartitionedEliasFanoSequence adapts contiguous and local EF blocks", () => {
+  const values = Uint32Array.from([
+    100,
+    101,
+    102,
+    103,
+    1_000_000,
+    1_000_003,
+    1_000_010,
+    1_000_100,
+    4_000_000_000,
+    4_000_000_000,
+    4_000_000_001,
+  ]);
+  using sequence = PartitionedEliasFanoSequence.fromUint32Array(values, 4);
+  assertEquals(sequence.length, values.length, "length");
+  assertEquals(sequence.blockSize, 4, "block size");
+  assertEquals(sequence.blockCount, 3, "block count");
+  assertEquals(sequence.encodingCounts().contiguous, 1, "contiguous blocks");
+  assertEquals(sequence.encodingCounts().eliasFano, 2, "EF blocks");
+  assertEquals(sequence.toUint32Array().join(","), values.join(","), "decode");
+  for (let index = 0; index < values.length; index++) {
+    assertEquals(sequence.at(index), values[index], `at ${index}`);
+  }
+});
+
+Deno.test("PartitionedEliasFanoSequence preserves ordered queries across duplicate boundaries", () => {
+  const builder = new PartitionedEliasFanoSequenceBuilder(3);
+  for (const value of [1, 2, 2, 2, 2, 7, 100, 101, 102]) builder.append(value);
+  using sequence = builder.freeze();
+  for (const query of [0, 1, 2, 3, 7, 8, 102, 103, 2 ** 32]) {
+    const values = [1, 2, 2, 2, 2, 7, 100, 101, 102];
+    const expected = values.findIndex((value) => value >= query);
+    const rank = expected === -1 ? values.length : expected;
+    assertEquals(sequence.rank(query), rank, `rank ${query}`);
+    assertEquals(
+      sequence.nextGEQ(query),
+      rank === values.length ? -1 : values[rank],
+      `next ${query}`,
+    );
+    assertEquals(sequence.predecessor(query), rank === 0 ? -1 : values[rank - 1], `prev ${query}`);
+  }
+});
+
+Deno.test("PartitionedEliasFanoSequence using lifecycle releases child encodings", () => {
+  const before = EliasFanoSequence.allocatorStats();
+  {
+    using sequence = PartitionedEliasFanoSequence.fromUint32Array(
+      Uint32Array.from({ length: 1000 }, (_, index) => index * index),
+      128,
+    );
+    assertEquals(sequence.at(999), 998001, "live sequence");
+  }
+  const after = EliasFanoSequence.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+Deno.test("PdxFloat32Index computes exact squared L2 distances in four-row blocks", () => {
+  const count = 7;
+  const dimensions = 5;
+  const values = Float32Array.from(
+    { length: count * dimensions },
+    (_, index) => (index % 13) * 0.25 - 1.5,
+  );
+  const query = Float32Array.from({ length: dimensions }, (_, index) => index * 0.1 - 0.2);
+  using index = PdxFloat32Index.from(values, count, dimensions);
+  const actual = index.distanceMany(query, new Float32Array(count));
+  for (let row = 0; row < count; row++) {
+    let expected = 0;
+    for (let dimension = 0; dimension < dimensions; dimension++) {
+      const delta = values[row * dimensions + dimension]! - query[dimension]!;
+      expected += delta * delta;
+    }
+    assertClose(actual[row]!, expected, 1e-5, `row=${row}`);
+  }
+  const selected = index.distanceSelected(
+    query,
+    new Uint32Array([6, 0, 3]),
+    new Float32Array(3),
+  );
+  assertClose(selected[0]!, actual[6]!, 1e-5, "selected 6");
+  assertClose(selected[1]!, actual[0]!, 1e-5, "selected 0");
+  assertClose(selected[2]!, actual[3]!, 1e-5, "selected 3");
+});
+
+Deno.test("BinaryVectorIndexWithRerank refines Hamming candidates with exact Float32 L2", () => {
+  const values = new Float32Array([
+    0.1,
+    0.1,
+    0.1,
+    10,
+    10,
+    10,
+    -0.1,
+    -0.1,
+    -0.1,
+    0.2,
+    0.2,
+    0.2,
+    -10,
+    -10,
+    -10,
+  ]);
+  using index = BinaryVectorIndexWithRerank.fromFloat32(values, 5, 3);
+  const ids = new Uint32Array(3);
+  const distances = new Float32Array(3);
+  assertEquals(index.topK(new Float32Array([0, 0, 0]), 3, 5, ids, distances), 3, "count");
+  assertEquals(ids.join(","), "0,2,3", "exact order");
+  assertClose(distances[0]!, 0.03, 1e-5, "first distance");
+  assertClose(distances[1]!, 0.03, 1e-5, "second distance");
+  assertClose(distances[2]!, 0.12, 1e-5, "third distance");
+});
+
+Deno.test("PDX and rerank using lifecycle release all resident storage", () => {
+  const before = BinaryVectorIndex.allocatorStats();
+  {
+    const values = Float32Array.from({ length: 1024 * 17 }, (_, index) => index % 19);
+    using index = BinaryVectorIndexWithRerank.fromFloat32(values, 1024, 17);
+    const ids = new Uint32Array(10);
+    const distances = new Float32Array(10);
+    index.topK(new Float32Array(17), 10, 100, ids, distances);
+  }
+  const after = BinaryVectorIndex.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
+});
+
+Deno.test("FlatHashMapU64U32 distinguishes the complete unsigned 64-bit key space", () => {
+  using map = new FlatHashMapU64U32();
+  const entries = [
+    [0n, 1],
+    [1n, 2],
+    [0xffff_ffffn, 3],
+    [0x1_0000_0000n, 4],
+    [0xffff_ffff_ffff_ffffn, 5],
+  ] as const;
+  for (const [key, value] of entries) map.set(key, value);
+  assertEquals(map.size, entries.length, "size");
+  for (const [key, value] of entries) assertEquals(map.get(key), value, `get ${key}`);
+  map.set(0x1_0000_0000n, 99);
+  assertEquals(map.size, entries.length, "update size");
+  assertEquals(map.get(0x1_0000_0000n), 99, "updated value");
+  assertEquals(map.has(9n), false, "missing key");
+  assertEquals(map.delete(1n), true, "delete present");
+  assertEquals(map.delete(1n), false, "delete absent");
+});
+
+Deno.test("FlatHashMapU64U32 batches BigUint64Array inserts and lookups", () => {
+  const keys = BigUint64Array.from(
+    { length: 10_000 },
+    (_, index) => BigInt(index) * 0x9e37_79b9_7f4a_7c15n & 0xffff_ffff_ffff_ffffn,
+  );
+  const values = Uint32Array.from(keys, (_, index) => Math.imul(index, 17) >>> 0);
+  using map = new FlatHashMapU64U32(keys.length);
+  map.insertMany(keys, values);
+  assertEquals(map.size, keys.length, "bulk size");
+  const queries = new BigUint64Array([keys[1]!, 123n, keys[9999]!, 0xffffn]);
+  const output = new Uint32Array(queries.length);
+  const present = new Uint8Array(queries.length);
+  assertEquals(map.lookupMany(queries, output, present), 2, "found count");
+  assertEquals(present.join(","), "1,0,1,0", "presence");
+  assertEquals(output[0], values[1], "first value");
+  assertEquals(output[2], values[9999], "last value");
+});
+
+Deno.test("FlatHashMapU64U32 using lifecycle releases resized storage", () => {
+  const before = FlatHashMapU64U32.allocatorStats();
+  {
+    using map = new FlatHashMapU64U32();
+    for (let index = 0; index < 20_000; index++) {
+      map.set(BigInt(index) << 33n | BigInt(index), index);
+    }
+    assertEquals(map.size, 20_000, "live map");
+  }
+  const after = FlatHashMapU64U32.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "live bytes");
 });
 
 Deno.test("StaticMphfU32 maps every known key to a unique dense ID", () => {

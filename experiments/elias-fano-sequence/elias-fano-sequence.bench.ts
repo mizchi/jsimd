@@ -1,5 +1,8 @@
 import { afterAll, bench, describe } from "vitest";
-import { EliasFanoSequence } from "../../src/elias-fano-sequence/mod.ts";
+import {
+  EliasFanoSequence,
+  PartitionedEliasFanoSequence,
+} from "../../src/elias-fano-sequence/mod.ts";
 import { PackedDeltaUint32List } from "../../src/packed-delta-uint32-list/mod.ts";
 
 let sink = 0;
@@ -81,5 +84,31 @@ describe.each(
   bench("Uint32Array copy", () => {
     decoded.set(values);
     sink ^= decoded[decoded.length - 1]!;
+  });
+});
+
+const clustered = Uint32Array.from({ length: 262_144 }, (_, index) => {
+  const block = index >>> 8;
+  return block * 1_000_000 + (index & 255);
+});
+describe("Partitioned Elias-Fano clustered monotone values", () => {
+  const global = EliasFanoSequence.fromUint32Array(clustered);
+  const partitioned = PartitionedEliasFanoSequence.fromUint32Array(clustered);
+  const queries = Uint32Array.from(
+    { length: 1_024 },
+    (_, index) => clustered[Math.imul(index + 1, 65_537) & (clustered.length - 1)]!,
+  );
+  afterAll(() => {
+    partitioned[Symbol.dispose]();
+    global[Symbol.dispose]();
+  });
+  bench("partitioned rank x1024", () => {
+    for (const query of queries) sink ^= partitioned.rank(query);
+  });
+  bench("global EF rank x1024", () => {
+    for (const query of queries) sink ^= global.rank(query);
+  });
+  bench("Uint32Array lowerBound x1024", () => {
+    for (const query of queries) sink ^= scalarLowerBound(clustered, query);
   });
 });

@@ -21,12 +21,17 @@ each `src/<name>/README.md`.
 | `WaveletMatrixUint32`                  | complete | Access, rank/select, range frequency, quantile, and predecessor  |
 | `EliasFanoSequence`                    | complete | Compressed monotone access, rank, neighbors, and bulk decode     |
 | `AdaptiveSimdPageI32`                  | complete | Constant, FOR, or Raw pages with scans, masks, gather, and sum   |
+| `AdaptiveSimdColumnI32`                | complete | Multi-page ZoneMaps, resident masks, scans, gather, and sum      |
+| `SparseBitMatrix`                      | complete | Frozen CSR rows; BFS rejected after losing to JS adjacency       |
+| `PartitionedEliasFanoSequence`         | complete | Contiguous or local-EF blocks for clustered monotone values      |
 | `StaticMphfU32`                        | complete | Frozen dense IDs, fingerprints, and batched lookup               |
 | `StaticMphfBytes` / frozen map         | complete | Exact arbitrary-byte membership and optional `u32` values        |
 | `CompressedStringTable`                | complete | Block-local front coding and SIMD equality without decode        |
 | `WaveletMatrixUint8`                   | complete | Eight-level byte rank/select and range statistics                |
 | `FmIndexBytes`                         | complete | Batched count plus bitvector-sampled locate                      |
 | `BinaryVectorIndex`                    | complete | Resident binary signatures and exhaustive Hamming scans          |
+| `PdxFloat32Index` / rerank             | complete | Four-candidate exact L2 and binary-to-Float32 refinement         |
+| `FlatHashMapU64U32`                    | complete | BigInt point keys and batched `BigUint64Array` lookup            |
 | `SuccinctTrie`                         | rejected | Prototype lost exact lookup and prefix queries to JavaScript     |
 | `StringInterner`                       | rejected | Native `Map<string,u32>` owns decoded-string interning           |
 | `LoudsTree` topology                   | rejected | Batched parent navigation was 6.70x slower than `Uint32Array`    |
@@ -120,16 +125,18 @@ Reference: [Techniques for Inverted Index Compression](https://arxiv.org/html/19
       would hide the encoding-specific operations without creating a new SIMD kernel. TypeScript
       callers can use a structural `{ length; at(index); nextGEQ(value) }` contract at zero bundle
       cost when that smaller common surface is sufficient.
-- [ ] Consider partitioned Elias–Fano only after block-level density measurements show that global
-      Elias–Fano leaves meaningful space or query performance on the table.
+- [x] Add partitioned Elias–Fano after clustered blocks showed meaningful local structure. Strict
+      contiguous blocks use no payload; other blocks use a base-adjusted local Elias–Fano. On the
+      clustered benchmark, 1,024 ranks were 11.22x faster than global EF and 2.49x faster than typed
+      array lower bounds. The gain is data-dependent and metadata can hurt uniform distributions.
 
 ### 3. Adaptive columnar pages
 
-- [ ] Add a multi-page column with page-level ZoneMap pruning; the existing page already stores
+- [x] Add a multi-page column with page-level ZoneMap pruning; the existing page already stores
       `min` and `max`.
 - [ ] Add `RangeFilterU32` only if measured ZoneMap false positives justify its storage.
 - [ ] Evaluate Delta, RLE, Dictionary, Sparse, and BitSliced page encodings independently.
-- [ ] Keep selection masks resident across multi-page `scan`, `aggregate`, and `gather` operations.
+- [x] Keep selection masks resident across multi-page `scan`, `aggregate`, and `gather` operations.
 - [ ] Reuse `BitSlicedColumn` inside an adaptive page only if it avoids another Wasm module or a
       full mask copy.
 
@@ -144,9 +151,9 @@ References: [MorphStore](https://arxiv.org/html/2004.09350v1),
 - [x] `BitMatrix`: resident dense rows, transpose, boolean multiplication, and row views.
 - [x] Compare the retained dense kernel with scalar `Uint32Array`: a 512×512 Boolean square was
       6.56x faster including transpose and result allocation.
-- [ ] Compare dense rows with Roaring or CSR storage before supporting large sparse matrices.
-- [ ] Add reachability or BFS kernels only after the storage choice wins a real dependency-graph
-      workload.
+- [x] Add frozen CSR rows as `SparseBitMatrix` for large sparse matrices.
+- [x] Prototype and reject CSR reachability: at 16K vertices and degree four it took 0.209 ms versus
+      0.123 ms for a direct JavaScript adjacency BFS (JS 1.70x faster). No traversal API is exposed.
 - [ ] Keep `SemiringGraph` deferred until it can reuse a measured `BitMatrix` or sparse-row layout.
 
 Reference: [SlimSell](https://arxiv.org/abs/2010.09913)
@@ -159,7 +166,8 @@ Reference: [SlimSell](https://arxiv.org/abs/2010.09913)
 - [x] `FingerprintTable16`: contiguous power-of-two control groups and batched primary-group
       selection. Returning group offsets and all masks was 4.91x faster than JavaScript.
 
-- [ ] `FlatHashMapU64U32` only with a real 64-bit-key workload.
+- [x] `FlatHashMapU64U32` for BigInt IDs, hashes, and packed coordinates. Batched 131,072-query
+      lookup was 11.96x faster than `Map<bigint, number>`; point operations retain boundary costs.
 - [x] `FlatHashMapFixed16U32` and `FlatHashSetFixed16` for UUID or fixed-hash keys. Batched lookup
       was 25.6–27.9x faster than pre-stringified native `Map`/`Set` in the recorded workload.
 - [x] Retain `ByteKeyFlatHashMapU32` as a measured mutable baseline: bulk lookup won by 2.00x, while
@@ -189,9 +197,11 @@ References: [Abseil Swiss Tables](https://abseil.io/about/design/swisstables),
 - [ ] Keep `SimdFloat32Vector` focused on dot and AXPY until those array workloads win.
 - [ ] Do not add `SimdInt32Vector` for naming symmetry; define overflow semantics and a real integer
       vector workload first.
-- [ ] Evaluate PDX dimension-major blocks only if they beat existing resident Float32 loops for
-      exact multi-candidate scoring.
-- [ ] Add Float32 reranking to `BinaryVectorIndex` only with an end-to-end recall/latency benchmark.
+- [x] Add `PdxFloat32Index`: a 16K × 64 exact L2 scan was 6.46x faster than a scalar `Float32Array`
+      loop.
+- [x] Add `BinaryVectorIndexWithRerank` to refine a caller-chosen Hamming candidate count with exact
+      PDX L2. Recall remains controlled by `candidateCount`; benchmark application-specific recall
+      before reducing it.
 
 References: [PDX vector layout](https://arxiv.org/html/2503.04422),
 [QuIVer](https://arxiv.org/html/2605.02171v3)

@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { FlatHashMapU32U32, FlatHashSetU32 } from "../../src/flat-hash/mod.ts";
+import { FlatHashMapU32U32, FlatHashMapU64U32, FlatHashSetU32 } from "../../src/flat-hash/mod.ts";
 
 const LENGTH = 262_144;
 const QUERY_LENGTH = 131_072;
@@ -138,5 +138,30 @@ describe("FlatHash bulk rebuild", () => {
       nativeMap.set(keys[index]!, values[index]!);
     }
     sink ^= nativeMap.size;
+  });
+});
+
+const keys64 = BigUint64Array.from(
+  { length: LENGTH },
+  (_, index) => BigInt(index) * 0x9e37_79b9_7f4a_7c15n & 0xffff_ffff_ffff_ffffn,
+);
+const queries64 = BigUint64Array.from(
+  { length: QUERY_LENGTH },
+  (_, index) => index & 1 ? keys64[index * 2]! : keys64[index * 2]! ^ 1n,
+);
+describe("FlatHashMapU64U32 lookup", () => {
+  const flat = new FlatHashMapU64U32(LENGTH).insertMany(keys64, values);
+  const native = new Map<bigint, number>();
+  for (let index = 0; index < LENGTH; index++) native.set(keys64[index]!, values[index]!);
+  const output = new Uint32Array(QUERY_LENGTH);
+  const present = new Uint8Array(QUERY_LENGTH);
+  afterAll(() => flat[Symbol.dispose]());
+  bench("FlatHashMapU64 lookupMany", () => {
+    sink ^= flat.lookupMany(queries64, output, present);
+  });
+  bench("Map<bigint, number> get loop", () => {
+    let found = 0;
+    for (const key of queries64) found += Number(native.get(key) !== undefined);
+    sink ^= found;
   });
 });

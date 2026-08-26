@@ -31,6 +31,19 @@ page.encoding;
 page.encodedBytes;
 ```
 
+For larger columns, the same physical pages are composed without materializing an intermediate JS
+mask:
+
+```ts
+import { AdaptiveSimdColumnI32, SimdColumnMask } from "@mizchi/jsimd/adaptive-simd-page-i32";
+
+using column = AdaptiveSimdColumnI32.from(values); // 256 values/page by default
+using selected = new SimdColumnMask(column.length, column.pageSize);
+column.scanBetween(100, 200, selected);
+const result = new Int32Array(selected.countOnes());
+column.gatherInto(selected, result);
+```
+
 Bind both pages and masks with `using`. Their payload and intermediate selection words stay in the
 same Wasm memory, and scope exit returns both allocations to a reuse pool. `scanEq`, `scanLt`, and
 `scanBetween` overwrite an existing mask instead of allocating a result. Mask `andAssign`,
@@ -84,6 +97,11 @@ about 0.57 us (roughly 17x slower), and raw `decodeInto` took about 0.15–0.27 
 Wasm memory before copying into the caller's array. If the workload primarily reads or copies all
 values, retain an `Int32Array` instead.
 
+The retained multi-page workload contains 65,536 locally clustered values. Page ZoneMaps skip most
+payloads: range scan plus count took 0.0346 ms versus 0.245 ms for the scalar typed-array loop
+(7.08x faster), and column sum took 0.0947 ms versus 0.209 ms (2.21x faster). A predicate touching
+every FOR page can still inherit the slower small-page unpack path shown above.
+
 ```sh
 pnpm bench:adaptive-simd-page-i32
 pnpm bench:record:adaptive-simd-page-i32
@@ -92,9 +110,9 @@ pnpm bench:compare:adaptive-simd-page-i32
 
 ## Standalone build size
 
-The isolated Vite fixture emits one 1.84 kB Wasm asset (0.83 kB gzip) and a 10.37 kB minified JS
-wrapper (3.72 kB gzip). It does not emit the Wasm for `SimdInt32Array`, `BitSlicedColumn`, or any
-other entrypoint.
+The isolated Vite fixture using the column emits one 1.84 kB Wasm asset (0.83 kB gzip) and a 14.50
+kB minified JS wrapper (4.61 kB gzip). It does not emit the Wasm for `SimdInt32Array`,
+`BitSlicedColumn`, or any other entrypoint.
 
 Vitest baseline JSON and benchmark sources live in
 [`experiments/adaptive-simd-page-i32`](../../experiments/adaptive-simd-page-i32).

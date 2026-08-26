@@ -68,3 +68,52 @@ export function rehash_map(
   newValues: number,
   newCapacity: number,
 ): void;
+export function find_u64(
+  controls: number,
+  keys: number,
+  capacity: number,
+  key: bigint,
+): number;
+export function insert_map_u64(
+  controls: number,
+  keys: number,
+  values: number,
+  capacity: number,
+  key: bigint,
+  value: number,
+): number;
+export function remove_u64(
+  controls: number,
+  keys: number,
+  capacity: number,
+  key: bigint,
+): number;
+export function insert_map_many_u64(
+  controls: number,
+  keys: number,
+  tableValues: number,
+  capacity: number,
+  inputKeys: number,
+  inputValues: number,
+  length: number,
+): number;
+export function map_lookup_many_u64(
+  controls: number,
+  keys: number,
+  tableValues: number,
+  capacity: number,
+  queries: number,
+  length: number,
+  outputValues: number,
+  present: number,
+): number;
+export function rehash_map_u64(
+  oldControls: number,
+  oldKeys: number,
+  oldValues: number,
+  oldCapacity: number,
+  newControls: number,
+  newKeys: number,
+  newValues: number,
+  newCapacity: number,
+): void;

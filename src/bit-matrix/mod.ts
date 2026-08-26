@@ -2,6 +2,7 @@ import {
   boolean_multiply as wasmBooleanMultiply,
   memory,
   row_count as wasmRowCount,
+  sparse_has as wasmSparseHas,
   transpose as wasmTranspose,
 } from "./kernels.wasm";
 import {
@@ -190,7 +191,194 @@ export class BitMatrixRowView {
   }
 }
 
+/** Immutable compressed-sparse-row Boolean matrix stored in Wasm linear memory. */
+export class SparseBitMatrix {
+  readonly rows: number;
+  readonly columns: number;
+  readonly edgeCount: number;
+  readonly #offsetsAllocation: Allocation;
+  readonly #columnsAllocation: Allocation;
+  #disposed = false;
+
+  private constructor(
+    rows: number,
+    columns: number,
+    offsets: Uint32Array,
+    columnValues: Uint32Array,
+  ) {
+    this.rows = rows;
+    this.columns = columns;
+    this.edgeCount = columnValues.length;
+    this.#offsetsAllocation = allocator.allocate(offsets.byteLength);
+    try {
+      this.#columnsAllocation = allocator.allocate(columnValues.byteLength);
+    } catch (error) {
+      allocator.release(this.#offsetsAllocation);
+      throw error;
+    }
+    try {
+      new Uint32Array(
+        memory.buffer,
+        this.#offsetsAllocation.pointer,
+        offsets.length,
+      ).set(offsets);
+      new Uint32Array(
+        memory.buffer,
+        this.#columnsAllocation.pointer,
+        columnValues.length,
+      ).set(columnValues);
+    } catch (error) {
+      allocator.release(this.#columnsAllocation);
+      allocator.release(this.#offsetsAllocation);
+      throw error;
+    }
+  }
+
+  static fromEdges(
+    rows: number,
+    columns: number,
+    edges: Iterable<readonly [number, number]>,
+  ): SparseBitMatrix {
+    const rowCount = validateDimension(rows, "rows");
+    const columnCount = validateDimension(columns, "columns");
+    const buckets: number[][] = Array.from({ length: rowCount }, () => []);
+    for (const [row, column] of edges) {
+      validateCell(row, column, rowCount, columnCount);
+      buckets[row]!.push(column);
+    }
+    const offsets = new Uint32Array(rowCount + 1);
+    const canonical: number[] = [];
+    for (let row = 0; row < rowCount; row++) {
+      const values = buckets[row]!;
+      values.sort((left, right) => left - right);
+      let previous = -1;
+      for (const value of values) {
+        if (value !== previous) canonical.push(value);
+        previous = value;
+      }
+      if (canonical.length > 0xffff_ffff) throw new RangeError("too many matrix edges");
+      offsets[row + 1] = canonical.length;
+    }
+    return new SparseBitMatrix(rowCount, columnCount, offsets, Uint32Array.from(canonical));
+  }
+
+  static allocatorStats(): AllocatorStats {
+    return allocator.stats();
+  }
+
+  has(row: number, column: number): boolean {
+    this.#checkCell(row, column);
+    return wasmSparseHas(
+      this.#offsetsAllocation.pointer,
+      this.#columnsAllocation.pointer,
+      row,
+      column,
+    ) !== 0;
+  }
+
+  row(row: number): SparseBitMatrixRowView {
+    this.#checkRow(row);
+    return new SparseBitMatrixRowView(this, row);
+  }
+
+  countRowOnes(row: number): number {
+    this.#checkRow(row);
+    const offsets = this.#offsets();
+    return offsets[row + 1]! - offsets[row]!;
+  }
+
+  rowToArray(row: number): number[] {
+    this.#checkRow(row);
+    const offsets = this.#offsets();
+    return Array.from(this.#columnValues().subarray(offsets[row]!, offsets[row + 1]!));
+  }
+
+  transpose(): SparseBitMatrix {
+    this.#assertAlive();
+    const edges: Array<readonly [number, number]> = [];
+    const offsets = this.#offsets();
+    const values = this.#columnValues();
+    for (let row = 0; row < this.rows; row++) {
+      for (let index = offsets[row]!; index < offsets[row + 1]!; index++) {
+        edges.push([values[index]!, row]);
+      }
+    }
+    return SparseBitMatrix.fromEdges(this.columns, this.rows, edges);
+  }
+
+  dispose(): void {
+    if (this.#disposed) return;
+    this.#disposed = true;
+    allocator.release(this.#columnsAllocation);
+    allocator.release(this.#offsetsAllocation);
+  }
+
+  [Symbol.dispose](): void {
+    this.dispose();
+  }
+
+  #offsets(): Uint32Array {
+    this.#assertAlive();
+    return new Uint32Array(memory.buffer, this.#offsetsAllocation.pointer, this.rows + 1);
+  }
+
+  #columnValues(): Uint32Array {
+    this.#assertAlive();
+    return new Uint32Array(memory.buffer, this.#columnsAllocation.pointer, this.edgeCount);
+  }
+
+  #checkRow(row: number): void {
+    this.#assertAlive();
+    if (!Number.isSafeInteger(row) || row < 0 || row >= this.rows) {
+      throw new RangeError("row out of bounds");
+    }
+  }
+
+  #checkCell(row: number, column: number): void {
+    this.#checkRow(row);
+    if (!Number.isSafeInteger(column) || column < 0 || column >= this.columns) {
+      throw new RangeError("column out of bounds");
+    }
+  }
+
+  #assertAlive(): void {
+    if (this.#disposed) throw new Error("SparseBitMatrix has been disposed");
+  }
+}
+
+/** Non-owning view whose lifetime is tied to its parent SparseBitMatrix. */
+export class SparseBitMatrixRowView {
+  readonly #matrix: SparseBitMatrix;
+  readonly #row: number;
+
+  constructor(matrix: SparseBitMatrix, row: number) {
+    this.#matrix = matrix;
+    this.#row = row;
+  }
+
+  has(column: number): boolean {
+    return this.#matrix.has(this.#row, column);
+  }
+
+  countOnes(): number {
+    return this.#matrix.countRowOnes(this.#row);
+  }
+
+  toArray(): number[] {
+    return this.#matrix.rowToArray(this.#row);
+  }
+}
+
 function validateDimension(value: number, name: string): number {
   if (!Number.isSafeInteger(value) || value < 0) throw new RangeError(`invalid ${name}`);
   return value;
+}
+
+function validateCell(row: number, column: number, rows: number, columns: number): void {
+  if (!Number.isSafeInteger(row) || row < 0 || row >= rows) {
+    throw new RangeError("row out of bounds");
+  }
+  if (!Number.isSafeInteger(column) || column < 0 || column >= columns) {
+    throw new RangeError("column out of bounds");
+  }
 }

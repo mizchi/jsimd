@@ -260,6 +260,227 @@ export class EliasFanoSequence {
   }
 }
 
+interface PartitionedPage {
+  readonly base: number;
+  readonly maximum: number;
+  readonly length: number;
+  readonly sequence?: EliasFanoSequence;
+}
+
+export interface PartitionedEliasFanoEncodingCounts {
+  readonly contiguous: number;
+  readonly eliasFano: number;
+}
+
+/** Mutable construction state for a partitioned Elias-Fano snapshot. */
+export class PartitionedEliasFanoSequenceBuilder {
+  readonly blockSize: number;
+  readonly #values: number[] = [];
+
+  constructor(blockSize = 256) {
+    this.blockSize = validateBlockSize(blockSize);
+  }
+
+  get length(): number {
+    return this.#values.length;
+  }
+
+  append(value: number): this {
+    const normalized = validateUint32(value);
+    const previous = this.#values[this.#values.length - 1];
+    if (previous !== undefined && normalized < previous) {
+      throw new RangeError("values must be non-decreasing");
+    }
+    this.#values.push(normalized);
+    return this;
+  }
+
+  freeze(): PartitionedEliasFanoSequence {
+    return PartitionedEliasFanoSequence.fromUint32Array(
+      Uint32Array.from(this.#values),
+      this.blockSize,
+    );
+  }
+}
+
+/**
+ * A monotone sequence that chooses a zero-payload contiguous page or a local
+ * Elias-Fano encoding for each block.
+ */
+export class PartitionedEliasFanoSequence {
+  readonly length: number;
+  readonly blockSize: number;
+  readonly blockCount: number;
+  readonly encodedBytes: number;
+  readonly #pages: readonly PartitionedPage[];
+  #disposed = false;
+
+  private constructor(
+    length: number,
+    blockSize: number,
+    pages: readonly PartitionedPage[],
+  ) {
+    this.length = length;
+    this.blockSize = blockSize;
+    this.blockCount = pages.length;
+    this.#pages = pages;
+    this.encodedBytes = pages.length * 16 + pages.reduce(
+      (bytes, page) => bytes + (page.sequence?.encodedBytes ?? 0),
+      0,
+    );
+  }
+
+  static from(values: Iterable<number>, blockSize = 256): PartitionedEliasFanoSequence {
+    const builder = new PartitionedEliasFanoSequenceBuilder(blockSize);
+    for (const value of values) builder.append(value);
+    return builder.freeze();
+  }
+
+  static fromUint32Array(
+    values: Uint32Array,
+    blockSize = 256,
+  ): PartitionedEliasFanoSequence {
+    validateLength(values.length);
+    const normalizedBlockSize = validateBlockSize(blockSize);
+    for (let index = 1; index < values.length; index++) {
+      if (values[index]! < values[index - 1]!) {
+        throw new RangeError("values must be non-decreasing");
+      }
+    }
+    const pages: PartitionedPage[] = [];
+    try {
+      for (let offset = 0; offset < values.length; offset += normalizedBlockSize) {
+        const pageValues = values.subarray(
+          offset,
+          Math.min(values.length, offset + normalizedBlockSize),
+        );
+        const base = pageValues[0]!;
+        const maximum = pageValues[pageValues.length - 1]!;
+        let contiguous = true;
+        for (let index = 1; index < pageValues.length; index++) {
+          if (pageValues[index] !== base + index) {
+            contiguous = false;
+            break;
+          }
+        }
+        if (contiguous) {
+          pages.push({ base, maximum, length: pageValues.length });
+          continue;
+        }
+        const local = Uint32Array.from(pageValues, (value) => value - base);
+        pages.push({
+          base,
+          maximum,
+          length: pageValues.length,
+          sequence: EliasFanoSequence.fromUint32Array(local),
+        });
+      }
+      return new PartitionedEliasFanoSequence(values.length, normalizedBlockSize, pages);
+    } catch (error) {
+      for (const page of pages) page.sequence?.dispose();
+      throw error;
+    }
+  }
+
+  static allocatorStats(): AllocatorStats {
+    return allocator.stats();
+  }
+
+  at(index: number): number {
+    this.#checkIndex(index);
+    const pageIndex = Math.floor(index / this.blockSize);
+    const page = this.#pages[pageIndex]!;
+    const localIndex = index - pageIndex * this.blockSize;
+    return page.base + (page.sequence?.at(localIndex) ?? localIndex);
+  }
+
+  /** Returns the number of stored values strictly less than `value`. */
+  rank(value: number): number {
+    this.#assertAlive();
+    validateBound(value);
+    let low = 0;
+    let high = this.#pages.length;
+    while (low < high) {
+      const middle = low + ((high - low) >>> 1);
+      if (this.#pages[middle]!.maximum < value) low = middle + 1;
+      else high = middle;
+    }
+    if (low === this.#pages.length) return this.length;
+    const page = this.#pages[low]!;
+    const prefix = low * this.blockSize;
+    if (value <= page.base) return prefix;
+    if (page.sequence === undefined) {
+      return prefix + Math.min(page.length, value - page.base);
+    }
+    return prefix + page.sequence.rank(value - page.base);
+  }
+
+  nextGEQ(value: number): number {
+    const index = this.rank(value);
+    return index === this.length ? -1 : this.at(index);
+  }
+
+  predecessor(value: number): number {
+    const index = this.rank(value);
+    return index === 0 ? -1 : this.at(index - 1);
+  }
+
+  encodingCounts(): PartitionedEliasFanoEncodingCounts {
+    this.#assertAlive();
+    let contiguous = 0;
+    let eliasFano = 0;
+    for (const page of this.#pages) {
+      if (page.sequence === undefined) contiguous++;
+      else eliasFano++;
+    }
+    return Object.freeze({ contiguous, eliasFano });
+  }
+
+  decodeInto(output: Uint32Array): Uint32Array {
+    this.#assertAlive();
+    if (output.length < this.length) throw new RangeError("output is too small");
+    let offset = 0;
+    for (const page of this.#pages) {
+      const target = output.subarray(offset, offset + page.length);
+      if (page.sequence === undefined) {
+        for (let index = 0; index < page.length; index++) target[index] = page.base + index;
+      } else {
+        page.sequence.decodeInto(target);
+        for (let index = 0; index < page.length; index++) {
+          target[index] = page.base + target[index]!;
+        }
+      }
+      offset += page.length;
+    }
+    return output;
+  }
+
+  toUint32Array(): Uint32Array {
+    return this.decodeInto(new Uint32Array(this.length));
+  }
+
+  dispose(): void {
+    if (this.#disposed) return;
+    this.#disposed = true;
+    for (const page of this.#pages) page.sequence?.dispose();
+  }
+
+  [Symbol.dispose](): void {
+    this.dispose();
+  }
+
+  #assertAlive(): void {
+    if (this.#disposed) throw new Error("PartitionedEliasFanoSequence has been disposed");
+  }
+
+  #checkIndex(index: number): void {
+    this.#assertAlive();
+    if (!Number.isSafeInteger(index) || index < 0 || index >= this.length) {
+      throw new RangeError("index out of bounds");
+    }
+  }
+}
+
 function encode(values: Uint32Array): EncodedEliasFano {
   if (values.length === 0) {
     return {
@@ -318,6 +539,13 @@ function validateLength(length: number): void {
   if (!Number.isSafeInteger(length) || length < 0 || length > 0x7fff_ffff) {
     throw new RangeError("invalid length");
   }
+}
+
+function validateBlockSize(blockSize: number): number {
+  if (!Number.isSafeInteger(blockSize) || blockSize < 1 || blockSize > 0x10000) {
+    throw new RangeError("block size must be between 1 and 65536");
+  }
+  return blockSize;
 }
 
 function validateUint32(value: number): number {
