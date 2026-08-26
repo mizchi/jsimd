@@ -1,20 +1,13 @@
-import {
-  bytesEqual,
-  findByte,
-  findNonAscii,
-  indexOfSubarray,
-  lexicalCompare,
-  reverseFindByte,
-} from "../../src/bytes/mod.ts";
+import { compare, equals, indexOf, indexOfNonAscii, lastIndexOf } from "../../src/bytes/mod.ts";
 import { jsonTokenStarts } from "../../src/json/mod.ts";
 
 const input = new TextEncoder().encode("MoonBit + Wasm SIMD");
 document.querySelector("#app")!.textContent = JSON.stringify({
-  ascii: findNonAscii(input) < 0,
-  equal: bytesEqual(input, input.slice()),
-  first: findByte(input, "M".charCodeAt(0)),
-  jsimdAt: indexOfSubarray(input, new TextEncoder().encode("SIMD")),
+  ascii: indexOfNonAscii(input) < 0,
+  equal: equals(input, input.slice()),
+  first: indexOf(input, "M".charCodeAt(0)),
+  jsimdAt: indexOf(input, new TextEncoder().encode("SIMD")),
   jsonTokens: jsonTokenStarts(new TextEncoder().encode('{"ok":true}')).length,
-  last: reverseFindByte(input, "M".charCodeAt(0)),
-  order: lexicalCompare(input, input.slice()),
+  last: lastIndexOf(input, "M".charCodeAt(0)),
+  order: compare(input, input.slice()),
 });

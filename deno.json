@@ -1,8 +1,8 @@
 {
   "name": "@mizchi/jsimd",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "exports": {
-    ".": "./src/bytes/mod.ts",
+    "./bytes": "./src/bytes/mod.ts",
     "./adaptive-simd-page-i32": "./src/adaptive-simd-page-i32/mod.ts",
     "./bitmap": "./src/bitmap/mod.ts",
     "./rank-select-bit-vector": "./src/rank-select-bit-vector/mod.ts",

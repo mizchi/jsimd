@@ -1,10 +1,10 @@
 {
   "name": "@mizchi/jsimd",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Prebuilt WebAssembly SIMD kernels and Wasm-resident data structures for JavaScript",
   "type": "module",
   "exports": {
-    ".": "./dist/bytes/mod.js",
+    "./bytes": "./dist/bytes/mod.js",
     "./adaptive-simd-page-i32": "./dist/adaptive-simd-page-i32/mod.js",
     "./bitmap": "./dist/bitmap/mod.js",
     "./rank-select-bit-vector": "./dist/rank-select-bit-vector/mod.js",

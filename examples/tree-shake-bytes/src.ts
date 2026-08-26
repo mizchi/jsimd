@@ -1,3 +1,3 @@
-import { findByte } from "../../src/bytes/mod.ts";
+import { indexOf } from "../../src/bytes/mod.ts";
 
-document.body.textContent = String(findByte(new Uint8Array(256), 1));
+document.body.textContent = String(indexOf(new Uint8Array(256), 1));

@@ -1,11 +1,4 @@
-import {
-  bytesEqual,
-  findByte,
-  findNonAscii,
-  indexOfSubarray,
-  lexicalCompare,
-  reverseFindByte,
-} from "./src/bytes/mod.ts";
+import { compare, equals, indexOf, indexOfNonAscii, lastIndexOf } from "./src/bytes/mod.ts";
 import { decodeUint32BE } from "./src/endian/mod.ts";
 import { DenseBitmap } from "./src/bitmap/mod.ts";
 import { SimdFloat32Vector } from "./src/f32-vector/mod.ts";
@@ -16,8 +9,8 @@ let _bigSink = 0n;
 
 for (const length of [32, 64, 128, 256, 1024, 4096, 16_384, 65_536]) {
   const input = new Uint8Array(length).fill(0x61);
-  Deno.bench(`jsimd findByte miss n=${length}`, () => {
-    sink ^= findByte(input, 0x5a);
+  Deno.bench(`jsimd indexOf(number) miss n=${length}`, () => {
+    sink ^= indexOf(input, 0x5a);
   });
   Deno.bench(`Uint8Array#indexOf miss n=${length}`, () => {
     sink ^= input.indexOf(0x5a);
@@ -224,22 +217,22 @@ function scalarIndexOfSubarray(input: Uint8Array, pattern: Uint8Array): number {
 for (const length of [128, 256, 4096, 65_536]) {
   const input = new Uint8Array(length).fill(0x61);
   const copy = input.slice();
-  Deno.bench(`jsimd reverseFindByte miss n=${length}`, () => {
-    sink ^= reverseFindByte(input, 0x5a);
+  Deno.bench(`jsimd lastIndexOf miss n=${length}`, () => {
+    sink ^= lastIndexOf(input, 0x5a);
   });
   Deno.bench(`Uint8Array#lastIndexOf miss n=${length}`, () => {
     sink ^= input.lastIndexOf(0x5a);
   });
-  Deno.bench(`jsimd findNonAscii ASCII n=${length}`, () => {
-    sink ^= findNonAscii(input);
+  Deno.bench(`jsimd indexOfNonAscii ASCII n=${length}`, () => {
+    sink ^= indexOfNonAscii(input);
   });
-  Deno.bench(`scalar findNonAscii ASCII n=${length}`, () => {
+  Deno.bench(`scalar indexOfNonAscii ASCII n=${length}`, () => {
     sink ^= scalarFindNonAscii(input);
   });
-  Deno.bench(`jsimd bytesEqual equal n=${length}`, () => {
-    sink ^= Number(bytesEqual(input, copy));
+  Deno.bench(`jsimd equals equal n=${length}`, () => {
+    sink ^= Number(equals(input, copy));
   });
-  Deno.bench(`scalar bytesEqual equal n=${length}`, () => {
+  Deno.bench(`scalar equals equal n=${length}`, () => {
     sink ^= Number(scalarBytesEqual(input, copy));
   });
 }
@@ -248,16 +241,16 @@ for (const length of [256, 4096, 65_536]) {
   const left = new Uint8Array(length).fill(0x61);
   const right = left.slice();
   const pattern = new Uint8Array([0x61, 0x61, 0x61, 0x5a]);
-  Deno.bench(`jsimd lexicalCompare equal n=${length}`, () => {
-    sink ^= lexicalCompare(left, right);
+  Deno.bench(`jsimd compare equal n=${length}`, () => {
+    sink ^= compare(left, right);
   });
-  Deno.bench(`scalar lexicalCompare equal n=${length}`, () => {
+  Deno.bench(`scalar compare equal n=${length}`, () => {
     sink ^= scalarLexicalCompare(left, right);
   });
-  Deno.bench(`jsimd indexOfSubarray miss n=${length}`, () => {
-    sink ^= indexOfSubarray(left, pattern);
+  Deno.bench(`jsimd indexOf(Uint8Array) miss n=${length}`, () => {
+    sink ^= indexOf(left, pattern);
   });
-  Deno.bench(`scalar indexOfSubarray miss n=${length}`, () => {
+  Deno.bench(`scalar indexOf(Uint8Array) miss n=${length}`, () => {
     sink ^= scalarIndexOfSubarray(left, pattern);
   });
 }

@@ -1,11 +1,4 @@
-import {
-  bytesEqual,
-  findByte,
-  findNonAscii,
-  indexOfSubarray,
-  lexicalCompare,
-  reverseFindByte,
-} from "./src/bytes/mod.ts";
+import { compare, equals, indexOf, indexOfNonAscii, lastIndexOf } from "./src/bytes/mod.ts";
 import { decodeUint32BE, decodeUint32LE } from "./src/endian/mod.ts";
 import { Bitmap, DenseBitmap } from "./src/bitmap/mod.ts";
 import { SimdFloat32Vector } from "./src/f32-vector/mod.ts";
@@ -1507,7 +1500,7 @@ Deno.test("DenseBitmap validates capacity and ignores padded tail bits", () => {
 Deno.test("DenseBitmap storage remains intact across scratch-memory kernels", () => {
   const bits = DenseBitmap.from(1024, [0, 511, 1023]);
   const input = new Uint8Array(4096).fill(0x61);
-  assertEquals(findByte(input, 0x7a), -1, "scratch scan");
+  assertEquals(indexOf(input, 0x7a), -1, "scratch scan");
   assertEquals(bits.toArray().join(","), "0,511,1023", "persistent storage");
 
   // Allocate after scratch use as well, since the regions grow independently.
@@ -2192,22 +2185,22 @@ Deno.test("EliasFanoSequence using lifecycle reaches an allocator plateau", () =
   assertEquals(after.reservedBytes, plateau.reservedBytes, "EF reserved bytes");
 });
 
-Deno.test("findByte matches Uint8Array#indexOf across SIMD boundaries", () => {
+Deno.test("indexOf matches Uint8Array#indexOf across SIMD boundaries", () => {
   for (const length of [0, 1, 15, 16, 17, 31, 32, 33, 63, 64, 65, 255, 4096]) {
     for (const hit of [-1, 0, 1, 15, 16, length - 1]) {
       if (hit >= length) continue;
       const input = new Uint8Array(length).fill(0x61);
       if (hit >= 0) input[hit] = 0x5a;
-      assertEquals(findByte(input, 0x5a), input.indexOf(0x5a), `length=${length}, hit=${hit}`);
+      assertEquals(indexOf(input, 0x5a), input.indexOf(0x5a), `length=${length}, hit=${hit}`);
     }
   }
 });
 
-Deno.test("findByte preserves view-relative bounds", () => {
+Deno.test("indexOf preserves view-relative bounds", () => {
   const input = new Uint8Array(128).fill(0x61);
   input[80] = 0x5a;
-  assertEquals(findByte(input, 0x5a, 32, 96), 80, "bounded hit");
-  assertEquals(findByte(input, 0x5a, 0, 64), -1, "bounded miss");
+  assertEquals(indexOf(input, 0x5a, 32, 96), 80, "bounded hit");
+  assertEquals(indexOf(input, 0x5a, 0, 64), -1, "bounded miss");
 });
 
 Deno.test("decodeUint32 decodes complete big- and little-endian batches", () => {
@@ -2264,14 +2257,14 @@ Deno.test("decodeUint32 validates complete words and respects input views", () =
   assertEquals(threw, true, "partial word");
 });
 
-Deno.test("reverseFindByte matches Uint8Array#lastIndexOf", () => {
+Deno.test("lastIndexOf matches Uint8Array#lastIndexOf", () => {
   for (const length of [0, 1, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 4096]) {
     for (const hit of [-1, 0, 1, 15, 16, length - 1]) {
       if (hit >= length) continue;
       const input = new Uint8Array(length).fill(0x61);
       if (hit >= 0) input[hit] = 0x5a;
       assertEquals(
-        reverseFindByte(input, 0x5a),
+        lastIndexOf(input, 0x5a),
         input.lastIndexOf(0x5a),
         `length=${length}, hit=${hit}`,
       );
@@ -2279,32 +2272,32 @@ Deno.test("reverseFindByte matches Uint8Array#lastIndexOf", () => {
   }
 });
 
-Deno.test("findNonAscii returns the first non-ASCII offset", () => {
+Deno.test("indexOfNonAscii returns the first non-ASCII offset", () => {
   for (const length of [0, 1, 15, 16, 17, 31, 32, 33, 127, 128, 129, 4096]) {
     for (const hit of [-1, 0, 15, 16, length - 1]) {
       if (hit >= length) continue;
       const input = new Uint8Array(length).fill(0x61);
       if (hit >= 0) input[hit] = 0x80;
       const expected = input.findIndex((byte) => byte >= 0x80);
-      assertEquals(findNonAscii(input), expected, `length=${length}, hit=${hit}`);
+      assertEquals(indexOfNonAscii(input), expected, `length=${length}, hit=${hit}`);
     }
   }
 });
 
-Deno.test("bytesEqual matches equal-length byte semantics", () => {
+Deno.test("equals matches equal-length byte semantics", () => {
   for (const length of [0, 1, 15, 16, 17, 31, 32, 33, 127, 128, 129, 4096]) {
     const left = new Uint8Array(length).fill(0x61);
     const right = left.slice();
-    assertEquals(bytesEqual(left, right), true, `equal length=${length}`);
+    assertEquals(equals(left, right), true, `equal length=${length}`);
     if (length > 0) {
       right[length - 1] = 0x62;
-      assertEquals(bytesEqual(left, right), false, `different length=${length}`);
+      assertEquals(equals(left, right), false, `different length=${length}`);
     }
   }
-  assertEquals(bytesEqual(new Uint8Array(1), new Uint8Array(2)), false, "different lengths");
+  assertEquals(equals(new Uint8Array(1), new Uint8Array(2)), false, "different lengths");
 });
 
-Deno.test("lexicalCompare matches byte-wise lexicographical ordering", () => {
+Deno.test("compare matches byte-wise lexicographical ordering", () => {
   const cases = [
     [[], []],
     [[1], [1]],
@@ -2324,7 +2317,7 @@ Deno.test("lexicalCompare matches byte-wise lexicographical ordering", () => {
       }
     }
     if (expected === 0) expected = left.length - right.length;
-    assertEquals(Math.sign(lexicalCompare(left, right)), Math.sign(expected), "lexical compare");
+    assertEquals(Math.sign(compare(left, right)), Math.sign(expected), "lexical compare");
   }
 });
 
@@ -2340,14 +2333,14 @@ function scalarIndexOfSubarray(input: Uint8Array, pattern: Uint8Array): number {
   return -1;
 }
 
-Deno.test("indexOfSubarray matches scalar search", () => {
+Deno.test("indexOf matches scalar search", () => {
   for (const inputLength of [0, 1, 15, 16, 17, 127, 128, 129, 4096]) {
     for (const pattern of [[], [0x61], [0x61, 0x62], [0x61, 0x61, 0x62]]) {
       const input = new Uint8Array(inputLength).fill(0x61);
       if (inputLength > 0) input[inputLength - 1] = 0x62;
       const needle = new Uint8Array(pattern);
       assertEquals(
-        indexOfSubarray(input, needle),
+        indexOf(input, needle),
         scalarIndexOfSubarray(input, needle),
         `input=${inputLength}, pattern=${pattern}`,
       );
@@ -2367,7 +2360,7 @@ Deno.test("high-level kernels match randomized scalar references", () => {
     const input = Uint8Array.from({ length: next() % 512 }, () => next() & 7);
     const pattern = Uint8Array.from({ length: next() % 40 }, () => next() & 7);
     assertEquals(
-      indexOfSubarray(input, pattern),
+      indexOf(input, pattern),
       scalarIndexOfSubarray(input, pattern),
       `random subarray trial=${trial}`,
     );
@@ -2382,7 +2375,7 @@ Deno.test("high-level kernels match randomized scalar references", () => {
     }
     if (expected === 0) expected = input.length - other.length;
     assertEquals(
-      Math.sign(lexicalCompare(input, other)),
+      Math.sign(compare(input, other)),
       Math.sign(expected),
       `random compare trial=${trial}`,
     );

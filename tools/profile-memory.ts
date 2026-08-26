@@ -12,7 +12,7 @@ import { BlockedVectorArray } from "../src/blocked-vector-array/mod.ts";
 import { BitSlicedColumnU8, BitSliceMask } from "../src/bit-sliced-column/mod.ts";
 import { Bitmap, DenseBitmap } from "../src/bitmap/mod.ts";
 import { memory as bytesMemory } from "../src/bytes/kernels.wasm";
-import { bytesEqual } from "../src/bytes/mod.ts";
+import { equals } from "../src/bytes/mod.ts";
 import { ByteKeyFlatHashMapU32 } from "../src/byte-key-flat-hash/mod.ts";
 import { CompressedStringTable } from "../src/compressed-string-table/mod.ts";
 import {
@@ -183,7 +183,7 @@ const scenarios: readonly Scenario[] = [
     name: "bytes-scratch",
     iterations: 250,
     run() {
-      sink += Number(bytesEqual(scratchBytes, scratchBytes));
+      sink += Number(equals(scratchBytes, scratchBytes));
     },
     stats: () => scratchStats(bytesMemory),
   },

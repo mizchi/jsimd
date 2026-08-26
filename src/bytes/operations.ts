@@ -22,7 +22,7 @@ function scratchPointer(length: number): number {
 }
 
 /** Find a byte and return its input-relative index, or -1. */
-export function findByte(
+function indexOfByte(
   input: Uint8Array,
   needle: number,
   start = 0,
@@ -54,7 +54,7 @@ export function findByte(
 }
 
 /** Find the last byte and return its input-relative index, or -1. */
-export function reverseFindByte(input: Uint8Array, needle: number): number {
+export function lastIndexOf(input: Uint8Array, needle: number): number {
   if (!Number.isInteger(needle) || needle < 0 || needle > 0xff) {
     throw new RangeError("needle must be an integer between 0 and 255");
   }
@@ -68,7 +68,7 @@ export function reverseFindByte(input: Uint8Array, needle: number): number {
 }
 
 /** Return the first non-ASCII byte index, or -1 when all bytes are ASCII. */
-export function findNonAscii(input: Uint8Array): number {
+export function indexOfNonAscii(input: Uint8Array): number {
   if (input.length < 128) {
     for (let index = 0; index < input.length; index++) {
       if (input[index]! >= 0x80) return index;
@@ -86,7 +86,7 @@ export function findNonAscii(input: Uint8Array): number {
 }
 
 /** Compare two byte arrays for equality. */
-export function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+export function equals(left: Uint8Array, right: Uint8Array): boolean {
   if (left.length !== right.length) return false;
   if (left.length < 128) {
     for (let index = 0; index < left.length; index++) {
@@ -105,7 +105,7 @@ export function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
 }
 
 /** Compare byte arrays in lexicographical order. */
-export function lexicalCompare(left: Uint8Array, right: Uint8Array): number {
+export function compare(left: Uint8Array, right: Uint8Array): number {
   const minLength = Math.min(left.length, right.length);
   if (minLength < 128) {
     for (let index = 0; index < minLength; index++) {
@@ -142,11 +142,10 @@ function scalarIndexOfSubarray(
   return -1;
 }
 
-/** Find the first occurrence of a byte subarray, or -1. */
-export function indexOfSubarray(input: Uint8Array, pattern: Uint8Array): number {
+function indexOfSequence(input: Uint8Array, pattern: Uint8Array): number {
   if (pattern.length === 0) return 0;
   if (pattern.length > input.length) return -1;
-  if (pattern.length === 1) return findByte(input, pattern[0]!);
+  if (pattern.length === 1) return indexOfByte(input, pattern[0]!);
   if (input.length < 128) return scalarIndexOfSubarray(input, pattern, 0, input.length);
   const prefixEnd = Math.min(input.length, 16 + pattern.length - 1);
   const prefixFound = scalarIndexOfSubarray(input, pattern, 0, prefixEnd);
@@ -162,4 +161,23 @@ export function indexOfSubarray(input: Uint8Array, pattern: Uint8Array): number 
     pattern.length,
   );
   return found < 0 ? -1 : found + 16;
+}
+
+/** Find a byte or byte sequence and return its input-relative index, or -1. */
+export function indexOf(
+  input: Uint8Array,
+  needle: number,
+  start?: number,
+  end?: number,
+): number;
+export function indexOf(input: Uint8Array, needle: Uint8Array): number;
+export function indexOf(
+  input: Uint8Array,
+  needle: number | Uint8Array,
+  start = 0,
+  end = input.length,
+): number {
+  return typeof needle === "number"
+    ? indexOfByte(input, needle, start, end)
+    : indexOfSequence(input, needle);
 }
