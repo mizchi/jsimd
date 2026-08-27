@@ -316,6 +316,108 @@
     end end
   )
 
+  (func (export "gather_i32_constant")
+    (param $mask i32) (param $n i32) (param $value i32) (param $output i32) (result i32)
+    (local $word i32) (local $words i32) (local $bits i32) (local $written i32)
+    local.get $n i32.const 31 i32.add i32.const 5 i32.shr_u local.set $words
+    block $done loop $word_loop
+      local.get $word local.get $words i32.ge_u br_if $done
+      local.get $mask local.get $word i32.const 2 i32.shl i32.add i32.load local.set $bits
+      block $bits_done loop $bits_loop
+        local.get $bits i32.eqz br_if $bits_done
+        local.get $output local.get $written i32.const 2 i32.shl i32.add
+        local.get $value i32.store
+        local.get $written i32.const 1 i32.add local.set $written
+        local.get $bits local.get $bits i32.const 1 i32.sub i32.and local.set $bits
+        br $bits_loop
+      end end
+      local.get $word i32.const 1 i32.add local.set $word br $word_loop
+    end end
+    local.get $written
+  )
+
+  (func (export "gather_i32_raw")
+    (param $input i32) (param $mask i32) (param $n i32) (param $output i32) (result i32)
+    (local $word i32) (local $words i32) (local $bits i32) (local $index i32) (local $written i32)
+    local.get $n i32.const 31 i32.add i32.const 5 i32.shr_u local.set $words
+    block $done loop $word_loop
+      local.get $word local.get $words i32.ge_u br_if $done
+      local.get $mask local.get $word i32.const 2 i32.shl i32.add i32.load local.set $bits
+      block $bits_done loop $bits_loop
+        local.get $bits i32.eqz br_if $bits_done
+        local.get $word i32.const 5 i32.shl local.get $bits i32.ctz i32.add local.set $index
+        local.get $output local.get $written i32.const 2 i32.shl i32.add
+        local.get $input local.get $index i32.const 2 i32.shl i32.add i32.load i32.store
+        local.get $written i32.const 1 i32.add local.set $written
+        local.get $bits local.get $bits i32.const 1 i32.sub i32.and local.set $bits
+        br $bits_loop
+      end end
+      local.get $word i32.const 1 i32.add local.set $word br $word_loop
+    end end
+    local.get $written
+  )
+
+  (func (export "gather_i32_for")
+    (param $packed i32) (param $mask i32) (param $n i32)
+    (param $width i32) (param $base i32) (param $output i32) (result i32)
+    (local $word i32) (local $words i32) (local $bits i32) (local $index i32) (local $written i32)
+    local.get $n i32.const 31 i32.add i32.const 5 i32.shr_u local.set $words
+    block $done loop $word_loop
+      local.get $word local.get $words i32.ge_u br_if $done
+      local.get $mask local.get $word i32.const 2 i32.shl i32.add i32.load local.set $bits
+      block $bits_done loop $bits_loop
+        local.get $bits i32.eqz br_if $bits_done
+        local.get $word i32.const 5 i32.shl local.get $bits i32.ctz i32.add local.set $index
+        local.get $output local.get $written i32.const 2 i32.shl i32.add
+        local.get $base
+        local.get $packed local.get $width local.get $index call $packed_at i32.add i32.store
+        local.get $written i32.const 1 i32.add local.set $written
+        local.get $bits local.get $bits i32.const 1 i32.sub i32.and local.set $bits
+        br $bits_loop
+      end end
+      local.get $word i32.const 1 i32.add local.set $word br $word_loop
+    end end
+    local.get $written
+  )
+
+  (func (export "gather_u8")
+    (param $planes i32) (param $validity i32) (param $mask i32)
+    (param $word_count i32) (param $bit_width i32)
+    (param $output i32) (param $output_validity i32) (result i32)
+    (local $word i32) (local $bits i32) (local $i i32) (local $bit i32)
+    (local $valid i32) (local $value i32) (local $written i32) (local $stride i32)
+    local.get $word_count i32.const 2 i32.shl local.set $stride
+    block $done loop $word_loop
+      local.get $word local.get $word_count i32.ge_u br_if $done
+      local.get $mask local.get $word i32.const 2 i32.shl i32.add i32.load local.set $bits
+      block $bits_done loop $bits_loop
+        local.get $bits i32.eqz br_if $bits_done
+        local.get $word i32.const 5 i32.shl local.get $bits i32.ctz i32.add local.set $i
+        local.get $validity local.get $word i32.const 2 i32.shl i32.add i32.load
+        local.get $i i32.const 31 i32.and i32.shr_u i32.const 1 i32.and local.set $valid
+        i32.const 0 local.set $value
+        i32.const 0 local.set $bit
+        block $bits_done loop $bits
+          local.get $bit local.get $bit_width i32.ge_u br_if $bits_done
+          local.get $value
+          local.get $planes local.get $bit local.get $stride i32.mul i32.add
+          local.get $i i32.const 5 i32.shr_u i32.const 2 i32.shl i32.add i32.load
+          local.get $i i32.const 31 i32.and i32.shr_u i32.const 1 i32.and
+          local.get $bit i32.shl i32.or local.set $value
+          local.get $bit i32.const 1 i32.add local.set $bit br $bits
+        end end
+        local.get $output local.get $written i32.add
+        local.get $value local.get $valid i32.mul i32.store8
+        local.get $output_validity local.get $written i32.add local.get $valid i32.store8
+        local.get $written i32.const 1 i32.add local.set $written
+        local.get $bits local.get $bits i32.const 1 i32.sub i32.and local.set $bits
+        br $bits_loop
+      end end
+      local.get $word i32.const 1 i32.add local.set $word br $word_loop
+    end end
+    local.get $written
+  )
+
   (func (export "mask_and") (param $left i32) (param $right i32) (param $word_count i32)
     (local $word i32)
     block $done loop $loop

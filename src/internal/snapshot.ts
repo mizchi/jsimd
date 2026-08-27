@@ -14,6 +14,9 @@ export const SnapshotKind = Object.freeze(
     EliasFanoSequence: 6,
     BinaryVectorIndex: 7,
     WaveletMatrixUint16: 8,
+    AdaptiveI32Column: 9,
+    AdaptiveU32Column: 10,
+    BitSlicedU8Column: 11,
   } as const,
 );
 

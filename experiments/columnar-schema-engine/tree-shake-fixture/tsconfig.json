@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "allowArbitraryExtensions": true,
+    "allowImportingTsExtensions": true,
+    "lib": ["DOM", "ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "strict": true,
+    "target": "ESNext"
+  },
+  "include": [
+    "../../../src/columnar/mod.ts",
+    "../backend.ts",
+    "../engine.ts",
+    "../indexeddb_backend.ts",
+    "../mod.ts",
+    "../page_format.ts",
+    "../schema.ts",
+    "src.ts"
+  ]
+}

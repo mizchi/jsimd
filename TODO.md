@@ -18,6 +18,12 @@ the API look symmetric.
 
 - [ ] Keep Delta deferred behind `EliasFanoSequence`, and BitSliced behind `BitSlicedColumn`, until
       a page-composition workload demonstrates a separate win.
+- [x] Prototype a typed columnar schema/query engine with immutable generations, ZoneMap and
+      projection pushdown, resident page caching, and Memory/IndexedDB/Node FS backends.
+- [x] Replace raw persistent column pages with directly restorable adaptive snapshots. The recorded
+      in-memory cold path is 8.94x faster than rebuilding from raw pages; it remains slower than
+      already-resident page-aware JavaScript and therefore does not yet justify a public schema
+      entrypoint by itself.
 
 ### P2: vector pruning
 
@@ -202,7 +208,10 @@ These are not package exports. Revisit one only with a materially different layo
 - Compare with the best relevant builtin, typed-array implementation, or established library.
 - Test allocator reuse plateaus, exceptional cleanup, and use-after-dispose.
 
-## Longer-term generated layout
+## Experimental generated layout
 
-Consider a schema-generated physical layout only after multiple adaptive encodings and at least one
-string representation have stable measured contracts. Do not start a schema DSL before then.
+The non-exported `experiments/columnar-schema-engine` prototype now provides a minimal typed schema
+over the stable i32/u32/u8 column contracts, directly restores adaptive snapshots, and uses sparse
+bulk gather for projections. Keep it experimental until strings/nullability, real-browser IndexedDB
+tests, schema evolution, and bounded host+Wasm cache accounting have measured contracts. Do not grow
+it into a SQL parser before those storage fundamentals settle.

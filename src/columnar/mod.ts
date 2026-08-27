@@ -1,4 +1,8 @@
 import {
+  gather_i32_constant as wasmGatherI32Constant,
+  gather_i32_for as wasmGatherI32For,
+  gather_i32_raw as wasmGatherI32Raw,
+  gather_u8 as wasmGatherU8,
   mask_and as wasmMaskAnd,
   mask_andnot as wasmMaskAndNot,
   mask_count as wasmMaskCount,
@@ -27,6 +31,14 @@ import {
   type AllocatorStats,
   LinearMemoryAllocator,
 } from "../internal/allocator.ts";
+import {
+  decodeSnapshot,
+  encodeSnapshot,
+  expectPayloadBytes,
+  invalidSnapshot,
+  SnapshotKind,
+  uint32Payload,
+} from "../internal/snapshot.ts";
 
 const PAGE_SIZE = 256;
 const WORDS_PER_PAGE = PAGE_SIZE / 32;
@@ -241,8 +253,31 @@ export class AdaptiveI32Column {
     }
   }
 
+  static fromSnapshot(snapshot: Uint8Array): AdaptiveI32Column {
+    const { shape, payloads } = decodeSnapshot(
+      snapshot,
+      SnapshotKind.AdaptiveI32Column,
+      2,
+      2,
+    );
+    const length = shape[0]!;
+    const pageCount = shape[1]!;
+    validateColumnSnapshotShape(length, pageCount);
+    const pages = restoreI32Pages(length, pageCount, payloads[0]!, payloads[1]!);
+    return new AdaptiveI32Column(pages, length);
+  }
+
   static allocatorStats(): AllocatorStats {
     return allocator.stats();
+  }
+
+  serialize(): Uint8Array {
+    this.#assertAlive();
+    return serializeAdaptivePages(
+      SnapshotKind.AdaptiveI32Column,
+      this.length,
+      this.#pages,
+    );
   }
 
   get(index: number): number {
@@ -259,6 +294,12 @@ export class AdaptiveI32Column {
       page.packedWords,
     );
     return page.min + packedAt(words, page.bitWidth, local);
+  }
+
+  /** Materializes selected values in row order without exposing resident pages. */
+  gatherInto(selection: SelectionMask, output: Int32Array): number {
+    if (!(output instanceof Int32Array)) throw new TypeError("output must be an Int32Array");
+    return gatherAdaptivePages(this.#pages, this.#outputState(selection), output);
   }
 
   encodingCounts(): AdaptiveI32EncodingCounts {
@@ -480,8 +521,31 @@ export class AdaptiveU32Column {
     }
   }
 
+  static fromSnapshot(snapshot: Uint8Array): AdaptiveU32Column {
+    const { shape, payloads } = decodeSnapshot(
+      snapshot,
+      SnapshotKind.AdaptiveU32Column,
+      2,
+      2,
+    );
+    const length = shape[0]!;
+    const pageCount = shape[1]!;
+    validateColumnSnapshotShape(length, pageCount);
+    const pages = restoreU32Pages(length, pageCount, payloads[0]!, payloads[1]!);
+    return new AdaptiveU32Column(pages, length);
+  }
+
   static allocatorStats(): AllocatorStats {
     return allocator.stats();
+  }
+
+  serialize(): Uint8Array {
+    this.#assertAlive();
+    return serializeAdaptivePages(
+      SnapshotKind.AdaptiveU32Column,
+      this.length,
+      this.#pages,
+    );
   }
 
   get(index: number): number {
@@ -498,6 +562,12 @@ export class AdaptiveU32Column {
       page.packedWords,
     );
     return page.min + packedAt(words, page.bitWidth, local);
+  }
+
+  /** Materializes selected values in row order without exposing resident pages. */
+  gatherInto(selection: SelectionMask, output: Uint32Array): number {
+    if (!(output instanceof Uint32Array)) throw new TypeError("output must be a Uint32Array");
+    return gatherAdaptivePages(this.#pages, this.#outputState(selection), output);
   }
 
   encodingCounts(): AdaptiveU32EncodingCounts {
@@ -699,8 +769,59 @@ export class BitSlicedU8Column {
     }
   }
 
+  static fromSnapshot(snapshot: Uint8Array): BitSlicedU8Column {
+    const { shape, payloads } = decodeSnapshot(
+      snapshot,
+      SnapshotKind.BitSlicedU8Column,
+      3,
+      2,
+    );
+    const length = shape[0]!;
+    const bitWidth = shape[1]!;
+    const wordCount = shape[2]!;
+    validateLength(length);
+    validateBitWidth(bitWidth);
+    if (wordCount !== paddedWordCount(length)) {
+      throw invalidSnapshot("invalid bit-sliced word count");
+    }
+    expectPayloadBytes(payloads[0]!, wordCount * bitWidth * 4, "bit-sliced planes");
+    expectPayloadBytes(payloads[1]!, wordCount * 4, "bit-sliced validity");
+    const planeWords = uint32Payload(payloads[0]!, "bit-sliced planes");
+    const validityWords = uint32Payload(payloads[1]!, "bit-sliced validity");
+    validateBitSlicedSnapshot(length, bitWidth, wordCount, planeWords, validityWords);
+    let planes: Allocation | undefined;
+    let validity: Allocation | undefined;
+    try {
+      planes = allocator.allocate(planeWords.byteLength);
+      validity = allocator.allocate(validityWords.byteLength);
+      new Uint32Array(memory.buffer, planes.pointer, planeWords.length).set(planeWords);
+      new Uint32Array(memory.buffer, validity.pointer, validityWords.length).set(validityWords);
+      return new BitSlicedU8Column(length, bitWidth, wordCount, planes, validity);
+    } catch (error) {
+      if (validity !== undefined) allocator.release(validity);
+      if (planes !== undefined) allocator.release(planes);
+      throw error;
+    }
+  }
+
   static allocatorStats(): AllocatorStats {
     return allocator.stats();
+  }
+
+  serialize(): Uint8Array {
+    this.#assertAlive();
+    return encodeSnapshot(
+      SnapshotKind.BitSlicedU8Column,
+      [this.length, this.bitWidth, this.#wordCount],
+      [
+        new Uint8Array(
+          memory.buffer,
+          this.#planes.pointer,
+          this.#wordCount * this.bitWidth * 4,
+        ),
+        new Uint8Array(memory.buffer, this.#validity.pointer, this.#wordCount * 4),
+      ],
+    );
   }
 
   get(index: number): number | undefined {
@@ -722,6 +843,46 @@ export class BitSlicedU8Column {
       }
     }
     return value;
+  }
+
+  /** Materializes selected values and optionally writes one-byte validity flags. */
+  gatherInto(
+    selection: SelectionMask,
+    output: Uint8Array,
+    validityOutput?: Uint8Array,
+  ): number {
+    if (!(output instanceof Uint8Array)) throw new TypeError("output must be a Uint8Array");
+    if (validityOutput !== undefined && !(validityOutput instanceof Uint8Array)) {
+      throw new TypeError("validityOutput must be a Uint8Array");
+    }
+    const mask = this.#outputState(selection);
+    const count = selection.countOnes();
+    if (output.length < count || (validityOutput !== undefined && validityOutput.length < count)) {
+      throw new RangeError("outputs must be large enough for all selected values");
+    }
+    if (count === 0) return 0;
+    const scratch = allocator.allocate(count * 2);
+    try {
+      const written = wasmGatherU8(
+        this.#planes.pointer,
+        this.#validity.pointer,
+        mask.allocation.pointer,
+        this.#wordCount,
+        this.bitWidth,
+        scratch.pointer,
+        scratch.pointer + count,
+      );
+      output.set(new Uint8Array(memory.buffer, scratch.pointer, written), 0);
+      if (validityOutput !== undefined) {
+        validityOutput.set(
+          new Uint8Array(memory.buffer, scratch.pointer + count, written),
+          0,
+        );
+      }
+      return written;
+    } finally {
+      allocator.release(scratch);
+    }
   }
 
   scanEq(value: number, output: SelectionMask): SelectionMask {
@@ -794,6 +955,285 @@ export class BitSlicedU8Column {
   #assertAlive(): void {
     if (this.#disposed) throw new Error("BitSlicedU8Column has been disposed");
   }
+}
+
+type AdaptiveColumnPage = I32Page | U32Page;
+
+function gatherAdaptivePages(
+  pages: readonly AdaptiveColumnPage[],
+  mask: MaskState,
+  output: Int32Array | Uint32Array,
+): number {
+  const count = wasmMaskCount(mask.allocation.pointer, mask.wordCount);
+  if (output.length < count) {
+    throw new RangeError("output must be large enough for all selected values");
+  }
+  if (count === 0) return 0;
+  const scratch = allocator.allocate(count * 4);
+  try {
+    let written = 0;
+    for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
+      const page = pages[pageIndex]!;
+      const pageMask = pageOutputPointer(mask, pageIndex);
+      const pageOutput = scratch.pointer + written * 4;
+      if (page.encoding === AdaptiveI32Encoding.Constant) {
+        written += wasmGatherI32Constant(pageMask, page.length, page.min, pageOutput);
+      } else if (page.encoding === AdaptiveI32Encoding.Raw) {
+        written += wasmGatherI32Raw(
+          page.allocation.pointer,
+          pageMask,
+          page.length,
+          pageOutput,
+        );
+      } else {
+        written += wasmGatherI32For(
+          page.allocation.pointer,
+          pageMask,
+          page.length,
+          page.bitWidth,
+          page.min,
+          pageOutput,
+        );
+      }
+    }
+    if (written !== count) throw new Error("column gather count mismatch");
+    if (output instanceof Int32Array) {
+      output.set(new Int32Array(memory.buffer, scratch.pointer, written), 0);
+    } else {
+      output.set(new Uint32Array(memory.buffer, scratch.pointer, written), 0);
+    }
+    return written;
+  } finally {
+    allocator.release(scratch);
+  }
+}
+
+function serializeAdaptivePages(
+  kind: typeof SnapshotKind.AdaptiveI32Column | typeof SnapshotKind.AdaptiveU32Column,
+  length: number,
+  pages: readonly AdaptiveColumnPage[],
+): Uint8Array {
+  const metadata = new Uint32Array(pages.length * 6);
+  let payloadBytes = 0;
+  for (const page of pages) payloadBytes += adaptivePagePayloadBytes(page);
+  const payload = new Uint8Array(payloadBytes);
+  let payloadOffset = 0;
+  for (let index = 0; index < pages.length; index++) {
+    const page = pages[index]!;
+    const base = index * 6;
+    const bytes = adaptivePagePayloadBytes(page);
+    metadata[base] = page.length | (adaptiveEncodingCode(page.encoding) << 16) |
+      (page.bitWidth << 24);
+    metadata[base + 1] = page.min >>> 0;
+    metadata[base + 2] = page.max >>> 0;
+    metadata[base + 3] = page.packedWords;
+    metadata[base + 4] = payloadOffset;
+    metadata[base + 5] = bytes;
+    if (bytes !== 0) {
+      payload.set(
+        new Uint8Array(memory.buffer, page.allocation.pointer, bytes),
+        payloadOffset,
+      );
+    }
+    payloadOffset += bytes;
+  }
+  return encodeSnapshot(
+    kind,
+    [length, pages.length],
+    [new Uint8Array(metadata.buffer), payload],
+  );
+}
+
+function restoreI32Pages(
+  length: number,
+  pageCount: number,
+  metadataPayload: Uint8Array,
+  storage: Uint8Array,
+): I32Page[] {
+  return restoreAdaptivePages(length, pageCount, metadataPayload, storage, true);
+}
+
+function restoreU32Pages(
+  length: number,
+  pageCount: number,
+  metadataPayload: Uint8Array,
+  storage: Uint8Array,
+): U32Page[] {
+  return restoreAdaptivePages(length, pageCount, metadataPayload, storage, false);
+}
+
+function restoreAdaptivePages(
+  length: number,
+  pageCount: number,
+  metadataPayload: Uint8Array,
+  storage: Uint8Array,
+  signed: boolean,
+): I32Page[] {
+  expectPayloadBytes(metadataPayload, pageCount * 24, "adaptive page metadata");
+  const metadata = uint32Payload(metadataPayload, "adaptive page metadata");
+  const pages: I32Page[] = [];
+  let expectedOffset = 0;
+  try {
+    for (let index = 0; index < pageCount; index++) {
+      const base = index * 6;
+      const header = metadata[base]!;
+      const pageLength = header & 0xffff;
+      const encoding = adaptiveEncodingFromCode((header >>> 16) & 0xff);
+      const bitWidth = header >>> 24;
+      const minimum = signed ? metadata[base + 1]! | 0 : metadata[base + 1]!;
+      const maximum = signed ? metadata[base + 2]! | 0 : metadata[base + 2]!;
+      const packedWords = metadata[base + 3]!;
+      const payloadOffset = metadata[base + 4]!;
+      const payloadBytes = metadata[base + 5]!;
+      const expectedLength = Math.min(PAGE_SIZE, length - index * PAGE_SIZE);
+      if (pageLength !== expectedLength) throw invalidSnapshot("invalid adaptive page length");
+      if (payloadOffset !== expectedOffset || payloadBytes > storage.byteLength - payloadOffset) {
+        throw invalidSnapshot("invalid adaptive page payload range");
+      }
+      validateAdaptivePageSnapshot(
+        pageLength,
+        minimum,
+        maximum,
+        encoding,
+        bitWidth,
+        packedWords,
+        storage.subarray(payloadOffset, payloadOffset + payloadBytes),
+        signed,
+      );
+      const allocation = allocator.allocate(payloadBytes);
+      try {
+        new Uint8Array(memory.buffer, allocation.pointer, payloadBytes).set(
+          storage.subarray(payloadOffset, payloadOffset + payloadBytes),
+        );
+      } catch (error) {
+        allocator.release(allocation);
+        throw error;
+      }
+      pages.push({
+        length: pageLength,
+        min: minimum,
+        max: maximum,
+        encoding,
+        bitWidth,
+        packedWords,
+        allocation,
+      });
+      expectedOffset += payloadBytes;
+    }
+    if (expectedOffset !== storage.byteLength) {
+      throw invalidSnapshot("adaptive payload has trailing bytes");
+    }
+    return pages;
+  } catch (error) {
+    for (const page of pages) allocator.release(page.allocation);
+    throw error;
+  }
+}
+
+function validateColumnSnapshotShape(length: number, pageCount: number): void {
+  if (length > 0x3fff_ffff || pageCount !== Math.ceil(length / PAGE_SIZE)) {
+    throw invalidSnapshot("invalid adaptive column shape");
+  }
+}
+
+function validateAdaptivePageSnapshot(
+  length: number,
+  minimum: number,
+  maximum: number,
+  encoding: AdaptiveI32Encoding,
+  bitWidth: number,
+  packedWords: number,
+  payload: Uint8Array,
+  signed: boolean,
+): void {
+  if (minimum > maximum) throw invalidSnapshot("inverted adaptive ZoneMap");
+  if (encoding === AdaptiveI32Encoding.Constant) {
+    if (minimum !== maximum || bitWidth !== 0 || packedWords !== 0 || payload.byteLength !== 0) {
+      throw invalidSnapshot("invalid constant adaptive page");
+    }
+    return;
+  }
+  if (encoding === AdaptiveI32Encoding.FrameOfReference) {
+    const range = maximum - minimum;
+    const expectedWidth = range === 0 ? 0 : 32 - Math.clz32(range);
+    const expectedWords = Math.ceil(length * bitWidth / 32);
+    if (
+      bitWidth < 1 || bitWidth > 16 || bitWidth !== expectedWidth ||
+      packedWords !== expectedWords || payload.byteLength !== expectedWords * 4
+    ) throw invalidSnapshot("invalid FOR adaptive page");
+    const words = uint32Payload(payload, "adaptive FOR payload");
+    let observedMinimum = Number.POSITIVE_INFINITY;
+    let observedMaximum = Number.NEGATIVE_INFINITY;
+    for (let index = 0; index < length; index++) {
+      const value = minimum + packedAt(words, bitWidth, index);
+      if (value < observedMinimum) observedMinimum = value;
+      if (value > observedMaximum) observedMaximum = value;
+    }
+    const usedBits = length * bitWidth;
+    if ((usedBits & 31) !== 0 && (words[words.length - 1]! >>> (usedBits & 31)) !== 0) {
+      throw invalidSnapshot("non-zero FOR padding");
+    }
+    if (observedMinimum !== minimum || observedMaximum !== maximum) {
+      throw invalidSnapshot("FOR payload does not match ZoneMap");
+    }
+    return;
+  }
+  if (bitWidth !== 32 || packedWords !== 0 || payload.byteLength !== length * 4) {
+    throw invalidSnapshot("invalid raw adaptive page");
+  }
+  const words = uint32Payload(payload, "adaptive raw payload");
+  let observedMinimum = signed ? words[0]! | 0 : words[0]!;
+  let observedMaximum = observedMinimum;
+  for (let index = 1; index < words.length; index++) {
+    const value = signed ? words[index]! | 0 : words[index]!;
+    if (value < observedMinimum) observedMinimum = value;
+    if (value > observedMaximum) observedMaximum = value;
+  }
+  if (observedMinimum !== minimum || observedMaximum !== maximum) {
+    throw invalidSnapshot("raw payload does not match ZoneMap");
+  }
+}
+
+function validateBitSlicedSnapshot(
+  length: number,
+  bitWidth: number,
+  wordCount: number,
+  planes: Uint32Array,
+  validity: Uint32Array,
+): void {
+  const logicalWords = Math.ceil(length / 32);
+  const tailBits = length & 31;
+  const tailMask = tailBits === 0 ? 0xffff_ffff : 0xffff_ffff >>> (32 - tailBits);
+  for (let word = 0; word < wordCount; word++) {
+    const allowed = word < logicalWords ? word === logicalWords - 1 ? tailMask : 0xffff_ffff : 0;
+    const valid = validity[word]!;
+    if ((valid & ~allowed) !== 0) throw invalidSnapshot("set validity bits in padding");
+    for (let bit = 0; bit < bitWidth; bit++) {
+      const plane = planes[bit * wordCount + word]!;
+      if ((plane & ~allowed) !== 0 || (plane & ~valid) !== 0) {
+        throw invalidSnapshot("invalid bit-sliced plane bits");
+      }
+    }
+  }
+}
+
+function adaptivePagePayloadBytes(page: AdaptiveColumnPage): number {
+  if (page.encoding === AdaptiveI32Encoding.Constant) return 0;
+  if (page.encoding === AdaptiveI32Encoding.Raw) return page.length * 4;
+  return page.packedWords * 4;
+}
+
+function adaptiveEncodingCode(encoding: AdaptiveI32Encoding): number {
+  if (encoding === AdaptiveI32Encoding.Constant) return 0;
+  if (encoding === AdaptiveI32Encoding.FrameOfReference) return 1;
+  return 2;
+}
+
+function adaptiveEncodingFromCode(code: number): AdaptiveI32Encoding {
+  if (code === 0) return AdaptiveI32Encoding.Constant;
+  if (code === 1) return AdaptiveI32Encoding.FrameOfReference;
+  if (code === 2) return AdaptiveI32Encoding.Raw;
+  throw invalidSnapshot("unknown adaptive page encoding");
 }
 
 function createI32Page(values: Int32Array): I32Page {

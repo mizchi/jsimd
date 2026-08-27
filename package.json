@@ -48,6 +48,7 @@
     "test": "deno test -A",
     "test:prototype:bitmap-grid-astar": "wasm-tools strip -a experiments/bitmap-grid-astar/prototype/kernels.wat -o experiments/bitmap-grid-astar/prototype/kernels.wasm && wasm-tools validate --features simd experiments/bitmap-grid-astar/prototype/kernels.wasm && deno test -A experiments/bitmap-grid-astar/prototype_checks.ts",
     "test:prototype:simd-priority-queue": "wasm-tools strip -a experiments/simd-priority-queue/prototype/kernels.wat -o experiments/simd-priority-queue/prototype/kernels.wasm && wasm-tools validate --features simd experiments/simd-priority-queue/prototype/kernels.wasm && deno test -A experiments/simd-priority-queue/prototype_checks.ts",
+    "test:columnar-schema-engine": "deno test -A experiments/columnar-schema-engine/mod_test.ts",
     "test:prototype:static-mphf-bytes": "wasm-tools strip -a experiments/static-mphf-bytes/prototype/kernels.wat -o experiments/static-mphf-bytes/prototype/kernels.wasm && wasm-tools validate --features simd experiments/static-mphf-bytes/prototype/kernels.wasm && deno test -A experiments/static-mphf-bytes/prototype_checks.ts",
     "bench": "deno bench -A",
     "bench:adaptive-simd-page-i32": "vitest bench experiments/adaptive-simd-page-i32",
@@ -85,6 +86,7 @@
     "bench:compressed-string-table": "vitest bench experiments/compressed-string-table",
     "bench:snapshots": "vitest bench experiments/snapshots",
     "bench:columnar": "vitest bench experiments/columnar",
+    "bench:columnar-schema-engine": "vitest bench experiments/columnar-schema-engine",
     "bench:freeze-bridges": "vitest bench experiments/freeze-bridges",
     "bench:blocked-bloom-filter": "vitest bench experiments/blocked-bloom-filter",
     "bench:record:bitmap": "vitest bench experiments/bitmap --outputJson experiments/bitmap/benchmarks/baseline.json",
@@ -117,6 +119,7 @@
     "bench:record:compressed-string-table": "vitest bench experiments/compressed-string-table --outputJson experiments/compressed-string-table/benchmarks/baseline.json",
     "bench:record:snapshots": "vitest bench experiments/snapshots --outputJson experiments/snapshots/benchmarks/baseline.json",
     "bench:record:columnar": "vitest bench experiments/columnar --outputJson experiments/columnar/benchmarks/baseline.json",
+    "bench:record:columnar-schema-engine": "vitest bench experiments/columnar-schema-engine --outputJson experiments/columnar-schema-engine/benchmarks/baseline.json",
     "bench:record:freeze-bridges": "vitest bench experiments/freeze-bridges --outputJson experiments/freeze-bridges/benchmarks/baseline.json",
     "bench:record:blocked-bloom-filter": "vitest bench experiments/blocked-bloom-filter --outputJson experiments/blocked-bloom-filter/benchmarks/baseline.json",
     "bench:compare:bitmap": "vitest bench experiments/bitmap --compare experiments/bitmap/benchmarks/baseline.json",
@@ -149,6 +152,7 @@
     "bench:compare:compressed-string-table": "vitest bench experiments/compressed-string-table --compare experiments/compressed-string-table/benchmarks/baseline.json",
     "bench:compare:snapshots": "vitest bench experiments/snapshots --compare experiments/snapshots/benchmarks/baseline.json",
     "bench:compare:columnar": "vitest bench experiments/columnar --compare experiments/columnar/benchmarks/baseline.json",
+    "bench:compare:columnar-schema-engine": "vitest bench experiments/columnar-schema-engine --compare experiments/columnar-schema-engine/benchmarks/baseline.json",
     "bench:compare:freeze-bridges": "vitest bench experiments/freeze-bridges --compare experiments/freeze-bridges/benchmarks/baseline.json",
     "bench:compare:blocked-bloom-filter": "vitest bench experiments/blocked-bloom-filter --compare experiments/blocked-bloom-filter/benchmarks/baseline.json"
   },
@@ -169,6 +173,7 @@
     "webassembly"
   ],
   "devDependencies": {
+    "@types/node": "^24.13.3",
     "typescript": "^5.9.0",
     "vite": "^8.0.0",
     "vitest": "4.1.11"

@@ -86,7 +86,7 @@ so each structure has one public name.
 | [`bit-matrix`](./src/bit-matrix/README.md)                             | Dense Boolean matrix and frozen CSR          | 6.56x dense      | CSR traversal and small matrices can be slower        | 3.29 kB + 0.41 kB        |
 | [`byte-key-flat-hash`](./src/byte-key-flat-hash/README.md)             | Variable-byte-key map with resident arena    | 2.00x bulk       | Individual gets were 12.5x slower                     | 3.37 kB + 0.73 kB        |
 | [`compressed-string-table`](./src/compressed-string-table/README.md)   | Frozen front-coded byte strings              | 2.00x byte eq    | Decode and random materialization can be slower       | 4.18 kB + 0.34 kB        |
-| [`columnar`](./src/columnar/README.md)                                 | Shared-mask i32/u32/u8 column predicates     | 2.9–40.5x        | Rejected u32 sum was 2.45x slower                     | 4.76 kB + 0.93 kB        |
+| [`columnar`](./src/columnar/README.md)                                 | Shared-mask i32/u32/u8 column predicates     | 2.9–40.5x        | Dense extraction and one-shot build can lose to JS    | 7.17 kB + 1.16 kB        |
 | [`binary-vector-index`](./src/binary-vector-index/README.md)           | Hamming search and exact PDX rerank          | 6.5–9.8x         | Recall depends on candidate count                     | 4.17 kB + 0.43 kB        |
 | [`blocked-vector-array`](./src/blocked-vector-array/README.md)         | Repeated exact Float32 vector scoring        | 1.2–9.2x         | Construction was 7.24x slower than typed-array copy   | 2.87 kB + 0.92 kB        |
 | [`bit-sliced-column`](./src/bit-sliced-column/README.md)               | Repeated predicates over static `u8` columns | 17.6–29.6x       | Construction, point reads, and small scans excluded   | 3.00 kB + 0.43 kB        |
@@ -146,6 +146,13 @@ loader.
 - [`multithread-vector-search`](./examples/multithread-vector-search/README.md) shards an exact
   Float32 index across Web Workers, uses shared SPSC task notification and result slots, and merges
   only `workerCount × k` candidates on the coordinator.
+
+## Storage experiment
+
+[`columnar-schema-engine`](./experiments/columnar-schema-engine/README.md) explores typed schemas,
+ZoneMap/projection pushdown, resident SIMD page caching, and interchangeable Memory, IndexedDB, and
+Node filesystem backends. It is not a package export: warm queries win the recorded selective
+workload, while cold storage restore remains slower than already-resident page-aware JavaScript.
 
 ## Development
 

@@ -115,6 +115,36 @@ export declare function scan_u8_between(
   maximumExclusive: number,
 ): void;
 
+export declare function gather_i32_constant(
+  mask: number,
+  length: number,
+  value: number,
+  output: number,
+): number;
+export declare function gather_i32_raw(
+  input: number,
+  mask: number,
+  length: number,
+  output: number,
+): number;
+export declare function gather_i32_for(
+  packed: number,
+  mask: number,
+  length: number,
+  width: number,
+  base: number,
+  output: number,
+): number;
+export declare function gather_u8(
+  planes: number,
+  validity: number,
+  mask: number,
+  wordCount: number,
+  bitWidth: number,
+  output: number,
+  outputValidity: number,
+): number;
+
 export declare function mask_and(left: number, right: number, wordCount: number): void;
 export declare function mask_or(left: number, right: number, wordCount: number): void;
 export declare function mask_andnot(left: number, right: number, wordCount: number): void;

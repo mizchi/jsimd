@@ -108,7 +108,7 @@ build:
     wasm-tools print src/wavelet-matrix-uint8/kernels.wasm | rg -q 'access_many|rank_many|quantile_many|count_lt'
     wasm-tools print src/fm-index-bytes/kernels.wasm | rg -q 'count_many|i8x16.popcnt'
     wasm-tools print src/compressed-string-table/kernels.wasm | rg -q 'equals_many|i8x16.bitmask'
-    wasm-tools print src/columnar/kernels.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|mask_positions_into|i8x16.popcnt'
+    wasm-tools print src/columnar/kernels.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into|i8x16.popcnt'
     ! wasm-tools print src/columnar/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/blocked-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|merge|i32x4.all_true'
 
@@ -148,8 +148,13 @@ check: test package-smoke
     pnpm exec tsc -p examples/tree-shake-columnar/tsconfig.json
     pnpm exec vite build examples/tree-shake-columnar
     test "$(find examples/tree-shake-columnar/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
-    wasm-tools print examples/tree-shake-columnar/dist/assets/*.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|mask_positions_into|i8x16.popcnt'
+    wasm-tools print examples/tree-shake-columnar/dist/assets/*.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into|i8x16.popcnt'
     ! wasm-tools print examples/tree-shake-columnar/dist/assets/*.wasm | rg -q 'find_byte|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
+    pnpm exec tsc -p experiments/columnar-schema-engine/tree-shake-fixture/tsconfig.json
+    pnpm exec vite build experiments/columnar-schema-engine/tree-shake-fixture
+    test "$(find experiments/columnar-schema-engine/tree-shake-fixture/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print experiments/columnar-schema-engine/tree-shake-fixture/dist/assets/*.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into'
+    ! rg -q 'node:fs|node:path' experiments/columnar-schema-engine/tree-shake-fixture/dist/assets/*.js
     pnpm exec tsc -p examples/tree-shake-binary-vector-index/tsconfig.json
     pnpm exec vite build examples/tree-shake-binary-vector-index
     test "$(find examples/tree-shake-binary-vector-index/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"

@@ -23,13 +23,29 @@ kinds.scanEq(2, temporary);
 selected.andAssign(temporary);
 ids.scanLt(0x8000_0000, temporary); // unsigned comparison
 selected.andAssign(temporary);
-selected.toIndices(); // Uint32Array [1, 2]
+const output = new Uint32Array(selected.countOnes());
+ids.gatherInto(selected, output); // output is [20, 30]
 ```
 
 Declare every owning column and mask with `using`. Scope exit returns its linear-memory allocation
 to the module's shared reuse pool. Predicate methods overwrite their output mask. Keep selections
 resident through `andAssign`, `orAssign`, `andNotAssign`, and `invert`; call `countOnes`,
 `positionsInto`, or `toIndices` only when JavaScript needs the result.
+
+`gatherInto` materializes selected values in row order through one bulk Wasm call per internal page.
+It enumerates sparse mask words with `ctz`, avoiding one JS/Wasm call per value. For nullable
+`BitSlicedU8Column`, pass a second `Uint8Array` to receive byte-per-row validity; null values are
+written as zero. Caller-owned outputs must have room for `selection.countOnes()` values.
+
+All three frozen columns can be persisted without rebuilding their encodings:
+
+```ts
+const snapshot = prices.serialize();
+using restored = AdaptiveI32Column.fromSnapshot(snapshot);
+```
+
+Snapshots use a checksummed, versioned little-endian envelope and validate page metadata, ZoneMaps,
+padding, and payload bounds before allocating resident storage.
 
 ## Layout
 
@@ -80,7 +96,8 @@ one-shot query should remain a fused typed-array loop. Point reads cross the JS/
 decoding adds work, and small columns can be dominated by call overhead. The result is strongest for
 large, repeatedly queried columns, especially when ZoneMaps prune pages and multiple predicates
 remain resident. `toIndices()` allocates and copies; prefer `countOnes()` or caller-owned
-`positionsInto()` when possible.
+`positionsInto()` when possible. Sparse `gatherInto()` avoids per-value boundary calls, but dense
+materialization still pays scalar extraction plus a Wasm-to-JS copy and may lose to typed arrays.
 
 An exploratory `AdaptiveU32Column.sum()` took 5.55 ms versus 2.26 ms for an indexed `Uint32Array`
 loop, so it was removed from both the public API and Wasm. `min` and `max` remain construction
@@ -101,9 +118,10 @@ pnpm bench:compare:columnar
 
 ## Standalone build size
 
-The isolated Vite production fixture using all three column types emits one combined 2.46 kB Wasm
-asset (0.93 kB gzip) and a 16.33 kB minified JavaScript wrapper (4.76 kB gzip). It does not emit any
-other jsimd Wasm module.
+The isolated Vite production fixture using all three column types emits one 1.16 kB gzip Wasm asset
+and a 7.17 kB gzip minified JavaScript wrapper. It does not emit any other jsimd Wasm module. The
+snapshot envelope and validation code are included because the fixture exercises the full public
+column contracts.
 
 Benchmark source and the committed baseline are under
 [`experiments/columnar`](../../experiments/columnar).
