@@ -1,0 +1,57 @@
+{
+  "runtime": {
+    "deno": "2.6.4",
+    "v8": "14.2.231.17-rusty",
+    "typescript": "5.9.2",
+    "target": "aarch64-apple-darwin"
+  },
+  "machine": "Apple M5",
+  "warmups": 3,
+  "samples": 20,
+  "queue": {
+    "items": 65536,
+    "jsFourAryMedianMs": 6.70,
+    "simdPointMedianMs": 8.76,
+    "simdBatchPushMedianMs": 8.94,
+    "pointSpeedup": 0.76,
+    "batchPushSpeedup": 0.75
+  },
+  "dijkstra": [
+    {
+      "grid": "64x64",
+      "nodes": 4096,
+      "edges": 16128,
+      "pathLength": 127,
+      "jsBinaryMedianMs": 0.17,
+      "jsFourAryMedianMs": 0.24,
+      "wasmScalarFourAryMedianMs": 0.14,
+      "wasmSimdFourAryMedianMs": 0.12,
+      "simdVsScalarWasm": 1.18,
+      "simdVsBestJs": 1.39
+    },
+    {
+      "grid": "128x128",
+      "nodes": 16384,
+      "edges": 65024,
+      "pathLength": 255,
+      "jsBinaryMedianMs": 1.32,
+      "jsFourAryMedianMs": 1.37,
+      "wasmScalarFourAryMedianMs": 1.36,
+      "wasmSimdFourAryMedianMs": 0.91,
+      "simdVsScalarWasm": 1.49,
+      "simdVsBestJs": 1.45
+    },
+    {
+      "grid": "256x256",
+      "nodes": 65536,
+      "edges": 261120,
+      "pathLength": 511,
+      "jsBinaryMedianMs": 6.35,
+      "jsFourAryMedianMs": 6.55,
+      "wasmScalarFourAryMedianMs": 6.41,
+      "wasmSimdFourAryMedianMs": 5.48,
+      "simdVsScalarWasm": 1.17,
+      "simdVsBestJs": 1.16
+    }
+  ]
+}

@@ -259,6 +259,12 @@ check: test package-smoke
     wasm-tools print examples/tree-shake-shared-buffer/dist/assets/*.wasm | rg -q 'copy_bytes|reduce_shards_or|reduce_shards_and|reduce_shards_sum_u32|v128.or|v128.and|i32x4.add|i32x4.splat|v128.load|shared'
     node --no-warnings tools/test-shared-buffer-node-workers.ts
     deno run -A tools/test-shared-buffer-browser.ts
+    pnpm exec tsc -p examples/multithread-vector-search/tsconfig.json
+    pnpm exec vite build examples/multithread-vector-search
+    test "$(find examples/multithread-vector-search/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "2"
+    find examples/multithread-vector-search/dist/assets -name '*.wasm' -exec wasm-tools validate --features threads,simd {} \;
+    find examples/multithread-vector-search/dist/assets -name '*.wasm' -exec wasm-tools print {} \; | rg -q 'copy_bytes|reduce_shards_or|shared'
+    find examples/multithread-vector-search/dist/assets -name '*.wasm' -exec wasm-tools print {} \; | rg -q 'squared_distance_many|top_k|f32x4'
     pnpm exec tsc -p examples/tree-shake-static-mphf-u32/tsconfig.json
     pnpm exec vite build examples/tree-shake-static-mphf-u32
     test "$(find examples/tree-shake-static-mphf-u32/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"

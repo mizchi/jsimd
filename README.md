@@ -103,7 +103,7 @@ so each structure has one public name.
 | [`packed-delta-uint32-list`](./src/packed-delta-uint32-list/README.md) | Compressed postings and monotone lists       | 0.06–1.4x        | Full decode and lower-bound queries are slower        | 2.91 kB + 0.88 kB        |
 | [`rank-select-bit-vector`](./src/rank-select-bit-vector/README.md)     | Frozen indexed `RankSelectBitVector`         | 1.5–3.0x bulk    | Single-query rank is slower                           | 2.97 kB + 0.77 kB        |
 | [`roaring-bitmap`](./src/roaring-bitmap/README.md)                     | Compressed mutable `u32` bitmap              | 2.2–175x         | Construction and point-heavy cases were not measured  | 4.74 kB + 0.53 kB        |
-| [`shared-buffer`](./src/shared-buffer/README.md)                       | Shared memory, queues, snapshots, reduction  | 1.30–7.96x bulk  | Pool lease was 1.10x slower; scheduling excluded      | 24.63 kB + 0.33 kB       |
+| [`shared-buffer`](./src/shared-buffer/README.md)                       | Shared memory, queues, snapshots, reduction  | 1.30–7.96x bulk  | Pool lease was 1.10x slower; scheduling excluded      | 26.65 kB + 0.33 kB       |
 | [`static-mphf-u32`](./src/static-mphf-u32/README.md)                   | Frozen perfect hash for known `u32` keys     | 1.75x bulk       | Individual lookup and construction are slower         | 4.09 kB + 0.39 kB        |
 | [`wavelet-matrix-uint8`](./src/wavelet-matrix-uint8/README.md)         | Rank/range queries over frozen bytes         | 4.8x vs u32      | Direct byte access is slower                          | 4.25 kB + 0.97 kB        |
 | [`wavelet-matrix-uint16`](./src/wavelet-matrix-uint16/README.md)       | Range queries over frozen `u16` sequences    | 2.3–329x         | Direct access and exact rank are slower               | 4.26 kB + 0.97 kB        |
@@ -140,6 +140,12 @@ JavaScript and adjacent declarations; consumers do not need TypeScript runtime t
 files under `node_modules`. Each `.wasm` import is typed by an adjacent `kernels.d.wasm.ts`,
 following Vite's `allowArbitraryExtensions` convention, without a generated environment-specific
 loader.
+
+## Examples
+
+- [`multithread-vector-search`](./examples/multithread-vector-search/README.md) shards an exact
+  Float32 index across Web Workers, uses shared SPSC task notification and result slots, and merges
+  only `workerCount × k` candidates on the coordinator.
 
 ## Development
 

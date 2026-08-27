@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "allowArbitraryExtensions": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "erasableSyntaxOnly": true,
+    "lib": ["DOM", "ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ESNext",
+    "verbatimModuleSyntax": true
+  },
+  "include": [
+    "../../src/blocked-vector-array/**/*.ts",
+    "../../src/internal/**/*.ts",
+    "../../src/shared-buffer/**/*.ts",
+    "protocol.ts",
+    "search.ts",
+    "src.ts",
+    "worker.ts"
+  ],
+  "exclude": ["../../src/**/*_test.ts", "search_test.ts"]
+}

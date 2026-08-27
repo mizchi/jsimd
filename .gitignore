@@ -2,6 +2,7 @@ node_modules/
 /dist/
 coverage/
 examples/vite/dist/
+examples/multithread-vector-search/dist/
 examples/tree-shake-adaptive-simd-page-i32/dist/
 examples/tree-shake-bitmap/dist/
 examples/tree-shake-bit-matrix/dist/
@@ -25,6 +26,10 @@ examples/tree-shake-roaring-bitmap/dist/
 examples/tree-shake-shared-buffer/dist/
 examples/tree-shake-static-mphf-u32/dist/
 experiments/static-mphf-bytes/prototype/kernels.wasm
+experiments/simd-priority-queue/prototype/kernels.wasm
+experiments/simd-priority-queue/tree-shake-fixture/dist/
+experiments/bitmap-grid-astar/prototype/kernels.wasm
+experiments/bitmap-grid-astar/tree-shake-fixture/dist/
 experiments/static-mphf-bytes/tree-shake-fixture/dist/
 examples/tree-shake-packed-delta-uint32-list/dist/
 examples/tree-shake-wavelet-matrix-uint32/dist/

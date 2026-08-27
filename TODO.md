@@ -172,6 +172,8 @@ Do not add compatibility aliases before a real compatibility obligation exists.
 | `PackedUint32Array` | Decode and gather lost to typed arrays                          |
 | `PackedDeltaArray`  | FOR+BP128 unpack and queries lost to typed arrays/Stream VByte  |
 | sparse-matrix BFS   | Direct JavaScript adjacency traversal was 1.70x faster          |
+| `SimdPriorityQueue` | Point/batched queue workload was 0.75–0.76x JavaScript          |
+| bitmap A* SIMD heap | Barrier maps were 0.62–0.63x the scalar Wasm heap               |
 
 These are not package exports. Revisit one only with a materially different layout or workload.
 
@@ -179,7 +181,8 @@ These are not package exports. Revisit one only with a materially different layo
 
 - `RangeFilterU32`: only if measured ZoneMap false positives justify it
 - `SemiringGraph`: only when it reuses a winning dense or sparse matrix layout
-- `SimdPriorityQueue`
+- `DijkstraCsrGraph`: fused SIMD heap won 1.16–1.45x on grids; test broader graph distributions
+- `BitmapGridAStar`: fused scalar Wasm won ~2.4x on barrier maps but open grids lost to JavaScript
 - `SimdOrderedIndex`
 - `MortonSpatialIndex`
 - `UltraLogLog`

@@ -1,0 +1,52 @@
+{
+  "runtime": {
+    "deno": "2.6.4",
+    "v8": "14.2.231.17-rusty",
+    "typescript": "5.9.2",
+    "target": "aarch64-apple-darwin"
+  },
+  "machine": "Apple M5",
+  "warmups": 10,
+  "samples": 30,
+  "results": [
+    {
+      "map": "open-128x128",
+      "bestJsMedianMs": 0.02,
+      "wasmScalarMedianMs": 0.10,
+      "wasmSimdMedianMs": 0.02
+    },
+    {
+      "map": "barriers-128x128",
+      "pathLength": 1912,
+      "bestJsMedianMs": 0.91,
+      "wasmScalarMedianMs": 0.38,
+      "wasmSimdMedianMs": 0.60
+    },
+    {
+      "map": "open-256x256",
+      "bestJsMedianMs": 0.04,
+      "wasmScalarMedianMs": 0.04,
+      "wasmSimdMedianMs": 0.05
+    },
+    {
+      "map": "barriers-256x256",
+      "pathLength": 7912,
+      "bestJsMedianMs": 4.12,
+      "wasmScalarMedianMs": 1.69,
+      "wasmSimdMedianMs": 2.74
+    },
+    {
+      "map": "open-512x512",
+      "bestJsMedianMs": 0.11,
+      "wasmScalarMedianMs": 0.13,
+      "wasmSimdMedianMs": 0.15
+    },
+    {
+      "map": "barriers-512x512",
+      "pathLength": 32200,
+      "bestJsMedianMs": 19.60,
+      "wasmScalarMedianMs": 7.95,
+      "wasmSimdMedianMs": 12.55
+    }
+  ]
+}
