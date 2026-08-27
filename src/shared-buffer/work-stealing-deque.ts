@@ -1,4 +1,5 @@
 import type { SharedRingBufferSource } from "./spsc-ring.ts";
+import { releaseSharedOwner, tryClaimSharedOwner } from "./ownership.ts";
 
 export const WORK_STEALING_DEQUE_CACHE_LINE_BYTES = 64;
 
@@ -109,8 +110,7 @@ export class WorkStealingDequeU32 {
 
   owner(): WorkStealingDequeOwnerU32 {
     this.#assertAlive();
-    const owner = this.#buffer.workerId + 1;
-    if (Atomics.compareExchange(this.#header, OWNER_INDEX, 0, owner) !== 0) {
+    if (!tryClaimSharedOwner(this.#buffer, this.#header, OWNER_INDEX)) {
       throw new RangeError("WorkStealingDequeU32 owner role is already claimed");
     }
     return new OwnerLease(
@@ -121,7 +121,7 @@ export class WorkStealingDequeU32 {
       this.#data,
       this.capacity,
       this.#mask,
-      owner,
+      this.#buffer.leaseToken,
     );
   }
 
@@ -259,7 +259,7 @@ class OwnerLease implements WorkStealingDequeOwnerU32 {
   [Symbol.dispose](): void {
     if (this.#disposed) return;
     this.#disposed = true;
-    Atomics.compareExchange(this.#header, OWNER_INDEX, this.#owner, 0);
+    releaseSharedOwner(this.#buffer, this.#header, OWNER_INDEX);
   }
 
   #assertAlive(): void {

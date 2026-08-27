@@ -55,6 +55,22 @@ Deno.test("SharedMutex enforces ownership and rejects recursive locking", async 
   assertThrows(() => mutex.tryLock(), Error, "synchronization view must follow its lease");
 });
 
+Deno.test("SharedMutex recovers ownership left by a terminated worker generation", async () => {
+  using coordinator = await SharedBuffer.create({ maxWorkers: 2 });
+  const terminated = await SharedBuffer.attach(coordinator.memory);
+  const mutex = SharedMutex.initialize(terminated, 0);
+  assert(mutex.tryLock(), "terminated worker acquires mutex");
+
+  assert(
+    coordinator.reclaimTerminatedWorker(terminated.workerLease),
+    "coordinator reclaims terminated worker",
+  );
+  using replacement = await SharedBuffer.attach(coordinator.memory);
+  const recovered = SharedMutex.attach(replacement, 0);
+  assert(recovered.tryLock(), "replacement generation recovers stale mutex");
+  recovered.unlock();
+});
+
 Deno.test("shared synchronization exposes non-blocking main-thread waits", async () => {
   using owner = await SharedBuffer.create({ maxWorkers: 2 });
   using attached = await SharedBuffer.attach(owner.memory);

@@ -68,6 +68,7 @@
     "bench:rank-select-bit-vector": "vitest bench experiments/rank-select-bit-vector",
     "bench:roaring-bitmap": "vitest bench experiments/roaring-bitmap",
     "bench:shared-buffer": "vitest bench experiments/shared-buffer",
+    "bench:shared-buffer:workers": "deno run -A experiments/shared-buffer/worker-scaling.ts",
     "bench:static-mphf-u32": "vitest bench experiments/static-mphf-u32",
     "bench:static-mphf-bytes": "wasm-tools strip -a experiments/static-mphf-bytes/prototype/kernels.wat -o experiments/static-mphf-bytes/prototype/kernels.wasm && wasm-tools validate --features simd experiments/static-mphf-bytes/prototype/kernels.wasm && vitest bench experiments/static-mphf-bytes",
     "bench:packed-delta-uint32-list": "vitest bench experiments/packed-delta-uint32-list",

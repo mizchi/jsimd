@@ -1,3 +1,10 @@
+import {
+  assertSharedOwner,
+  releaseSharedOwner,
+  type SharedOwnershipBuffer,
+  tryClaimSharedOwner,
+} from "./ownership.ts";
+
 export const SHARED_SYNC_BYTE_LENGTH = 64;
 
 const SYNC_WORDS = SHARED_SYNC_BYTE_LENGTH / Int32Array.BYTES_PER_ELEMENT;
@@ -19,9 +26,8 @@ const WAIT_GROUP_COUNT_INDEX = 2;
 const MAX_SIGNED_COUNT = 0x7fff_ffff;
 
 /** The minimal shared-memory contract required by the synchronization views. */
-export interface SharedSyncBuffer {
+export interface SharedSyncBuffer extends SharedOwnershipBuffer {
   readonly workerId: number;
-  readonly disposed: boolean;
   int32Array(byteOffset: number, length: number): Int32Array;
 }
 
@@ -85,12 +91,14 @@ export class SharedMutex {
 
   unlock(): void {
     const words = this.#words();
-    const owner = this.#buffer.workerId + 1;
-    if (Atomics.load(words, MUTEX_OWNER_INDEX) !== owner) {
-      throw new Error("SharedMutex can only be unlocked by its owning worker");
-    }
-    Atomics.store(words, MUTEX_OWNER_INDEX, 0);
+    assertSharedOwner(
+      this.#buffer,
+      words,
+      MUTEX_OWNER_INDEX,
+      "SharedMutex can only be unlocked by its owning worker",
+    );
     Atomics.store(words, MUTEX_STATE_INDEX, 0);
+    releaseSharedOwner(this.#buffer, words, MUTEX_OWNER_INDEX);
     Atomics.notify(words, MUTEX_STATE_INDEX, 1);
   }
 
@@ -100,13 +108,14 @@ export class SharedMutex {
   }
 
   #tryAcquire(words: Int32Array): boolean {
-    if (Atomics.compareExchange(words, MUTEX_STATE_INDEX, 0, 1) !== 0) return false;
-    Atomics.store(words, MUTEX_OWNER_INDEX, this.#buffer.workerId + 1);
+    if (!tryClaimSharedOwner(this.#buffer, words, MUTEX_OWNER_INDEX)) return false;
+    if (Atomics.compareExchange(words, MUTEX_STATE_INDEX, 0, 1) === 0) return true;
+    // A stale owner leaves state=1. Replacing its exact token transfers that locked state.
     return true;
   }
 
   #throwIfRecursive(words: Int32Array): void {
-    if (Atomics.load(words, MUTEX_OWNER_INDEX) === this.#buffer.workerId + 1) {
+    if (Atomics.load(words, MUTEX_OWNER_INDEX) === this.#buffer.leaseToken) {
       throw new Error("SharedMutex is not reentrant");
     }
   }

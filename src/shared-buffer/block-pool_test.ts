@@ -63,6 +63,76 @@ Deno.test("SharedBlockPool reuses released blocks without growing the arena", as
   }
 });
 
+Deno.test("SharedBlockPool recovers a terminated worker cache and keeps allocation flat", async () => {
+  using coordinator = await SharedBuffer.create({
+    initialPages: 2,
+    maximumPages: 2,
+    maxWorkers: 2,
+  });
+  const pool = SharedBlockPool.initialize(coordinator, 0);
+  const terminated = await SharedBuffer.attach(coordinator.memory);
+  const terminatedPool = SharedBlockPool.attach(terminated, 0);
+  const blocks = Array.from({ length: 9 }, () => terminatedPool.allocate(256));
+  for (const block of blocks) block[Symbol.dispose]();
+  const plateau = pool.reservedBytes;
+  const staleLease = terminated.workerLease;
+
+  assert(coordinator.reclaimTerminatedWorker(staleLease), "worker lease reclaimed");
+  assert(pool.reclaimTerminatedWorker(staleLease) > 0, "cached free blocks recovered");
+  using replacement = await SharedBuffer.attach(coordinator.memory);
+  const replacementPool = SharedBlockPool.attach(replacement, 0);
+  const reused = Array.from({ length: 9 }, () => replacementPool.allocate(256));
+  assert(pool.reservedBytes === plateau, "recovery must not advance the bump pointer");
+  for (const block of reused) block[Symbol.dispose]();
+});
+
+Deno.test("SharedBlockPool recovers after forced Web Worker termination", async () => {
+  using coordinator = await SharedBuffer.create({
+    initialPages: 2,
+    maximumPages: 2,
+    maxWorkers: 2,
+  });
+  const pool = SharedBlockPool.initialize(coordinator, 0);
+  const moduleUrl = new URL("./mod.ts", import.meta.url).href;
+  const workerUrl = URL.createObjectURL(
+    new Blob([
+      `import { SharedBlockPool, SharedBuffer } from ${JSON.stringify(moduleUrl)};
+self.onmessage = async (event) => {
+  const shared = await SharedBuffer.attach(event.data.memory);
+  const pool = SharedBlockPool.attach(shared, 0);
+  const blocks = Array.from({ length: 9 }, () => pool.allocate(256));
+  for (const block of blocks) block[Symbol.dispose]();
+  self.postMessage({ lease: shared.workerLease });
+  await new Promise(() => {});
+};`,
+    ], { type: "text/javascript" }),
+  );
+  const worker = new Worker(workerUrl, { type: "module" });
+  try {
+    const staleLease = await new Promise<{ workerId: number; leaseToken: number }>(
+      (resolve, reject) => {
+        worker.onmessage = (event) => resolve(event.data.lease);
+        worker.onerror = (event) => reject(event.error ?? new Error(event.message));
+        worker.postMessage({ memory: coordinator.memory });
+      },
+    );
+    const plateau = pool.reservedBytes;
+    worker.terminate();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert(coordinator.reclaimTerminatedWorker(staleLease), "forced lease reclaimed");
+    assert(pool.reclaimTerminatedWorker(staleLease) > 0, "forced worker cache recovered");
+
+    using replacement = await SharedBuffer.attach(coordinator.memory);
+    const replacementPool = SharedBlockPool.attach(replacement, 0);
+    const reused = Array.from({ length: 9 }, () => replacementPool.allocate(256));
+    assert(pool.reservedBytes === plateau, "forced recovery reaches the same plateau");
+    for (const block of reused) block[Symbol.dispose]();
+  } finally {
+    worker.terminate();
+    URL.revokeObjectURL(workerUrl);
+  }
+});
+
 Deno.test("SharedBlockPool reports exhaustion without corrupting live leases", async () => {
   using shared = await SharedBuffer.create({ initialPages: 1, maximumPages: 1, maxWorkers: 1 });
   const pool = SharedBlockPool.initialize(shared, 0);

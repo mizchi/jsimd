@@ -6,6 +6,7 @@ attachment, and point atomics are separate concerns.
 
 ```sh
 pnpm bench:shared-buffer
+pnpm bench:shared-buffer:workers
 pnpm bench:record:shared-buffer
 pnpm bench:compare:shared-buffer
 ```
@@ -31,3 +32,41 @@ kernel rather than a full scheduling workload.
 The striped histogram benchmark reduces four resident 32,768-bucket u32 stripes. SIMD averaged
 0.0173 ms versus 0.1203 ms for the scalar shared typed-array loop (6.96x faster). Counts wrap at
 u32, and the benchmark excludes Worker startup, point updates, and barrier latency.
+
+## End-to-end Worker scaling
+
+`worker-scaling.ts` keeps Workers alive and measures an 8,388,608-event histogram with 4,096 buckets
+and 75% of updates targeting one hot bucket. It includes dispatch, worker completion, result
+publication, and reduction, but excludes Worker startup and initial Wasm compilation. Seven recorded
+samples run after one warmup on Apple M5 / Deno 2.6.4.
+
+| workers | `postMessage` Mops/s | shared `Atomics` Mops/s | striped + SIMD Mops/s | striped trade-off |
+| ------: | -------------------: | ----------------------: | --------------------: | :---------------- |
+|       1 |               764.63 |                  164.17 |                730.57 | 4% slower         |
+|       2 |             1,398.88 |                   57.13 |              1,428.00 | 2% faster         |
+|       4 |             2,299.22 |                   33.02 |              2,407.58 | 5% faster         |
+|       8 |             3,695.15 |                   31.61 |              2,626.60 | 29% slower        |
+
+The striped path accumulates into a worker-local `Uint32Array`, publishes it with `setFrom`, then
+uses Wasm SIMD for the final reduction. Calling `stripe.increment()` per event is intentionally not
+the performance path: an exploratory run measured only 12.26 Mops/s at one Worker because method
+validation dominated. Direct atomic updates collapse under hot-bucket contention. `postMessage`
+remains best at one Worker and at eight Workers on this machine; shared stripes are useful when
+resident shared results or repeated downstream Wasm operations avoid later transfers.
+
+Median / p99 end-to-end latency for striped publication was 11.48 / 11.94 ms (1 Worker), 5.87 / 6.77
+ms (2), 3.48 / 3.74 ms (4), and 3.19 / 4.06 ms (8). The single-thread striped+SIMD baseline was
+648.42 Mops/s median. The committed machine-readable result is `benchmarks/worker-scaling.json`.
+
+The same runner compares one atomic counter per Worker packed into one cache line with 64-byte
+padded counters:
+
+| workers | packed Mops/s | padded Mops/s | padded / packed |
+| ------: | ------------: | ------------: | --------------: |
+|       1 |        163.04 |        152.48 |           0.94x |
+|       2 |         67.00 |        268.16 |           4.00x |
+|       4 |         33.37 |        300.89 |           9.02x |
+|       8 |         25.35 |        353.40 |          13.94x |
+
+This is why independent owner/counter hot fields in the public shared layouts occupy separate cache
+lines. It is a false-sharing microbenchmark, not an application throughput claim.

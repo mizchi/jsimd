@@ -20,15 +20,19 @@ self.onmessage = async (event: MessageEvent<WebAssembly.Memory>) => {
 
 Disposing a `SharedBuffer` releases only the current realm's worker lease. It does not destroy the
 backing shared memory, which can remain attached elsewhere. Worker IDs are reused only after the
-corresponding lease is released. An unexpectedly terminated Worker cannot yet reclaim its slot;
-heartbeat/generation-based recovery belongs with the later shared allocator and slot-map work.
+corresponding lease is released or explicitly reclaimed. Each attachment receives a
+generation-tagged `workerLease`; after `Worker.terminate()` has completed, a coordinator can call
+`shared.reclaimTerminatedWorker(workerLease)`. Exact-token CAS ensures that a delayed termination
+notification cannot detach a replacement generation. This is explicit recovery, not heartbeat-based
+failure detection: the caller must first establish that the old Worker can no longer access memory.
 
 ## ABI and ownership
 
 The first cache line contains the magic, ABI version, header size, maximum page count, worker
-capacity, and active-worker count. It is followed by one 64-byte state slot per Worker, keeping
-independent ownership words off the same cache line. Payload starts at the next 64-byte boundary and
-all Wasm-facing offsets remain at least 16-byte aligned.
+capacity, and active-worker count. It is followed by one 64-byte generation/lease slot per Worker,
+keeping independent ownership words off the same cache line. The packed token supports at most 255
+Worker slots. Payload starts at the next 64-byte boundary and all Wasm-facing offsets remain at
+least 16-byte aligned.
 
 Every realm asynchronously compiles the prebuilt Wasm asset once, then imports the same shared
 `WebAssembly.Memory` into its own kernel instance. `instantiateSharedModule` exposes the synchronous
@@ -85,11 +89,12 @@ self.onmessage = async (event: MessageEvent<WebAssembly.Memory>) => {
 };
 ```
 
-The mutex is non-reentrant and validates its Worker lease before unlocking. The barrier is reusable
+The mutex is non-reentrant and validates its Worker lease before unlocking. A mutex owner token left
+by a terminated Worker is replaced when a later generation next claims it. The barrier is reusable
 but has a fixed party count; a missing or terminated party leaves the current generation waiting.
 The wait group count cannot become negative, and adding new tasks concurrently with a zero-count
-wait is outside its contract. Forced-termination recovery requires the later generation-tagged slot
-allocator.
+wait is outside its contract. Barrier arrivals and wait-group work items are semantic obligations,
+not ownership leases, so reclaiming a Worker cannot infer whether to complete or cancel them.
 
 Blocking methods use `Atomics.wait`. Async methods use `Atomics.waitAsync`; Deno 2.6 / V8 currently
 needs a 1 ms state-check fallback for growable Wasm shared memory because notification does not
@@ -124,15 +129,19 @@ buffer; layout overlap remains the caller's responsibility.
 
 Allocation and release are Worker-oriented because a free-list miss may call blocking
 `SharedMutex.lock`. There is no zero-fill guarantee for reused blocks, and retaining a typed-array
-view after the block lease is disposed is unsafe. A terminated Worker can strand its local cache or
-a held mutex until generation-based recovery is implemented. The pool is useful when fixed-size
-shared payloads must be recycled; native JavaScript allocation remains preferable for data that does
-not need to live in Wasm shared memory.
+view after the block lease is disposed is unsafe. After reclaiming a terminated `SharedBuffer`
+lease, call `pool.reclaimTerminatedWorker(workerLease)` to flush its cached free blocks back to the
+global lists. A replacement attachment also adopts and flushes a stale cache automatically. The pool
+cannot force-release live block handles because ownership may already have been transferred to
+another Worker. The pool is useful when fixed-size shared payloads must be recycled; native
+JavaScript allocation remains preferable for data that does not need to live in Wasm shared memory.
 
 The deterministic reuse test allocates and releases 64 blocks over 20 rounds. `reservedBytes`
 reaches its plateau after the first round, with zero outstanding blocks after every round. A
 four-Worker test also holds 64 blocks concurrently, verifies that all offsets are unique, and then
-returns them through Worker-local caches and the shared free list.
+returns them through Worker-local caches and the shared free list. Another test forcibly terminates
+a Worker after it fills its local cache, reclaims the exact lease generation and cache, reattaches
+the same worker ID, and verifies that `reservedBytes` remains at the pre-termination plateau.
 
 On the recorded Node 24.12 / Apple M5 microbenchmark, a cached 256-byte pool lease took 0.000184 ms
 and `new Uint8Array(256)` took 0.000167 ms: native allocation was 1.10x faster. The pool is not an
@@ -182,10 +191,11 @@ u32-only; the u64 bulk API performs typed-array-to-ring conversion in JavaScript
 This queue supplies synchronization and bounded backpressure that JavaScript has no built-in
 shared-memory collection for; it does not claim that scalar enqueue/dequeue beats hand-written
 JavaScript `Atomics`. The SIMD path only applies to non-overlapping shared-to-shared bulk copies.
-Forced termination can strand a role lease, so generation-based recovery remains a TODO. MPMC and
-`postMessage` throughput comparisons are intentionally deferred until this SPSC contract is stable.
-The memory profiler repeatedly acquires both roles and transfers 4,096 handles; failure to release
-either role prevents the next cycle, while the backing shared memory must remain at one fixed page.
+Producer and consumer roles store generation-tagged owner tokens, so a later attachment can reclaim
+a role left by a terminated Worker. Queue items already published before termination remain subject
+to the application's delivery/retry policy. The memory profiler repeatedly acquires both roles and
+transfers 4,096 handles; failure to release either role prevents the next cycle, while the backing
+shared memory must remain at one fixed page.
 
 ## MPMC ring buffers
 
@@ -327,7 +337,8 @@ combined.has(entityId);
 `reduceOr()` and `reduceAnd()` return a generation-checked non-owning result view. A later reduction
 overwrites the same result region and makes the older view stale. The library prevents concurrent
 reducers, but it cannot infer whether writers reached a barrier; calling reduction concurrently with
-shard mutation is outside the contract. A terminated Worker can still strand a shard lease.
+shard mutation is outside the contract. Shard and reduction roles use generation-tagged tokens, so a
+later Worker can replace an owner left by a reclaimed generation.
 
 On Node 24.12 / Apple M5, reducing four resident 1,048,576-bit shards took 0.0122 ms for OR and
 0.0120 ms for AND. Equivalent scalar loops over shared `Uint32Array` took 0.0929 ms and 0.0956 ms,
@@ -350,9 +361,9 @@ const histogram = StripedHistogram.initialize(shared, 0, {
   stripeCount: 4,
 });
 
-// One exclusive stripe per Worker.
+// One exclusive stripe per Worker. Batch locally to avoid per-event API overhead.
 using stripe = histogram.claimStripe(workerIndex);
-stripe.increment(bucket);
+stripe.setFrom(workerLocalCounts);
 barrier.arriveAndWait();
 
 // Coordinator after the barrier.
@@ -394,6 +405,11 @@ reader-side payload copy, but doubles payload storage and permits only one write
 not a second alias for the same layout. The memory profile passes all plateau checks over 1,000
 publish/acquire/release cycles.
 
+Writer ownership is generation-tagged and recoverable. Reader counts are currently anonymous: if a
+Worker is forcibly terminated while holding a snapshot, that retired slot remains pinned. Do not use
+forced termination while guards are live; per-worker reader registration is deferred until a
+consumer requires recoverable read-side publication.
+
 ## Work-stealing deque
 
 `WorkStealingDequeU32` is a fixed-capacity Chase-Lev deque for u32 task handles. Its disposable
@@ -414,9 +430,16 @@ const task = deque.trySteal();
 Capacity must be a power of two and cannot grow. The implementation is tested with four concurrent
 thieves, exact-once delivery, and u32 counter rollover. No speedup over `Array.push/pop` is claimed:
 a JavaScript array is better for one realm, while this deque exists for shared-memory scheduling.
-End-to-end throughput against `postMessage` remains a benchmark gate before the API is called
-stable. Its 1,000-cycle owner lease and full-capacity push/pop memory profile passes all plateau
-checks.
+The end-to-end histogram benchmark below measures the same ownership/reduction design against
+`postMessage`; a dedicated irregular-task scheduling workload remains necessary before claiming a
+deque throughput advantage. Its 1,000-cycle owner lease and full-capacity push/pop memory profile
+passes all plateau checks.
+
+The end-to-end 4,096-bucket workload under
+[`experiments/shared-buffer`](../../experiments/shared-buffer) shows the actual trade-off: bulk
+striped publication was 2% faster than `postMessage` at two Workers and 5% faster at four, but 4%
+slower at one and 29% slower at eight on Apple M5 / Deno 2.6.4. Per-event `increment()` is a
+convenience, not the performance contract; use `setFrom()` after local batching.
 
 ## Atomic and SIMD boundary
 
@@ -435,8 +458,9 @@ Recorded with Vitest 4.1.11 / Node 24.12 / Apple M5 over one owner-only shared r
 | 262,144 |      0.0209 ms |                 0.0771 ms | 3.69x faster |
 
 The broader performance contract is zero-copy shared attachment plus bulk SIMD under an ownership
-rule, not a claim that a single atomic operation beats JavaScript `Atomics`. Multithread scaling and
-`postMessage` comparisons remain a v0.2.0 benchmark task.
+rule, not a claim that a single atomic operation beats JavaScript `Atomics`. The recorded
+1/2/4/8-Worker comparison includes `postMessage`, direct shared atomics, striped SIMD reduction,
+single-thread execution, p99 latency, hot-key contention, and packed-versus-padded false sharing.
 
 ```sh
 pnpm bench:shared-buffer
@@ -460,7 +484,7 @@ Sources:
 
 ## Standalone build size
 
-The isolated Vite 8.2 fixture emits 24.63 kB gzip of JavaScript across its separate main and Worker
+The isolated Vite 8.2 fixture emits 26.65 kB gzip of JavaScript across its separate main and Worker
 chunks plus one 0.33 kB gzip shared-memory Wasm asset. No unrelated jsimd Wasm is included. The
 duplicated wrapper cost is a current trade-off of compiling and attaching one kernel instance in
 each realm.
@@ -468,6 +492,7 @@ each realm.
 Files:
 
 - `mod.ts`: ABI validation, worker leases, shared views, and atomic/bulk operations
+- `ownership.ts`: generation-aware exclusive-owner claim and release primitives
 - `sync.ts`: cache-line-padded mutex, barrier, and wait-group views
 - `block-pool.ts`: fixed-size shared allocator and disposable block leases
 - `spsc-ring.ts` / `spsc-ring-u64.ts`: u32/u64 SPSC transport and disposable roles

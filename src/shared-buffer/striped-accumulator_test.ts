@@ -50,8 +50,10 @@ Deno.test("StripedHistogram performs a bulk SIMD sum into caller storage", async
   const histogram = StripedHistogram.initialize(shared, 0, { bucketCount: 5, stripeCount: 3 });
   for (let stripeIndex = 0; stripeIndex < histogram.stripeCount; stripeIndex++) {
     using stripe = histogram.claimStripe(stripeIndex);
-    stripe.add(0, stripeIndex + 1);
-    stripe.increment(stripeIndex + 1);
+    const buckets = new Uint32Array(5);
+    buckets[0] = stripeIndex + 1;
+    buckets[stripeIndex + 1] = 1;
+    stripe.setFrom(buckets);
   }
   const output = new Uint32Array(5);
   assert(histogram.reduceInto(output) === 5, "written bucket count");
@@ -129,6 +131,7 @@ Deno.test("Striped accumulators validate layouts, bounds, and lifetimes", async 
   assert(histogram.stripeStride === 128, "wide stripe cache-line rounding");
   assertThrows(() => histogram.claimStripe(2), RangeError, "stripe bounds");
   const stripe = histogram.claimStripe(0);
+  assertThrows(() => stripe.setFrom(new Uint32Array(16)), RangeError, "short bulk input");
   assertThrows(() => stripe.increment(17), RangeError, "bucket bounds");
   stripe[Symbol.dispose]();
   assertThrows(() => stripe.increment(0), Error, "disposed stripe");

@@ -64,9 +64,10 @@ and
       of the backing memory.
 - [x] Build deterministic Node Worker, Deno Worker, and cross-origin-isolated Vite/browser worker
       smoke tests with contended scalar atomic updates and lease-return checks.
-- [ ] Add forced Worker termination recovery, generation/stale-lease detection, and shared allocator
-      plateau cases after the allocator header owns reclamation metadata.
-- [ ] Benchmark 1/2/4/8 workers against `postMessage`, JavaScript `SharedArrayBuffer` + `Atomics`,
+- [x] Add explicit forced Worker termination recovery, generation/stale-lease detection, stale
+      exclusive-owner takeover, and shared block-cache plateau tests. Live transferable handles and
+      anonymous `VersionedBuffer` reader counts are deliberately not force-reclaimed.
+- [x] Benchmark 1/2/4/8 workers against `postMessage`, JavaScript `SharedArrayBuffer` + `Atomics`,
       and single-threaded SIMD. Report throughput, tail latency, contention, and false-sharing
       effects.
 

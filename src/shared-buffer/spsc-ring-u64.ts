@@ -1,5 +1,6 @@
 import { waitForAtomicChangeAsync, waitForAtomicChangeBlocking } from "./sync.ts";
 import type { SharedRingBufferSource } from "./spsc-ring.ts";
+import { releaseSharedOwner, tryClaimSharedOwner } from "./ownership.ts";
 
 const RING_MAGIC = 0x5336_3451;
 const RING_ABI_VERSION = 1;
@@ -124,8 +125,7 @@ export class SpscRingBufferU64 {
 
   #claimRole(index: number, name: string): void {
     assertBufferAlive(this.#buffer);
-    const owner = this.#buffer.workerId + 1;
-    if (Atomics.compareExchange(this.#header, index, 0, owner) !== 0) {
+    if (!tryClaimSharedOwner(this.#buffer, this.#header, index)) {
       throw new RangeError(`SpscRingBufferU64 ${name} role is already claimed`);
     }
   }
@@ -159,8 +159,7 @@ abstract class SpscEndpointU64 implements Disposable {
   [Symbol.dispose](): void {
     if (this.#disposed) return;
     this.#disposed = true;
-    const owner = this.#buffer.workerId + 1;
-    Atomics.compareExchange(this.#header, this.#roleIndex, owner, 0);
+    releaseSharedOwner(this.#buffer, this.#header, this.#roleIndex);
   }
 }
 

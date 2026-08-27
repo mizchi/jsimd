@@ -1,3 +1,9 @@
+import {
+  releaseSharedOwner,
+  type SharedOwnershipBuffer,
+  tryClaimSharedOwner,
+} from "./ownership.ts";
+
 export const STRIPED_ACCUMULATOR_CACHE_LINE_BYTES = 64;
 
 const HISTOGRAM_MAGIC = 0x5354_4847;
@@ -21,9 +27,8 @@ export interface StripedHistogramOptions {
   readonly stripeCount: number;
 }
 
-export interface StripedHistogramBuffer {
+export interface StripedHistogramBuffer extends SharedOwnershipBuffer {
   readonly workerId: number;
-  readonly disposed: boolean;
   readonly byteLength: number;
   int32Array(byteOffset: number, length: number): Int32Array;
   uint32Array(byteOffset: number, length: number): Uint32Array;
@@ -43,6 +48,7 @@ export interface StripedHistogramStripe extends Disposable {
   valueAt(bucket: number): number;
   increment(bucket: number): void;
   add(bucket: number, amount: number): void;
+  setFrom(values: Uint32Array): void;
   clearAll(): void;
 }
 
@@ -134,15 +140,14 @@ export class StripedHistogram {
   claimStripe(index: number = this.#buffer.workerId): StripedHistogramStripe {
     this.#assertAlive();
     validateIndex(index, this.stripeCount, "stripe");
-    const owner = this.#buffer.workerId + 1;
-    if (Atomics.compareExchange(this.#owners, index, 0, owner) !== 0) {
+    if (!tryClaimSharedOwner(this.#buffer, this.#owners, index)) {
       throw new RangeError("StripedHistogram stripe is already claimed");
     }
     return new HistogramStripeLease(
       this.#buffer,
       this.#owners,
       index,
-      owner,
+      this.#buffer.leaseToken,
       this.bucketCount,
       this.#buffer.uint32Array(
         this.dataByteOffset + index * this.stripeStride,
@@ -155,8 +160,7 @@ export class StripedHistogram {
     this.#assertAlive();
     if (!(output instanceof Uint32Array)) throw new TypeError("output must be a Uint32Array");
     if (output.length < this.bucketCount) throw new RangeError("output is too small");
-    const owner = this.#buffer.workerId + 1;
-    if (Atomics.compareExchange(this.#header, REDUCTION_OWNER_INDEX, 0, owner) !== 0) {
+    if (!tryClaimSharedOwner(this.#buffer, this.#header, REDUCTION_OWNER_INDEX)) {
       throw new RangeError("StripedHistogram reduction is already running");
     }
     try {
@@ -175,7 +179,7 @@ export class StripedHistogram {
       );
       return this.bucketCount;
     } finally {
-      Atomics.store(this.#header, REDUCTION_OWNER_INDEX, 0);
+      releaseSharedOwner(this.#buffer, this.#header, REDUCTION_OWNER_INDEX);
       Atomics.notify(this.#header, REDUCTION_OWNER_INDEX, 1);
     }
   }
@@ -227,6 +231,15 @@ class HistogramStripeLease implements StripedHistogramStripe {
     this.#assertBucket(bucket);
     validateUint32(amount, "amount");
     this.#buckets[bucket] = (this.#buckets[bucket]! + amount) >>> 0;
+  }
+
+  /** Replaces all logical buckets from one worker-local histogram. */
+  setFrom(values: Uint32Array): void {
+    this.#assertAlive();
+    if (!(values instanceof Uint32Array)) throw new TypeError("values must be a Uint32Array");
+    if (values.length < this.bucketCount) throw new RangeError("values is too small");
+    this.#buckets.set(values.subarray(0, this.bucketCount));
+    this.#buckets.fill(0, this.bucketCount);
   }
 
   clearAll(): void {

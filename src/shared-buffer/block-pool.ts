@@ -10,6 +10,7 @@ const CLASS_COUNT = SHARED_BLOCK_SIZES.length;
 const CACHE_SLOTS_PER_CLASS = 4;
 const CACHE_COUNT_BASE = 0;
 const CACHE_SLOT_BASE = CLASS_COUNT;
+const CACHE_OWNER_INDEX = HEADER_WORDS - 1;
 const MAX_U32 = 0xffff_ffff;
 
 const MAGIC_INDEX = 0;
@@ -70,6 +71,7 @@ export class SharedBlockPool {
     this.#header = header;
     this.#locks = locks;
     this.#cache = buffer.uint32Array(this.#workerCacheOffset(buffer.workerId), HEADER_WORDS);
+    this.#claimLocalCache();
   }
 
   static metadataByteLength(maxWorkers: number): number {
@@ -179,6 +181,36 @@ export class SharedBlockPool {
     return this.arenaEnd - this.arenaStart;
   }
 
+  /**
+   * Returns free blocks stranded in a terminated Worker's local cache to global free lists.
+   * Live blocks are intentionally not reclaimed because their handles may have been transferred.
+   */
+  reclaimTerminatedWorker(
+    lease: { readonly workerId: number; readonly leaseToken: number },
+  ): number {
+    this.#assertAlive();
+    validateWorkerLease(lease, this.#buffer.maxWorkers);
+    if (this.#buffer.isLeaseTokenActive(lease.leaseToken)) {
+      throw new RangeError("worker lease must be inactive before reclaiming its block cache");
+    }
+    const cache = this.#buffer.uint32Array(this.#workerCacheOffset(lease.workerId), HEADER_WORDS);
+    if (
+      Atomics.compareExchange(
+        cache,
+        CACHE_OWNER_INDEX,
+        lease.leaseToken,
+        this.#buffer.leaseToken,
+      ) !== lease.leaseToken
+    ) {
+      return 0;
+    }
+    try {
+      return this.#flushCache(cache);
+    } finally {
+      Atomics.compareExchange(cache, CACHE_OWNER_INDEX, this.#buffer.leaseToken, 0);
+    }
+  }
+
   allocate(size: SharedBlockSize): SharedBlock {
     const block = this.tryAllocate(size);
     if (block === undefined) throw new RangeError(`SharedBlockPool ${size}-byte arena exhausted`);
@@ -279,6 +311,58 @@ export class SharedBlockPool {
     }
   }
 
+  #claimLocalCache(): void {
+    const own = this.#buffer.leaseToken;
+    while (true) {
+      const current = Atomics.load(this.#cache, CACHE_OWNER_INDEX);
+      if (current === own) return;
+      if (current !== 0 && this.#buffer.isLeaseTokenActive(current)) {
+        throw new RangeError("SharedBlockPool worker cache is owned by an active lease");
+      }
+      if (Atomics.compareExchange(this.#cache, CACHE_OWNER_INDEX, current, own) !== current) {
+        continue;
+      }
+      if (current !== 0) this.#flushCache(this.#cache);
+      return;
+    }
+  }
+
+  #flushCache(cache: Uint32Array): number {
+    let recovered = 0;
+    for (let classIndex = 0; classIndex < CLASS_COUNT; classIndex++) {
+      const countIndex = CACHE_COUNT_BASE + classIndex;
+      const count = cache[countIndex]!;
+      if (count > CACHE_SLOTS_PER_CLASS) {
+        throw new RangeError("SharedBlockPool worker cache is corrupt");
+      }
+      if (count === 0) continue;
+      const lock = this.#locks[classIndex]!;
+      lock.lock();
+      try {
+        let head = Atomics.load(this.#header, FREE_HEAD_BASE + classIndex);
+        for (let index = 0; index < count; index++) {
+          const slotIndex = cacheSlotIndex(classIndex, index);
+          const pointer = cache[slotIndex]!;
+          validateBlockPointer(
+            pointer,
+            SHARED_BLOCK_SIZES[classIndex]!,
+            this.arenaStart,
+            this.arenaEnd,
+          );
+          this.#setNextFree(pointer, head);
+          head = pointer;
+          cache[slotIndex] = 0;
+          recovered++;
+        }
+        cache[countIndex] = 0;
+        Atomics.store(this.#header, FREE_HEAD_BASE + classIndex, head);
+      } finally {
+        lock.unlock();
+      }
+    }
+    return recovered;
+  }
+
   #nextFree(pointer: number): number {
     return this.#buffer.uint32Array(pointer, 1)[0]!;
   }
@@ -360,6 +444,18 @@ function validatePoolOffset(byteOffset: number): void {
   validateNonNegativeInteger(byteOffset, "byteOffset");
   if (byteOffset % SHARED_SYNC_BYTE_LENGTH !== 0) {
     throw new RangeError(`byteOffset must be ${SHARED_SYNC_BYTE_LENGTH}-byte aligned`);
+  }
+}
+
+function validateWorkerLease(
+  lease: { readonly workerId: number; readonly leaseToken: number },
+  maxWorkers: number,
+): void {
+  if (lease === null || typeof lease !== "object") throw new TypeError("lease must be an object");
+  validateNonNegativeInteger(lease.workerId, "lease.workerId");
+  if (lease.workerId >= maxWorkers) throw new RangeError("lease.workerId is out of bounds");
+  if (!Number.isSafeInteger(lease.leaseToken) || lease.leaseToken <= 0) {
+    throw new RangeError("lease.leaseToken must be a positive integer");
   }
 }
 

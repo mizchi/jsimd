@@ -1,3 +1,9 @@
+import {
+  releaseSharedOwner,
+  type SharedOwnershipBuffer,
+  tryClaimSharedOwner,
+} from "./ownership.ts";
+
 export const SHARDED_BITMAP_CACHE_LINE_BYTES = 64;
 
 const BITMAP_MAGIC = 0x5348_424d;
@@ -23,9 +29,8 @@ export interface ShardedBitmapOptions {
   readonly shardCount: number;
 }
 
-export interface ShardedBitmapBuffer {
+export interface ShardedBitmapBuffer extends SharedOwnershipBuffer {
   readonly workerId: number;
-  readonly disposed: boolean;
   readonly byteLength: number;
   int32Array(byteOffset: number, length: number): Int32Array;
   uint32Array(byteOffset: number, length: number): Uint32Array;
@@ -159,8 +164,7 @@ export class ShardedBitmap {
     if (!Number.isSafeInteger(index) || index < 0 || index >= this.shardCount) {
       throw new RangeError("shard index out of bounds");
     }
-    const owner = this.#buffer.workerId + 1;
-    if (Atomics.compareExchange(this.#owners, index, 0, owner) !== 0) {
+    if (!tryClaimSharedOwner(this.#buffer, this.#owners, index)) {
       throw new RangeError("ShardedBitmap shard is already claimed");
     }
     const words = this.#buffer.uint32Array(
@@ -171,7 +175,7 @@ export class ShardedBitmap {
       this.#buffer,
       this.#owners,
       index,
-      owner,
+      this.#buffer.leaseToken,
       this.capacity,
       words,
     );
@@ -187,8 +191,7 @@ export class ShardedBitmap {
 
   #reduce(operation: "or" | "and"): ShardedBitmapReduction {
     this.#assertAlive();
-    const owner = this.#buffer.workerId + 1;
-    if (Atomics.compareExchange(this.#header, REDUCTION_OWNER_INDEX, 0, owner) !== 0) {
+    if (!tryClaimSharedOwner(this.#buffer, this.#header, REDUCTION_OWNER_INDEX)) {
       throw new RangeError("ShardedBitmap reduction is already running");
     }
     try {
@@ -213,7 +216,7 @@ export class ShardedBitmap {
         words,
       );
     } finally {
-      Atomics.store(this.#header, REDUCTION_OWNER_INDEX, 0);
+      releaseSharedOwner(this.#buffer, this.#header, REDUCTION_OWNER_INDEX);
       Atomics.notify(this.#header, REDUCTION_OWNER_INDEX, 1);
     }
   }

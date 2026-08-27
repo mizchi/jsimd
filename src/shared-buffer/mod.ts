@@ -1,4 +1,4 @@
-export const SHARED_BUFFER_ABI_VERSION = 1;
+export const SHARED_BUFFER_ABI_VERSION = 2;
 export const SHARED_BUFFER_CACHE_LINE_BYTES = 64;
 export const SHARED_BUFFER_ALIGNMENT = 16;
 
@@ -12,6 +12,11 @@ const ACTIVE_WORKERS_INDEX = 5;
 const READY_INDEX = 6;
 const FIXED_HEADER_BYTES = SHARED_BUFFER_CACHE_LINE_BYTES;
 const WORKER_SLOT_BYTES = SHARED_BUFFER_CACHE_LINE_BYTES;
+const WORKER_LEASE_INDEX = 0;
+const WORKER_GENERATION_INDEX = 1;
+const WORKER_ID_BITS = 8;
+const WORKER_ID_MASK = (1 << WORKER_ID_BITS) - 1;
+const MAX_WORKER_GENERATION = 0x7f_ffff;
 const HEADER_WORDS = FIXED_HEADER_BYTES / Int32Array.BYTES_PER_ELEMENT;
 const MAXIMUM_WASM_PAGES = 65_536;
 
@@ -45,6 +50,12 @@ export interface SharedBufferOptions {
   readonly initialPages?: number;
   readonly maximumPages?: number;
   readonly maxWorkers?: number;
+}
+
+/** Opaque proof that a particular generation owned a worker slot. */
+export interface SharedWorkerLease {
+  readonly workerId: number;
+  readonly leaseToken: number;
 }
 
 /** Returns whether this runtime can construct shared WebAssembly linear memory. */
@@ -88,10 +99,16 @@ export class SharedBuffer {
   readonly maximumPages: number;
   readonly maxWorkers: number;
   readonly workerId: number;
+  readonly leaseToken: number;
   readonly #kernels: SharedBufferKernels;
   #disposed = false;
 
-  private constructor(memory: WebAssembly.Memory, workerId: number, module: WebAssembly.Module) {
+  private constructor(
+    memory: WebAssembly.Memory,
+    workerId: number,
+    leaseToken: number,
+    module: WebAssembly.Module,
+  ) {
     const header = readHeader(memory);
     this.memory = memory;
     this.abiVersion = header.abiVersion;
@@ -99,6 +116,7 @@ export class SharedBuffer {
     this.maximumPages = header.maximumPages;
     this.maxWorkers = header.maxWorkers;
     this.workerId = workerId;
+    this.leaseToken = leaseToken;
     this.#kernels = instantiateSharedModule<SharedBufferKernels>(module, memory);
   }
 
@@ -139,13 +157,23 @@ export class SharedBuffer {
     const workerStates = workerStateView(memory, header.maxWorkers);
     for (let workerId = 0; workerId < header.maxWorkers; workerId++) {
       const index = workerId * (WORKER_SLOT_BYTES / Int32Array.BYTES_PER_ELEMENT);
-      if (Atomics.compareExchange(workerStates, index, 0, 1) !== 0) continue;
+      if (Atomics.load(workerStates, index + WORKER_LEASE_INDEX) !== 0) continue;
+      const generation = nextWorkerGeneration(
+        Atomics.add(workerStates, index + WORKER_GENERATION_INDEX, 1),
+      );
+      if (generation === 1) {
+        Atomics.store(workerStates, index + WORKER_GENERATION_INDEX, 1);
+      }
+      const leaseToken = encodeLeaseToken(workerId, generation);
+      if (
+        Atomics.compareExchange(workerStates, index + WORKER_LEASE_INDEX, 0, leaseToken) !== 0
+      ) continue;
       Atomics.add(new Int32Array(memory.buffer, 0, HEADER_WORDS), ACTIVE_WORKERS_INDEX, 1);
       try {
-        return new SharedBuffer(memory, workerId, module);
+        return new SharedBuffer(memory, workerId, leaseToken, module);
       } catch (error) {
         Atomics.sub(new Int32Array(memory.buffer, 0, HEADER_WORDS), ACTIVE_WORKERS_INDEX, 1);
-        Atomics.store(workerStates, index, 0);
+        Atomics.compareExchange(workerStates, index + WORKER_LEASE_INDEX, leaseToken, 0);
         throw error;
       }
     }
@@ -157,7 +185,50 @@ export class SharedBuffer {
   }
 
   get disposed(): boolean {
-    return this.#disposed;
+    return this.#disposed || !this.isLeaseTokenActive(this.leaseToken);
+  }
+
+  get workerLease(): SharedWorkerLease {
+    return { workerId: this.workerId, leaseToken: this.leaseToken };
+  }
+
+  /** Returns whether an ownership token still names its exact worker-slot generation. */
+  isLeaseTokenActive(leaseToken: number): boolean {
+    if (!Number.isSafeInteger(leaseToken) || leaseToken <= 0) return false;
+    const workerId = (leaseToken & WORKER_ID_MASK) - 1;
+    if (workerId < 0 || workerId >= this.maxWorkers) return false;
+    const states = workerStateView(this.memory, this.maxWorkers);
+    const index = workerId * (WORKER_SLOT_BYTES / Int32Array.BYTES_PER_ELEMENT);
+    return Atomics.load(states, index + WORKER_LEASE_INDEX) === leaseToken;
+  }
+
+  /**
+   * Reclaims a lease after its Worker has terminated without disposing it.
+   *
+   * The caller must first establish that the Worker can no longer access shared memory. Exact-token
+   * CAS prevents an old termination notification from reclaiming a replacement generation.
+   */
+  reclaimTerminatedWorker(lease: SharedWorkerLease): boolean {
+    this.#assertAlive();
+    validateWorkerLease(lease, this.maxWorkers);
+    if (lease.leaseToken === this.leaseToken) {
+      throw new RangeError("a SharedBuffer lease cannot reclaim itself");
+    }
+    if (decodeWorkerId(lease.leaseToken) !== lease.workerId) {
+      throw new RangeError("worker lease token does not match workerId");
+    }
+    const states = workerStateView(this.memory, this.maxWorkers);
+    const index = lease.workerId * (WORKER_SLOT_BYTES / Int32Array.BYTES_PER_ELEMENT);
+    if (
+      Atomics.compareExchange(
+        states,
+        index + WORKER_LEASE_INDEX,
+        lease.leaseToken,
+        0,
+      ) !== lease.leaseToken
+    ) return false;
+    Atomics.sub(new Int32Array(this.memory.buffer, 0, HEADER_WORDS), ACTIVE_WORKERS_INDEX, 1);
+    return true;
   }
 
   get byteLength(): number {
@@ -287,12 +358,19 @@ export class SharedBuffer {
     const header = readHeader(this.memory);
     const states = workerStateView(this.memory, header.maxWorkers);
     const index = this.workerId * (WORKER_SLOT_BYTES / Int32Array.BYTES_PER_ELEMENT);
-    if (Atomics.compareExchange(states, index, 1, 0) !== 1) return;
+    if (
+      Atomics.compareExchange(
+        states,
+        index + WORKER_LEASE_INDEX,
+        this.leaseToken,
+        0,
+      ) !== this.leaseToken
+    ) return;
     Atomics.sub(new Int32Array(this.memory.buffer, 0, HEADER_WORDS), ACTIVE_WORKERS_INDEX, 1);
   }
 
   #assertAlive(): void {
-    if (this.#disposed) throw new Error("SharedBuffer lease has been disposed");
+    if (this.disposed) throw new Error("SharedBuffer lease has been disposed or reclaimed");
   }
 
   #reduceUint32Shards(
@@ -413,7 +491,32 @@ function validatePageCount(value: number, name: string): number {
 function validateMaxWorkers(value: number): number {
   const result = validateNonNegativeInteger(value, "maxWorkers");
   if (result < 1) throw new RangeError("maxWorkers must be positive");
+  if (result > WORKER_ID_MASK) {
+    throw new RangeError(`maxWorkers must be at most ${WORKER_ID_MASK}`);
+  }
   return result;
+}
+
+function nextWorkerGeneration(previous: number): number {
+  const generation = previous + 1;
+  return generation > MAX_WORKER_GENERATION || generation < 1 ? 1 : generation;
+}
+
+function encodeLeaseToken(workerId: number, generation: number): number {
+  return generation * (1 << WORKER_ID_BITS) + workerId + 1;
+}
+
+function decodeWorkerId(leaseToken: number): number {
+  return (leaseToken & WORKER_ID_MASK) - 1;
+}
+
+function validateWorkerLease(lease: SharedWorkerLease, maxWorkers: number): void {
+  if (lease === null || typeof lease !== "object") throw new TypeError("lease must be an object");
+  const workerId = validateNonNegativeInteger(lease.workerId, "lease.workerId");
+  if (workerId >= maxWorkers) throw new RangeError("lease.workerId is out of range");
+  if (!Number.isSafeInteger(lease.leaseToken) || lease.leaseToken <= 0) {
+    throw new RangeError("lease.leaseToken must be a positive integer");
+  }
 }
 
 function validateNonNegativeInteger(value: number, name: string): number {

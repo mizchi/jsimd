@@ -59,6 +59,27 @@ Deno.test("SharedBuffer attaches, releases, and reuses worker leases", async () 
   second[Symbol.dispose]();
 });
 
+Deno.test("SharedBuffer reclaims a terminated worker without reviving its stale lease", async () => {
+  using coordinator = await SharedBuffer.create({ maxWorkers: 2 });
+  const terminated = await SharedBuffer.attach(coordinator.memory);
+  const staleLease = terminated.workerLease;
+
+  assert(coordinator.reclaimTerminatedWorker(staleLease), "terminated lease must be reclaimed");
+  assert(coordinator.activeWorkers === 1, "reclaim decrements active workers");
+  assert(terminated.disposed, "reclaimed in-realm lease becomes stale");
+  assertThrows(() => terminated.uint8Array(0, 1), Error, "stale lease rejects access");
+
+  using replacement = await SharedBuffer.attach(coordinator.memory);
+  assert(replacement.workerId === staleLease.workerId, "worker slot must be reusable");
+  assert(replacement.leaseToken !== staleLease.leaseToken, "generation must change on reuse");
+  assert(
+    !coordinator.reclaimTerminatedWorker(staleLease),
+    "stale token cannot reclaim replacement",
+  );
+  terminated[Symbol.dispose]();
+  assert(coordinator.activeWorkers === 2, "stale disposal cannot detach replacement");
+});
+
 Deno.test("SharedBuffer imported Wasm kernels operate on the attached memory", async () => {
   using owner = await SharedBuffer.create({ initialPages: 1, maximumPages: 2 });
   using attached = await SharedBuffer.attach(owner.memory);
@@ -99,6 +120,16 @@ Deno.test("SharedBuffer validates foreign memories, alignment, bounds, and dispo
     "foreign header must be rejected",
   );
   const shared = await SharedBuffer.create({ maximumPages: 2 });
+  await assertRejects(
+    () => SharedBuffer.create({ maxWorkers: 256 }),
+    RangeError,
+    "lease tokens bound worker capacity",
+  );
+  assertThrows(
+    () => shared.reclaimTerminatedWorker(shared.workerLease),
+    RangeError,
+    "a live lease cannot reclaim itself",
+  );
   assertThrows(() => shared.uint32Array(2, 1), RangeError, "unaligned view must be rejected");
   assertThrows(() => shared.uint8Array(shared.byteLength, 1), RangeError, "bounds must be checked");
   shared[Symbol.dispose]();

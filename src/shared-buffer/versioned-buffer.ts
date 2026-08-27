@@ -1,3 +1,9 @@
+import {
+  releaseSharedOwner,
+  type SharedOwnershipBuffer,
+  tryClaimSharedOwner,
+} from "./ownership.ts";
+
 export const VERSIONED_BUFFER_CACHE_LINE_BYTES = 64;
 
 const VERSIONED_BUFFER_MAGIC = 0x5652_4246;
@@ -14,9 +20,8 @@ const BYTE_LENGTH_INDEX = 4;
 const STATE_INDEX = 5;
 const WRITER_OWNER_INDEX = 6;
 
-export interface VersionedBufferBacking {
+export interface VersionedBufferBacking extends SharedOwnershipBuffer {
   readonly workerId: number;
-  readonly disposed: boolean;
   readonly byteLength: number;
   int32Array(byteOffset: number, length: number): Int32Array;
   uint8Array(byteOffset?: number, length?: number): Uint8Array;
@@ -165,21 +170,20 @@ export class VersionedBuffer {
 
   tryBeginWrite(): VersionedBufferWriter | undefined {
     this.#assertAlive();
-    const owner = this.#buffer.workerId + 1;
-    if (Atomics.compareExchange(this.#header, WRITER_OWNER_INDEX, 0, owner) !== 0) {
+    if (!tryClaimSharedOwner(this.#buffer, this.#header, WRITER_OWNER_INDEX)) {
       return undefined;
     }
     const state = Atomics.load(this.#header, STATE_INDEX) >>> 0;
     const slot = 1 - (state & 1);
     if (Atomics.load(this.#readers[slot as 0 | 1], 0) !== 0) {
-      Atomics.store(this.#header, WRITER_OWNER_INDEX, 0);
+      releaseSharedOwner(this.#buffer, this.#header, WRITER_OWNER_INDEX);
       Atomics.notify(this.#header, WRITER_OWNER_INDEX, 1);
       return undefined;
     }
     return new WriterLease(
       this.#buffer,
       this.#header,
-      owner,
+      this.#buffer.leaseToken,
       state,
       this.byteCapacity,
       this.#buffer.uint8Array(
@@ -294,7 +298,7 @@ class WriterLease implements VersionedBufferWriter {
   [Symbol.dispose](): void {
     if (this.#disposed) return;
     this.#disposed = true;
-    Atomics.compareExchange(this.#header, WRITER_OWNER_INDEX, this.#owner, 0);
+    releaseSharedOwner(this.#buffer, this.#header, WRITER_OWNER_INDEX);
     Atomics.notify(this.#header, WRITER_OWNER_INDEX, 1);
   }
 
