@@ -1,0 +1,43 @@
+{
+  "runtime": {
+    "deno": "2.6.4",
+    "v8": "14.2.231.17-rusty",
+    "typescript": "5.9.2",
+    "target": "aarch64-apple-darwin",
+    "logicalCpus": 10
+  },
+  "workload": {
+    "shape": "page-pruned log time-range/group-by count+sum+min+max",
+    "rows": 8388608,
+    "logicalBytes": 75497472,
+    "pageRows": 65536,
+    "groupCount": 8,
+    "selectivity": 0.10000002384185791,
+    "warmups": 7,
+    "samples": 11
+  },
+  "initializationMs": 194.16,
+  "measurements": [
+    {
+      "mode": "page-aware-javascript",
+      "workers": 1,
+      "medianMs": 2.69,
+      "p95Ms": 3.29
+    },
+    {
+      "mode": "single-thread-wasm-simd",
+      "workers": 1,
+      "medianMs": 1.49,
+      "p95Ms": 1.63,
+      "speedupVsJs": 1.81
+    },
+    {
+      "mode": "shared-memory-workers",
+      "workers": 8,
+      "medianMs": 2.3,
+      "p95Ms": 2.37,
+      "speedupVsJs": 1.17,
+      "speedupVsSingleWasm": 0.65
+    }
+  ]
+}

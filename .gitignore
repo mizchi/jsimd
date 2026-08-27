@@ -34,6 +34,8 @@ experiments/parallel-columnar-query/duckdb-comparison/dist/
 experiments/parallel-hybrid-query/kernels.wasm
 experiments/bitmap-grid-astar/tree-shake-fixture/dist/
 experiments/columnar-schema-engine/tree-shake-fixture/dist/
+experiments/columnar-schema-engine/browser-benchmark/dist/
+experiments/webgpu-vector-search/browser-benchmark/dist/
 experiments/static-mphf-bytes/tree-shake-fixture/dist/
 examples/tree-shake-packed-delta-uint32-list/dist/
 examples/tree-shake-wavelet-matrix-uint32/dist/

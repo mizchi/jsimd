@@ -1,0 +1,50 @@
+{
+  "runtime": {
+    "deno": "2.6.4",
+    "v8": "14.2.231.17-rusty",
+    "typescript": "5.9.2",
+    "target": "aarch64-apple-darwin",
+    "arch": "aarch64",
+    "os": "darwin",
+    "vendor": "apple",
+    "standalone": false,
+    "logicalCpus": 10
+  },
+  "workload": {
+    "shape": "Q1-like low-cardinality filter/group-by count+sum+min+max",
+    "rows": 8388608,
+    "bytes": 75497472,
+    "pageRows": 65536,
+    "groupCount": 8,
+    "selectivity": 0.5000851154327393,
+    "warmups": 7,
+    "samples": 11
+  },
+  "initializationMs": 233.05,
+  "measurements": [
+    {
+      "mode": "optimized-javascript",
+      "workers": 1,
+      "medianMs": 41.17,
+      "p95Ms": 43.66,
+      "speedupVsJs": 1,
+      "speedupVsSingleWasm": 0.88
+    },
+    {
+      "mode": "single-thread-wasm-simd",
+      "workers": 1,
+      "medianMs": 36.34,
+      "p95Ms": 39.01,
+      "speedupVsJs": 1.13,
+      "speedupVsSingleWasm": 1
+    },
+    {
+      "mode": "shared-memory-workers",
+      "workers": 8,
+      "medianMs": 8.31,
+      "p95Ms": 9.13,
+      "speedupVsJs": 4.95,
+      "speedupVsSingleWasm": 4.37
+    }
+  ]
+}

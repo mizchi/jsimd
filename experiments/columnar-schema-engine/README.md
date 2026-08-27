@@ -17,7 +17,9 @@ import {
   defineTable,
   i32,
   IndexedDbPageBackend,
+  nullable,
   SchemaEngine,
+  string,
   u32,
   u8,
 } from "./mod.ts";
@@ -25,7 +27,8 @@ import {
 const analytics = defineSchema({
   events: defineTable({
     id: u32(),
-    temperature: i32(),
+    temperature: i32({ nullable: true }),
+    source: string({ nullable: true }),
     kind: u8({ bitWidth: 3 }),
   }),
 });
@@ -35,7 +38,11 @@ using database = new SchemaEngine(analytics, backend);
 
 await database.replace("events", {
   id: Uint32Array.of(10, 11, 12, 13),
-  temperature: Int32Array.of(18, 21, 24, 31),
+  temperature: nullable(
+    Int32Array.of(18, 0, 24, 31),
+    Uint8Array.of(1, 0, 1, 1),
+  ),
+  source: ["sensor-a", null, "sensor-a", "sensor-b"],
   kind: Uint8Array.of(1, 2, 2, 3),
 });
 
@@ -91,12 +98,23 @@ typed arrays
   the reconstruction benchmark.
 - The manifest stores per-column `min`/`max`, so any false predicate skips the whole row group
   before page reads. Projection columns are loaded only for row groups that survive.
+- Nullable numeric columns retain typed values plus a one-byte-per-row validity input/output.
+  Comparisons exclude nulls; `whereNull()` and `whereNotNull()` query validity directly.
+- String pages use a sorted per-row-group UTF-8 dictionary and resident `u32` codes. Equality and
+  range predicates scan codes, while projection decodes only selected rows. Low-cardinality repeated
+  strings are the intended case; high-cardinality or one-shot string scans can be slower and larger
+  than direct JavaScript arrays.
+- Schema evolution is deliberately additive: stored columns and `rowGroupSize` cannot change. A new
+  nullable column is read as null, and a new non-nullable column requires a `default`. Defaults are
+  virtual pages and cause no storage read.
 - `replace()` writes a new immutable generation and publishes its manifest last. Old generations
   remain readable until explicit `vacuum()`.
 - An engine holds a manifest snapshot. Another writer is observed only after `refresh(table)`, which
   also drops resident pages for that table.
-- `cacheBytes` currently budgets serialized page bytes approximately, not total host plus rounded
-  Wasm allocator capacity.
+- `cacheBytes` bounds retained host payload plus live Wasm encoded payload. `cacheStats()` exposes
+  both components. A pinned query working set may temporarily exceed the bound, but lease release
+  evicts back below it. This is live-payload accounting, not process RSS: JavaScript object headers
+  and the non-shrinking Wasm linear-memory high-water mark are outside the budget.
 
 The backend contract is deliberately small:
 
@@ -139,24 +157,41 @@ The benchmark intentionally compares against page-aware JavaScript, not only a n
 manifest cache was necessary: reparsing it on every warm query made the first prototype 1.87x slower
 than page-aware JavaScript.
 
+### Real-browser IndexedDB restoration
+
+Headless Chrome 152 on the same machine measured the selective count over 4,194,304 persisted rows.
+The predicate reads two pages (104,516 bytes) from one of 64 row groups.
+
+| measured boundary                       | median per query | p95 per query |
+| :-------------------------------------- | ---------------: | ------------: |
+| resident host/Wasm pages                |         0.010 ms |      0.050 ms |
+| cleared page cache, open IndexedDB      |         0.290 ms |      0.360 ms |
+| reopen IndexedDB and engine every query |         0.510 ms |      0.870 ms |
+
+This measures engine/page restoration in a real browser, not guaranteed physical-disk cold I/O:
+Chrome and the OS may retain database file pages. Each of the 30 recorded samples contains ten
+operations to avoid rounding sub-millisecond measurements to zero. The versioned result includes all
+raw samples, warmups, input shape, CPU/browser metadata, and correctness checks in
+[`benchmarks/indexeddb-browser.json`](./benchmarks/indexeddb-browser.json).
+
 ## Isolated build size
 
-The browser fixture imports the complete experimental schema engine and all three column types. Its
-production output contains a 10.73 kB gzip minified JavaScript asset and one 1.16 kB gzip Wasm
-asset. These figures are updated by the repository verification pass rather than estimated from
-source.
+The isolated tree-shake fixture imports the complete experimental schema engine and all column
+types. Its production output contains a 13.84 kB gzip minified JavaScript asset and one 1.16 kB gzip
+Wasm asset. The separate browser benchmark also imports the internal result harness, so it is not
+used as the engine build-size measurement. These figures are updated by the repository verification
+pass rather than estimated from source.
 
 ```sh
 pnpm test:columnar-schema-engine
 pnpm bench:columnar-schema-engine --run
 pnpm bench:record:columnar-schema-engine --run
+pnpm bench:columnar-schema-indexeddb-browser
+pnpm bench:record:columnar-schema-indexeddb-browser
 ```
 
 ## Missing before a public API
 
-- Automated real-browser IndexedDB correctness and latency tests
-- Nullability, strings, dictionaries, and schema evolution rules
 - Streaming result batches, limits, aggregates, ordering, and a predicate AST beyond AND
-- Bounded cache accounting across both host and Wasm memory
 - Single-writer coordination, crash/fault injection, orphan cleanup policy, and concurrent vacuum
 - OPFS comparison and an I/O benchmark large enough to exceed the OS/browser cache

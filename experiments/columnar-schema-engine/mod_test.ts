@@ -4,7 +4,9 @@ import {
   i32,
   IndexedDbPageBackend,
   MemoryPageBackend,
+  nullable,
   SchemaEngine,
+  string,
   u32,
   u8,
 } from "./mod.ts";
@@ -230,6 +232,117 @@ Deno.test("concurrent cold queries share page restoration and release the Wasm c
   const after = SelectionMask.allocatorStats();
   assertEquals(after.liveAllocations, before.liveAllocations, "concurrent live allocations");
   assertEquals(after.liveBytes, before.liveBytes, "concurrent live bytes");
+});
+
+Deno.test("nullable numeric and dictionary string columns preserve validity", async () => {
+  const schema = defineSchema({
+    events: defineTable({
+      id: u32(),
+      score: i32({ nullable: true }),
+      tag: string({ nullable: true }),
+    }, { rowGroupSize: 256 }),
+  });
+  using engine = new SchemaEngine(schema, new MemoryPageBackend());
+  await engine.replace("events", {
+    id: Uint32Array.of(10, 11, 12, 13, 14),
+    score: nullable(Int32Array.of(5, 99, 7, 50, 9), Uint8Array.of(1, 0, 1, 1, 1)),
+    tag: ["cold", "hot", null, "hot", "cold"],
+  });
+
+  const numeric = await engine.query("events")
+    .where("score", "lt", 10)
+    .select("id", "score", "tag")
+    .execute();
+  assertEquals(Array.from(numeric.rowIds), [0, 2, 4], "null numeric values do not match");
+  assertEquals(Array.from(numeric.columns.id), [10, 12, 14], "numeric projection ids");
+  assertEquals(Array.from(numeric.columns.score.values), [5, 7, 9], "nullable values");
+  assertEquals(Array.from(numeric.columns.score.validity), [1, 1, 1], "nullable validity");
+  assertEquals(numeric.columns.tag, ["cold", null, "cold"], "nullable strings");
+
+  const strings = await engine.query("events")
+    .where("tag", "eq", "hot")
+    .select("id", "tag")
+    .execute();
+  assertEquals(Array.from(strings.columns.id), [11, 13], "dictionary equality ids");
+  assertEquals(strings.columns.tag, ["hot", "hot"], "dictionary projection");
+
+  const missing = await engine.query("events").whereNull("tag").select("id").execute();
+  assertEquals(Array.from(missing.columns.id), [12], "null predicate");
+  const present = await engine.query("events").whereNotNull("score").count();
+  assertEquals(present.value, 4, "not-null predicate");
+  const cache = engine.cacheStats();
+  assert(cache.hostBytes > 0, "dictionary payload remains host-resident");
+  assert(cache.wasmBytes > 0, "dictionary codes and numeric pages become Wasm-resident");
+});
+
+Deno.test("additive schema evolution materializes defaults without stored pages", async () => {
+  const backend = new MemoryPageBackend();
+  const initial = defineSchema({
+    events: defineTable({ id: u32() }, { rowGroupSize: 256 }),
+  });
+  {
+    using engine = new SchemaEngine(initial, backend);
+    await engine.replace("events", { id: Uint32Array.of(20, 21, 22) });
+  }
+
+  const evolved = defineSchema({
+    events: defineTable({
+      id: u32(),
+      score: i32({ default: 7 }),
+      note: string({ nullable: true }),
+    }, { rowGroupSize: 256 }),
+  });
+  using engine = new SchemaEngine(evolved, backend);
+  const result = await engine.query("events")
+    .where("score", "eq", 7)
+    .select("id", "score", "note")
+    .execute();
+  assertEquals(Array.from(result.columns.id), [20, 21, 22], "stored column");
+  assertEquals(Array.from(result.columns.score), [7, 7, 7], "numeric default");
+  assertEquals(result.columns.note, [null, null, null], "nullable default");
+  assertEquals(result.stats.pagesRead, 1, "defaults do not read physical pages");
+
+  const incompatible = defineSchema({
+    events: defineTable({ id: i32() }, { rowGroupSize: 256 }),
+  });
+  using wrong = new SchemaEngine(incompatible, backend);
+  await assertRejects(() => wrong.query("events").count(), "changed column kind is rejected");
+});
+
+Deno.test("cache budget accounts for retained host and Wasm bytes", async () => {
+  const backend = new MemoryPageBackend();
+  using engine = new SchemaEngine(analytics, backend, {
+    cacheBytes: 1_200,
+    pageFormat: "raw",
+  });
+  await engine.replace("events", fixture(768));
+  engine.clearCache();
+  await engine.query("events").where("temperature", "lt", 10_000).select("id").execute();
+  const stats = engine.cacheStats();
+  assert(stats.totalBytes <= stats.maximumBytes, "released cache remains within its hard budget");
+  assertEquals(stats.totalBytes, stats.hostBytes + stats.wasmBytes, "combined accounting");
+  assert(stats.evictions > 0, "the combined budget evicts pages");
+});
+
+Deno.test("nullable and dictionary cache disposal releases all Wasm allocations", async () => {
+  const before = SelectionMask.allocatorStats();
+  {
+    const schema = defineSchema({
+      values: defineTable({
+        number: i32({ nullable: true }),
+        category: string({ nullable: true }),
+      }, { rowGroupSize: 256 }),
+    });
+    using engine = new SchemaEngine(schema, new MemoryPageBackend());
+    await engine.replace("values", {
+      number: nullable(Int32Array.of(1, 2, 3), Uint8Array.of(1, 0, 1)),
+      category: ["a", null, "b"],
+    });
+    await engine.query("values").whereNotNull("category").select("number").execute();
+  }
+  const after = SelectionMask.allocatorStats();
+  assertEquals(after.liveAllocations, before.liveAllocations, "nullable live allocations");
+  assertEquals(after.liveBytes, before.liveBytes, "nullable live bytes");
 });
 
 async function assertRejects(operation: () => Promise<unknown>, message: string): Promise<void> {

@@ -1,0 +1,100 @@
+{
+  "environment": {
+    "machine": "Apple Silicon",
+    "browser": "HeadlessChrome 152.0.0.0",
+    "duckdbWasmPackage": "1.32.0",
+    "duckdbVersion": "v1.4.3",
+    "crossOriginIsolated": true
+  },
+  "workload": {
+    "shape": "page-pruned log time-range/group-by count+sum+min+max",
+    "rows": 16777216,
+    "logicalBytes": 150994944,
+    "predicate": "timestamp >= 70% AND timestamp < 80%",
+    "groupCount": 8,
+    "selectivity": 0.1,
+    "warmups": 5,
+    "samples": 11
+  },
+  "results": [
+    {
+      "mode": "jsimd-single",
+      "workerCount": 1,
+      "initializationMs": 239.09999990463257,
+      "medianMs": 2.190000057220459,
+      "samplesMs": [
+        2.2100000381469727,
+        2.2100000381469727,
+        2.2350001335144043,
+        2.190000057220459,
+        2.184999942779541,
+        2.174999713897705,
+        2.4050002098083496,
+        2.2100000381469727,
+        2.169999599456787,
+        2.1650004386901855,
+        2.1599998474121094
+      ]
+    },
+    {
+      "mode": "jsimd-workers",
+      "workerCount": 8,
+      "initializationMs": 235.9850001335144,
+      "medianMs": 0.6149997711181641,
+      "samplesMs": [
+        0.5199999809265137,
+        0.929999828338623,
+        0.625,
+        0.5399999618530273,
+        0.6449999809265137,
+        0.7000002861022949,
+        0.6149997711181641,
+        0.5750002861022949,
+        0.6349997520446777,
+        0.49499988555908203,
+        0.49000024795532227
+      ]
+    },
+    {
+      "mode": "duckdb-eh",
+      "workerCount": 1,
+      "duckdbConfiguredThreads": 1,
+      "initializationMs": 1046.670000076294,
+      "medianMs": 6.185000419616699,
+      "samplesMs": [
+        6.409999847412109,
+        6.195000171661377,
+        5.96999979019165,
+        6.055000305175781,
+        5.964999675750732,
+        6.185000419616699,
+        6.625,
+        6.829999923706055,
+        6.739999771118164,
+        6.105000019073486,
+        6.019999980926514
+      ]
+    },
+    {
+      "mode": "duckdb-coi",
+      "workerCount": 8,
+      "duckdbConfiguredThreads": 8,
+      "initializationMs": 1334.340000152588,
+      "medianMs": 4.690000057220459,
+      "samplesMs": [
+        11.269999980926514,
+        5.994999885559082,
+        4.140000343322754,
+        4.059999942779541,
+        4.789999961853027,
+        4.690000057220459,
+        4.179999828338623,
+        5.034999847412109,
+        3.575000286102295,
+        3.989999771118164,
+        5.985000133514404
+      ]
+    }
+  ],
+  "validated": "all eight group count/sum/min/max outputs matched"
+}

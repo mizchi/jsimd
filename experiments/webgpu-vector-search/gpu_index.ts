@@ -9,6 +9,8 @@ export interface WebGpuVectorSearchOptions {
   readonly adapter?: GPUAdapter;
   readonly maxK?: number;
   readonly maxBatchSize?: number;
+  /** Independent query/scratch/readback slots available to concurrent submissions. */
+  readonly inFlightSlots?: number;
 }
 
 export interface WebGpuTopKResult {
@@ -28,6 +30,7 @@ export interface WebGpuTopKProfile extends WebGpuTopKResult {
 export class WebGpuVectorSearch implements AsyncDisposable {
   readonly maxK: number;
   readonly maxBatchSize: number;
+  readonly inFlightSlots: number;
   readonly adapterInfo: GPUAdapterInfo;
   readonly #device: GPUDevice;
   readonly #distancePipeline: GPUComputePipeline;
@@ -39,6 +42,7 @@ export class WebGpuVectorSearch implements AsyncDisposable {
     adapterInfo: GPUAdapterInfo,
     maxK: number,
     maxBatchSize: number,
+    inFlightSlots: number,
     distancePipeline: GPUComputePipeline,
     reducePipeline: GPUComputePipeline,
   ) {
@@ -46,6 +50,7 @@ export class WebGpuVectorSearch implements AsyncDisposable {
     this.adapterInfo = adapterInfo;
     this.maxK = maxK;
     this.maxBatchSize = maxBatchSize;
+    this.inFlightSlots = inFlightSlots;
     this.#distancePipeline = distancePipeline;
     this.#reducePipeline = reducePipeline;
   }
@@ -58,6 +63,10 @@ export class WebGpuVectorSearch implements AsyncDisposable {
     const maxBatchSize = options.maxBatchSize ?? 64;
     if (!Number.isSafeInteger(maxBatchSize) || maxBatchSize < 1) {
       throw new RangeError("maxBatchSize must be a positive integer");
+    }
+    const inFlightSlots = options.inFlightSlots ?? 1;
+    if (!Number.isSafeInteger(inFlightSlots) || inFlightSlots < 1) {
+      throw new RangeError("inFlightSlots must be a positive integer");
     }
     const adapter = options.adapter ?? await navigator.gpu?.requestAdapter();
     if (!adapter) throw new Error("WebGPU adapter is unavailable");
@@ -99,6 +108,7 @@ export class WebGpuVectorSearch implements AsyncDisposable {
         adapter.info,
         maxK,
         maxBatchSize,
+        inFlightSlots,
         distancePipeline,
         reducePipeline,
       );
@@ -139,6 +149,7 @@ export class WebGpuVectorSearch implements AsyncDisposable {
       dimensions,
       this.maxK,
       this.maxBatchSize,
+      this.inFlightSlots,
       candidateBytes,
     );
   }
@@ -155,25 +166,32 @@ export class WebGpuVectorSearch implements AsyncDisposable {
   }
 }
 
+interface WebGpuQuerySlot {
+  readonly queryBuffer: GPUBuffer;
+  readonly parameterBuffers: readonly GPUBuffer[];
+  readonly candidateA: GPUBuffer;
+  readonly candidateB: GPUBuffer;
+  readonly readbackBuffer: GPUBuffer;
+  readonly distanceBindGroup: GPUBindGroup;
+  readonly reduceAToB: readonly GPUBindGroup[];
+  readonly reduceBToA: readonly GPUBindGroup[];
+  busy: boolean;
+}
+
 export class WebGpuVectorIndex implements Disposable {
   readonly rows: number;
   readonly dimensions: number;
   readonly maxK: number;
   readonly maxBatchSize: number;
+  readonly inFlightSlots: number;
   readonly residentBytes: number;
   readonly #device: GPUDevice;
   readonly #distancePipeline: GPUComputePipeline;
   readonly #reducePipeline: GPUComputePipeline;
   readonly #vectorBuffer: GPUBuffer;
-  readonly #queryBuffer: GPUBuffer;
-  readonly #parameterBuffer: GPUBuffer;
-  readonly #candidateA: GPUBuffer;
-  readonly #candidateB: GPUBuffer;
-  readonly #readbackBuffer: GPUBuffer;
-  readonly #distanceBindGroup: GPUBindGroup;
-  readonly #reduceAToB: GPUBindGroup;
-  readonly #reduceBToA: GPUBindGroup;
-  #busy = false;
+  readonly #slots: readonly WebGpuQuerySlot[];
+  #nextSlot = 0;
+  #activeQueries = 0;
   #disposed = false;
 
   private constructor(
@@ -181,11 +199,7 @@ export class WebGpuVectorIndex implements Disposable {
     distancePipeline: GPUComputePipeline,
     reducePipeline: GPUComputePipeline,
     vectorBuffer: GPUBuffer,
-    queryBuffer: GPUBuffer,
-    parameterBuffer: GPUBuffer,
-    candidateA: GPUBuffer,
-    candidateB: GPUBuffer,
-    readbackBuffer: GPUBuffer,
+    slots: readonly WebGpuQuerySlot[],
     rows: number,
     dimensions: number,
     maxK: number,
@@ -196,39 +210,13 @@ export class WebGpuVectorIndex implements Disposable {
     this.#distancePipeline = distancePipeline;
     this.#reducePipeline = reducePipeline;
     this.#vectorBuffer = vectorBuffer;
-    this.#queryBuffer = queryBuffer;
-    this.#parameterBuffer = parameterBuffer;
-    this.#candidateA = candidateA;
-    this.#candidateB = candidateB;
-    this.#readbackBuffer = readbackBuffer;
+    this.#slots = slots;
     this.rows = rows;
     this.dimensions = dimensions;
     this.maxK = maxK;
     this.maxBatchSize = maxBatchSize;
+    this.inFlightSlots = slots.length;
     this.residentBytes = residentBytes;
-    this.#distanceBindGroup = device.createBindGroup({
-      layout: distancePipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: vectorBuffer } },
-        { binding: 1, resource: { buffer: queryBuffer } },
-        { binding: 2, resource: { buffer: parameterBuffer } },
-        { binding: 3, resource: { buffer: candidateA } },
-      ],
-    });
-    this.#reduceAToB = createReduceBindGroup(
-      device,
-      reducePipeline,
-      candidateA,
-      parameterBuffer,
-      candidateB,
-    );
-    this.#reduceBToA = createReduceBindGroup(
-      device,
-      reducePipeline,
-      candidateB,
-      parameterBuffer,
-      candidateA,
-    );
   }
 
   static create(
@@ -240,6 +228,7 @@ export class WebGpuVectorIndex implements Disposable {
     dimensions: number,
     maxK: number,
     maxBatchSize: number,
+    inFlightSlots: number,
     candidateBytes: number,
   ): WebGpuVectorIndex {
     const buffers: GPUBuffer[] = [];
@@ -251,61 +240,36 @@ export class WebGpuVectorIndex implements Disposable {
         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         buffers,
       );
-      const queryBuffer = makeBuffer(
-        device,
-        "query vector",
-        dimensions * maxBatchSize * Float32Array.BYTES_PER_ELEMENT,
-        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        buffers,
-      );
-      const parameterBuffer = makeBuffer(
-        device,
-        "top-k parameters",
-        PARAMETER_BYTES,
-        GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        buffers,
-      );
-      const candidateUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC;
-      const candidateA = makeBuffer(
-        device,
-        "top-k candidates A",
-        candidateBytes,
-        candidateUsage,
-        buffers,
-      );
-      const candidateB = makeBuffer(
-        device,
-        "top-k candidates B",
-        candidateBytes,
-        candidateUsage,
-        buffers,
-      );
-      const readbackBuffer = makeBuffer(
-        device,
-        "top-k readback",
-        maxK * maxBatchSize * CANDIDATE_BYTES,
-        GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-        buffers,
-      );
+      const slots = Array.from({ length: inFlightSlots }, (_, index) =>
+        createQuerySlot(
+          device,
+          distancePipeline,
+          reducePipeline,
+          vectorBuffer,
+          rows,
+          dimensions,
+          maxK,
+          maxBatchSize,
+          candidateBytes,
+          index,
+          buffers,
+        ));
       const dimensionMajor = toDimensionMajor(values, rows, dimensions);
       device.queue.writeBuffer(vectorBuffer, 0, dimensionMajor);
-      const residentBytes = values.byteLength + dimensions * maxBatchSize * 4 + PARAMETER_BYTES +
-        candidateBytes * 2 + maxK * maxBatchSize * CANDIDATE_BYTES;
+      const bytesPerSlot = dimensions * maxBatchSize * 4 +
+        PARAMETER_BYTES * maximumPassCount(rows, maxK) + candidateBytes * 2 +
+        maxK * maxBatchSize * CANDIDATE_BYTES;
       return new WebGpuVectorIndex(
         device,
         distancePipeline,
         reducePipeline,
         vectorBuffer,
-        queryBuffer,
-        parameterBuffer,
-        candidateA,
-        candidateB,
-        readbackBuffer,
+        slots,
         rows,
         dimensions,
         maxK,
         maxBatchSize,
-        residentBytes,
+        values.byteLength + bytesPerSlot * inFlightSlots,
       );
     } catch (error) {
       for (const buffer of buffers) buffer.destroy();
@@ -314,9 +278,9 @@ export class WebGpuVectorIndex implements Disposable {
   }
 
   async topK(query: Float32Array, k: number): Promise<WebGpuTopKResult> {
-    return await this.#withExclusiveQuery(query, 1, k, async () => {
-      const finalBuffer = this.#dispatch(query, 1, k);
-      return await this.#readback(finalBuffer, 1, k);
+    return await this.#withQuerySlot(query, 1, k, async (slot) => {
+      const finalBuffer = this.#dispatch(slot, query, 1, k);
+      return await this.#readback(slot, finalBuffer, 1, k);
     });
   }
 
@@ -325,21 +289,31 @@ export class WebGpuVectorIndex implements Disposable {
     queryCount: number,
     k: number,
   ): Promise<WebGpuTopKResult> {
-    return await this.#withExclusiveQuery(queries, queryCount, k, async () => {
-      const finalBuffer = this.#dispatch(queries, queryCount, k);
-      return await this.#readback(finalBuffer, queryCount, k);
+    return await this.#withQuerySlot(queries, queryCount, k, async (slot) => {
+      const finalBuffer = this.#dispatch(slot, queries, queryCount, k);
+      return await this.#readback(slot, finalBuffer, queryCount, k);
+    });
+  }
+
+  async topKBatchSingleSubmission(
+    queries: Float32Array,
+    queryCount: number,
+    k: number,
+  ): Promise<WebGpuTopKResult> {
+    return await this.#withQuerySlot(queries, queryCount, k, async (slot) => {
+      return await this.#submitSingleCommand(slot, queries, queryCount, k);
     });
   }
 
   async profileTopK(query: Float32Array, k: number): Promise<WebGpuTopKProfile> {
-    return await this.#withExclusiveQuery(query, 1, k, async () => {
+    return await this.#withQuerySlot(query, 1, k, async (slot) => {
       const totalStart = performance.now();
       const dispatchStart = performance.now();
-      const finalBuffer = this.#dispatch(query, 1, k);
+      const finalBuffer = this.#dispatch(slot, query, 1, k);
       await this.#device.queue.onSubmittedWorkDone();
       const dispatchMs = performance.now() - dispatchStart;
       const readbackStart = performance.now();
-      const result = await this.#readback(finalBuffer, 1, k);
+      const result = await this.#readback(slot, finalBuffer, 1, k);
       const readbackMs = performance.now() - readbackStart;
       return { ...result, dispatchMs, readbackMs, totalMs: performance.now() - totalStart };
     });
@@ -347,59 +321,124 @@ export class WebGpuVectorIndex implements Disposable {
 
   [Symbol.dispose](): void {
     if (this.#disposed) return;
-    if (this.#busy) throw new Error("cannot dispose WebGpuVectorIndex during a query");
+    if (this.#activeQueries !== 0) {
+      throw new Error("cannot dispose WebGpuVectorIndex during a query");
+    }
     this.#disposed = true;
     this.#vectorBuffer.destroy();
-    this.#queryBuffer.destroy();
-    this.#parameterBuffer.destroy();
-    this.#candidateA.destroy();
-    this.#candidateB.destroy();
-    this.#readbackBuffer.destroy();
+    for (const slot of this.#slots) {
+      slot.queryBuffer.destroy();
+      for (const buffer of slot.parameterBuffers) buffer.destroy();
+      slot.candidateA.destroy();
+      slot.candidateB.destroy();
+      slot.readbackBuffer.destroy();
+    }
   }
 
-  #dispatch(query: Float32Array, queryCount: number, k: number): GPUBuffer {
+  #dispatch(
+    slot: WebGpuQuerySlot,
+    query: Float32Array,
+    queryCount: number,
+    k: number,
+  ): GPUBuffer {
     const queue = this.#device.queue;
-    queue.writeBuffer(this.#queryBuffer, 0, gpuFloat32Source(query));
+    queue.writeBuffer(slot.queryBuffer, 0, gpuFloat32Source(query));
     let groupCount = Math.ceil(this.rows / WORKGROUP_SIZE);
     queue.writeBuffer(
-      this.#parameterBuffer,
+      slot.parameterBuffers[0]!,
       0,
       parameters(this.rows, this.dimensions, this.rows, k, queryCount),
     );
     submitCompute(
       this.#device,
       this.#distancePipeline,
-      this.#distanceBindGroup,
+      slot.distanceBindGroup,
       groupCount,
       queryCount,
       0,
     );
 
     let inputCount = groupCount * k;
-    let finalBuffer = this.#candidateA;
+    let finalBuffer = slot.candidateA;
+    let passIndex = 1;
     while (groupCount > 1) {
       groupCount = Math.ceil(inputCount / WORKGROUP_SIZE);
       queue.writeBuffer(
-        this.#parameterBuffer,
+        slot.parameterBuffers[passIndex]!,
         0,
         parameters(this.rows, this.dimensions, inputCount, k, queryCount),
       );
-      const inputIsA = finalBuffer === this.#candidateA;
+      const inputIsA = finalBuffer === slot.candidateA;
       submitCompute(
         this.#device,
         this.#reducePipeline,
-        inputIsA ? this.#reduceAToB : this.#reduceBToA,
+        inputIsA ? slot.reduceAToB[passIndex - 1]! : slot.reduceBToA[passIndex - 1]!,
         groupCount,
         queryCount,
         0,
       );
-      finalBuffer = inputIsA ? this.#candidateB : this.#candidateA;
+      finalBuffer = inputIsA ? slot.candidateB : slot.candidateA;
       inputCount = groupCount * k;
+      passIndex++;
     }
     return finalBuffer;
   }
 
+  async #submitSingleCommand(
+    slot: WebGpuQuerySlot,
+    query: Float32Array,
+    queryCount: number,
+    k: number,
+  ): Promise<WebGpuTopKResult> {
+    const queue = this.#device.queue;
+    queue.writeBuffer(slot.queryBuffer, 0, gpuFloat32Source(query));
+    const encoder = this.#device.createCommandEncoder({ label: "single-submission exact top-k" });
+    let groupCount = Math.ceil(this.rows / WORKGROUP_SIZE);
+    queue.writeBuffer(
+      slot.parameterBuffers[0]!,
+      0,
+      parameters(this.rows, this.dimensions, this.rows, k, queryCount),
+    );
+    encodeCompute(
+      encoder,
+      this.#distancePipeline,
+      slot.distanceBindGroup,
+      groupCount,
+      queryCount,
+      0,
+    );
+    let inputCount = groupCount * k;
+    let finalBuffer = slot.candidateA;
+    let passIndex = 1;
+    while (groupCount > 1) {
+      groupCount = Math.ceil(inputCount / WORKGROUP_SIZE);
+      queue.writeBuffer(
+        slot.parameterBuffers[passIndex]!,
+        0,
+        parameters(this.rows, this.dimensions, inputCount, k, queryCount),
+      );
+      const inputIsA = finalBuffer === slot.candidateA;
+      encodeCompute(
+        encoder,
+        this.#reducePipeline,
+        inputIsA ? slot.reduceAToB[passIndex - 1]! : slot.reduceBToA[passIndex - 1]!,
+        groupCount,
+        queryCount,
+        0,
+      );
+      finalBuffer = inputIsA ? slot.candidateB : slot.candidateA;
+      inputCount = groupCount * k;
+      passIndex++;
+    }
+    const resultCount = queryCount * k;
+    const bytes = resultCount * CANDIDATE_BYTES;
+    encoder.copyBufferToBuffer(finalBuffer, 0, slot.readbackBuffer, 0, bytes);
+    queue.submit([encoder.finish()]);
+    return await this.#mapReadback(slot, resultCount, bytes);
+  }
+
   async #readback(
+    slot: WebGpuQuerySlot,
     finalBuffer: GPUBuffer,
     queryCount: number,
     k: number,
@@ -407,11 +446,19 @@ export class WebGpuVectorIndex implements Disposable {
     const resultCount = queryCount * k;
     const bytes = resultCount * CANDIDATE_BYTES;
     const encoder = this.#device.createCommandEncoder({ label: "top-k result readback" });
-    encoder.copyBufferToBuffer(finalBuffer, 0, this.#readbackBuffer, 0, bytes);
+    encoder.copyBufferToBuffer(finalBuffer, 0, slot.readbackBuffer, 0, bytes);
     this.#device.queue.submit([encoder.finish()]);
-    await this.#readbackBuffer.mapAsync(GPUMapMode.READ, 0, bytes);
+    return await this.#mapReadback(slot, resultCount, bytes);
+  }
+
+  async #mapReadback(
+    slot: WebGpuQuerySlot,
+    resultCount: number,
+    bytes: number,
+  ): Promise<WebGpuTopKResult> {
+    await slot.readbackBuffer.mapAsync(GPUMapMode.READ, 0, bytes);
     try {
-      const mapped = this.#readbackBuffer.getMappedRange(0, bytes);
+      const mapped = slot.readbackBuffer.getMappedRange(0, bytes);
       const view = new DataView(mapped);
       const ids = new Uint32Array(resultCount);
       const distances = new Float32Array(resultCount);
@@ -421,16 +468,39 @@ export class WebGpuVectorIndex implements Disposable {
       }
       return { ids, distances };
     } finally {
-      this.#readbackBuffer.unmap();
+      slot.readbackBuffer.unmap();
     }
   }
 
-  async #withExclusiveQuery<T>(
+  async #withQuerySlot<T>(
     query: Float32Array,
     queryCount: number,
     k: number,
-    operation: () => Promise<T>,
+    operation: (slot: WebGpuQuerySlot) => Promise<T>,
   ): Promise<T> {
+    this.#validateQuery(query, queryCount, k);
+    const slot = this.#acquireSlot();
+    this.#device.pushErrorScope("validation");
+    let operationPromise: Promise<T>;
+    let validationPromise: Promise<GPUError | null>;
+    try {
+      operationPromise = operation(slot);
+      validationPromise = this.#device.popErrorScope();
+    } catch (error) {
+      await this.#device.popErrorScope().catch(() => undefined);
+      this.#releaseSlot(slot);
+      throw error;
+    }
+    try {
+      const [result, validationError] = await Promise.all([operationPromise, validationPromise]);
+      if (validationError) throw new Error(`WebGPU validation failed: ${validationError.message}`);
+      return result;
+    } finally {
+      this.#releaseSlot(slot);
+    }
+  }
+
+  #validateQuery(query: Float32Array, queryCount: number, k: number): void {
     this.#assertAlive();
     if (!Number.isSafeInteger(queryCount) || queryCount < 1 || queryCount > this.maxBatchSize) {
       throw new RangeError("queryCount must be covered by maxBatchSize");
@@ -441,24 +511,24 @@ export class WebGpuVectorIndex implements Disposable {
     if (!Number.isSafeInteger(k) || k < 1 || k > this.maxK || k > this.rows) {
       throw new RangeError("k must be a positive integer covered by maxK and row count");
     }
-    if (this.#busy) {
-      throw new Error("concurrent queries require separate WebGpuVectorIndex instances");
+  }
+
+  #acquireSlot(): WebGpuQuerySlot {
+    for (let offset = 0; offset < this.#slots.length; offset++) {
+      const index = (this.#nextSlot + offset) % this.#slots.length;
+      const slot = this.#slots[index]!;
+      if (slot.busy) continue;
+      slot.busy = true;
+      this.#activeQueries++;
+      this.#nextSlot = (index + 1) % this.#slots.length;
+      return slot;
     }
-    this.#busy = true;
-    this.#device.pushErrorScope("validation");
-    let scopePopped = false;
-    try {
-      const result = await operation();
-      const validationError = await this.#device.popErrorScope();
-      scopePopped = true;
-      if (validationError) throw new Error(`WebGPU validation failed: ${validationError.message}`);
-      return result;
-    } catch (error) {
-      if (!scopePopped) await this.#device.popErrorScope().catch(() => undefined);
-      throw error;
-    } finally {
-      this.#busy = false;
-    }
+    throw new Error(`all ${this.inFlightSlots} WebGPU in-flight slots are busy`);
+  }
+
+  #releaseSlot(slot: WebGpuQuerySlot): void {
+    slot.busy = false;
+    this.#activeQueries--;
   }
 
   #assertAlive(): void {
@@ -476,6 +546,84 @@ function makeBuffer(
   const buffer = device.createBuffer({ label, size, usage });
   buffers.push(buffer);
   return buffer;
+}
+
+function createQuerySlot(
+  device: GPUDevice,
+  distancePipeline: GPUComputePipeline,
+  reducePipeline: GPUComputePipeline,
+  vectorBuffer: GPUBuffer,
+  rows: number,
+  dimensions: number,
+  maxK: number,
+  maxBatchSize: number,
+  candidateBytes: number,
+  slotIndex: number,
+  buffers: GPUBuffer[],
+): WebGpuQuerySlot {
+  const queryBuffer = makeBuffer(
+    device,
+    `query batch slot ${slotIndex}`,
+    dimensions * maxBatchSize * Float32Array.BYTES_PER_ELEMENT,
+    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    buffers,
+  );
+  const parameterBuffers = Array.from(
+    { length: maximumPassCount(rows, maxK) },
+    (_, passIndex) =>
+      makeBuffer(
+        device,
+        `top-k parameters slot ${slotIndex} pass ${passIndex}`,
+        PARAMETER_BYTES,
+        GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        buffers,
+      ),
+  );
+  const candidateUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC;
+  const candidateA = makeBuffer(
+    device,
+    `top-k candidates A slot ${slotIndex}`,
+    candidateBytes,
+    candidateUsage,
+    buffers,
+  );
+  const candidateB = makeBuffer(
+    device,
+    `top-k candidates B slot ${slotIndex}`,
+    candidateBytes,
+    candidateUsage,
+    buffers,
+  );
+  const readbackBuffer = makeBuffer(
+    device,
+    `top-k readback slot ${slotIndex}`,
+    maxK * maxBatchSize * CANDIDATE_BYTES,
+    GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    buffers,
+  );
+  return {
+    queryBuffer,
+    parameterBuffers,
+    candidateA,
+    candidateB,
+    readbackBuffer,
+    distanceBindGroup: device.createBindGroup({
+      layout: distancePipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: vectorBuffer } },
+        { binding: 1, resource: { buffer: queryBuffer } },
+        { binding: 2, resource: { buffer: parameterBuffers[0]! } },
+        { binding: 3, resource: { buffer: candidateA } },
+      ],
+    }),
+    reduceAToB: parameterBuffers.slice(1).map((parameterBuffer) =>
+      createReduceBindGroup(device, reducePipeline, candidateA, parameterBuffer, candidateB)
+    ),
+    reduceBToA: parameterBuffers.slice(1).map((parameterBuffer) =>
+      createReduceBindGroup(device, reducePipeline, candidateB, parameterBuffer, candidateA)
+    ),
+    busy: false,
+  };
 }
 
 function createReduceBindGroup(
@@ -510,6 +658,33 @@ function submitCompute(
   pass.dispatchWorkgroups(workgroupsX, workgroupsY);
   pass.end();
   device.queue.submit([encoder.finish()]);
+}
+
+function encodeCompute(
+  encoder: GPUCommandEncoder,
+  pipeline: GPUComputePipeline,
+  bindGroup: GPUBindGroup,
+  workgroupsX: number,
+  workgroupsY: number,
+  groupIndex: number,
+): void {
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(groupIndex, bindGroup);
+  pass.dispatchWorkgroups(workgroupsX, workgroupsY);
+  pass.end();
+}
+
+function maximumPassCount(rows: number, maxK: number): number {
+  let groupCount = Math.ceil(rows / WORKGROUP_SIZE);
+  let inputCount = groupCount * maxK;
+  let passes = 1;
+  while (groupCount > 1) {
+    groupCount = Math.ceil(inputCount / WORKGROUP_SIZE);
+    inputCount = groupCount * maxK;
+    passes++;
+  }
+  return passes;
 }
 
 function validateShape(values: Float32Array, rows: number, dimensions: number): void {

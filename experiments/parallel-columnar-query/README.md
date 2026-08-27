@@ -3,6 +3,10 @@
 This experiment tests the first application-composition boundary for jsimd: long-lived Workers scan
 an immutable i32 column directly in shared Wasm memory and publish only partial aggregates.
 
+The second kernel keeps an i32 filter column, i32 measure column, and u8 group key column in the
+same immutable snapshot. It applies ZoneMap pruning, filters four rows at a time with SIMD, updates
+worker-private `count/sum/min/max` states, and merges those states only after the Worker barrier.
+
 It is deliberately not a public package entrypoint. A higher-level schema, planner, catalog, and
 persistent storage policy may move to a separate repository after the low-level ABI and performance
 boundary are measured here.
@@ -45,6 +49,8 @@ snapshot.
 ```sh
 just test-parallel-columnar-query
 just bench-parallel-columnar-query
+just bench-parallel-columnar-group-by
+JSIMD_GROUP_WORKLOAD=logs just bench-parallel-columnar-group-by
 ```
 
 Set `JSIMD_QUERY_ROWS` to change the default 8,388,608-row benchmark.
@@ -68,9 +74,27 @@ analytical engine, not one-shot queries. Small inputs and selective queries that
 few pages should remain single-threaded; Worker dispatch has a fixed cost and is not expected to win
 there. The experiment is useful only if large scans scale beyond the single-thread Wasm result.
 
-The current scope is one immutable raw i32 column and one `minimum <= value < maximum` count/sum
-operator. It does not yet provide page-granular publication, adaptive page decoding, selection
-masks, or group-by.
+The current scope includes one immutable raw i32 count/sum scan and a fused low-cardinality u8
+group-by over i32 filter/measure columns. It does not yet provide page-granular publication,
+adaptive page decoding, null handling, or a reusable selection-mask pipeline.
+
+## Low-cardinality group-by result
+
+Apple Silicon, Deno 2.6.4 / V8 14.2, 8,388,608 rows (72 MiB across two i32 columns and one u8
+column), eight groups, 50% selectivity, 65,536 rows per page, median of 11 warm samples:
+
+| execution               |   median | vs JS | vs single Wasm |
+| :---------------------- | -------: | ----: | -------------: |
+| optimized JavaScript    | 41.17 ms | 1.00x |          0.88x |
+| single-thread Wasm SIMD | 36.34 ms | 1.13x |          1.00x |
+| 8 Workers               |  8.31 ms | 4.95x |          4.37x |
+
+The SIMD kernel only vectorizes the range predicate. Selected lanes still update scalar per-group
+states, so the single-thread gain is modest and varies with selectivity and group distribution. The
+larger gain comes from immutable page ownership and Worker-local aggregation without atomics in the
+hot loop. Construction took 233.05 ms and is excluded from warm latency, so this remains a resident
+OLAP workload rather than a one-shot conversion win. The raw result is in
+`benchmarks/group-by.json`.
 
 ## Recorded result
 
@@ -126,6 +150,30 @@ experimental. The fixture selects `eh` and `coi` explicitly instead of relying o
 selection, verifies `current_setting('threads')`, and serves the required COOP/COEP headers. See
 [Known Issues](https://duckdb.org/docs/current/clients/wasm/known_issues) and
 [Deploying DuckDB-Wasm](https://duckdb.org/docs/current/clients/wasm/deploying_duckdb_wasm).
+
+The same Chrome fixture also runs a Q1-shaped three-column workload with an i32 range filter, eight
+u8 groups, and `count/sum/min/max`. At 16,777,216 rows (144 MiB logical input), all eight output
+groups matched across the four modes:
+
+| execution                | threads |   median | vs DuckDB `eh` |
+| :----------------------- | ------: | -------: | -------------: |
+| jsimd direct Wasm SIMD   |       1 | 18.67 ms |          3.04x |
+| jsimd persistent Workers |       8 |  4.96 ms |         11.46x |
+| DuckDB-Wasm `eh`         |       1 | 56.84 ms |          1.00x |
+| DuckDB-Wasm `coi`        |       8 | 55.51 ms |          1.02x |
+
+At 33,554,432 rows (288 MiB logical input), the jsimd modes and DuckDB `eh` completed, while DuckDB
+`coi` failed during table construction with `RangeError: offset is out of bounds`. The comparable
+table therefore uses the largest tested size where all modes completed. Raw samples and the failed
+upper-bound observation are recorded in `benchmarks/duckdb-browser-q1.json`.
+
+For a timestamp-sorted log workload, the predicate selects 10% of 16,777,216 rows and ZoneMaps skip
+the other pages. In Chrome, direct jsimd took 2.19 ms, 8 Workers took 0.615 ms, DuckDB `eh` took
+6.19 ms, and DuckDB `coi` took 4.69 ms. All group states matched. In the smaller 8,388,608-row Deno
+run, however, dispatch dominated after pruning: direct jsimd took 1.49 ms while 8 Workers took 2.30
+ms. A planner therefore needs to choose execution width from pages remaining after pruning, not
+total table size. Raw samples are in `benchmarks/log-group-by.json` and
+`benchmarks/duckdb-browser-logs.json`.
 
 Bundle cost also differs substantially. The jsimd-specific generated assets in this fixture contain
 two Wasm modules totaling 634 bytes gzip plus a 6.2 KiB gzip Worker. DuckDB's Wasm module is about

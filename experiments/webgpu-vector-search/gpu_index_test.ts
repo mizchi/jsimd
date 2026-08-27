@@ -64,15 +64,73 @@ Deno.test("WebGPU batches independent top-k queries into one readback", async ()
   assertEquals([...actual.ids], [...first.ids, ...second.ids]);
 });
 
+Deno.test("WebGPU in-flight ring executes independent batches against one resident index", async () => {
+  const adapter = await getAdapter();
+  if (!adapter) return;
+
+  const rows = 513;
+  const dimensions = 7;
+  const values = makeValues(rows, dimensions);
+  const firstQuery = values.slice(0, dimensions);
+  const secondQuery = values.slice(137 * dimensions, 138 * dimensions);
+
+  await using search = await WebGpuVectorSearch.create({
+    adapter,
+    maxK: 4,
+    maxBatchSize: 1,
+    inFlightSlots: 2,
+  });
+  using index = search.upload(values, rows, dimensions);
+  assertEquals(search.inFlightSlots, 2);
+  assertEquals(index.inFlightSlots, 2);
+  const [first, second] = await Promise.all([
+    index.topK(firstQuery, 4),
+    index.topK(secondQuery, 4),
+  ]);
+
+  assertEquals([...first.ids], [...scalarTopK(values, rows, dimensions, firstQuery, 4).ids]);
+  assertEquals([...second.ids], [...scalarTopK(values, rows, dimensions, secondQuery, 4).ids]);
+});
+
+Deno.test("WebGPU single-submission batch preserves exact recursive top-k", async () => {
+  const adapter = await getAdapter();
+  if (!adapter) return;
+
+  const rows = 1_025;
+  const dimensions = 9;
+  const values = makeValues(rows, dimensions);
+  const queries = new Float32Array(dimensions * 2);
+  queries.set(values.subarray(17 * dimensions, 18 * dimensions), 0);
+  queries.set(values.subarray(777 * dimensions, 778 * dimensions), dimensions);
+
+  await using search = await WebGpuVectorSearch.create({
+    adapter,
+    maxK: 8,
+    maxBatchSize: 2,
+  });
+  using index = search.upload(values, rows, dimensions);
+  const actual = await index.topKBatchSingleSubmission(queries, 2, 8);
+  const first = scalarTopK(values, rows, dimensions, queries.subarray(0, dimensions), 8);
+  const second = scalarTopK(values, rows, dimensions, queries.subarray(dimensions), 8);
+  assertEquals([...actual.ids], [...first.ids, ...second.ids]);
+});
+
 Deno.test("WebGPU vector search validates shape, k, and disposal", async () => {
   const adapter = await getAdapter();
   if (!adapter) return;
 
+  await assertRejects(
+    () => WebGpuVectorSearch.create({ adapter, inFlightSlots: 0 }),
+    RangeError,
+  );
   await using search = await WebGpuVectorSearch.create({ adapter, maxK: 4 });
   using index = search.upload(new Float32Array(32), 4, 8);
 
   await assertRejects(() => index.topK(new Float32Array(7), 1), RangeError);
   await assertRejects(() => index.topK(new Float32Array(8), 5), RangeError);
+  const pending = index.topK(new Float32Array(8), 1);
+  await assertRejects(() => index.topK(new Float32Array(8), 1), Error);
+  await pending;
   index[Symbol.dispose]();
   await assertRejects(() => index.topK(new Float32Array(8), 1), Error);
 });

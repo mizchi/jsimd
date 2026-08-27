@@ -1,0 +1,117 @@
+{
+  "environment": {
+    "machine": "Apple Silicon",
+    "browser": "HeadlessChrome 152.0.0.0",
+    "duckdbWasmPackage": "1.32.0",
+    "duckdbVersion": "v1.4.3",
+    "crossOriginIsolated": true
+  },
+  "workload": {
+    "shape": "Q1-like low-cardinality filter/group-by count+sum+min+max",
+    "rows": 16777216,
+    "logicalBytes": 150994944,
+    "filterExpression": "rowIndex % 50",
+    "valueExpression": "(rowIndex % 20001) - 10000",
+    "groupExpression": "rowIndex % 8",
+    "predicate": "filter >= 0 AND filter < 25",
+    "groupCount": 8,
+    "selectivity": 0.5,
+    "warmups": 5,
+    "samples": 11
+  },
+  "results": [
+    {
+      "mode": "jsimd-single",
+      "workerCount": 1,
+      "initializationMs": 248.7300000190735,
+      "medianMs": 18.670000076293945,
+      "samplesMs": [
+        16.90500020980835,
+        19.695000171661377,
+        16.774999618530273,
+        18.670000076293945,
+        15.480000019073486,
+        15.450000286102295,
+        19.979999542236328,
+        24.740000247955322,
+        18.394999980926514,
+        19.335000038146973,
+        22.589999675750732
+      ]
+    },
+    {
+      "mode": "jsimd-workers",
+      "workerCount": 8,
+      "initializationMs": 257.47499990463257,
+      "medianMs": 4.960000038146973,
+      "samplesMs": [
+        4.420000076293945,
+        4.610000133514404,
+        5.174999713897705,
+        5.005000114440918,
+        4.889999866485596,
+        5.015000343322754,
+        4.87999963760376,
+        5.075000286102295,
+        4.960000038146973,
+        4.960000038146973,
+        4.914999961853027
+      ]
+    },
+    {
+      "mode": "duckdb-eh",
+      "workerCount": 1,
+      "duckdbConfiguredThreads": 1,
+      "initializationMs": 1103.0949997901917,
+      "medianMs": 56.84499979019165,
+      "samplesMs": [
+        53.93000030517578,
+        53.33999967575073,
+        58.269999980926514,
+        55.75500011444092,
+        57.44999980926514,
+        57.165000438690186,
+        63.81999969482422,
+        56.885000228881836,
+        56.84499979019165,
+        55.269999980926514,
+        55.480000019073486
+      ]
+    },
+    {
+      "mode": "duckdb-coi",
+      "workerCount": 8,
+      "duckdbConfiguredThreads": 8,
+      "initializationMs": 1631.375,
+      "medianMs": 55.50999975204468,
+      "samplesMs": [
+        56.02500009536743,
+        57.855000019073486,
+        55.00500011444092,
+        55.50999975204468,
+        55.18000030517578,
+        55.50999975204468,
+        55.985000133514404,
+        55.38000011444092,
+        54.514999866485596,
+        51.43499994277954,
+        55.75
+      ]
+    }
+  ],
+  "validated": "all eight group count/sum/min/max outputs matched",
+  "upperBound": {
+    "rows": 33554432,
+    "logicalBytes": 301989888,
+    "jsimdSingleMedianMs": 30.285000324249268,
+    "jsimdWorkersMedianMs": 9.545000076293945,
+    "duckdbEhMedianMs": 106.42999982833862,
+    "duckdbCoi": "failed during table construction with RangeError: offset is out of bounds"
+  },
+  "bundledAssets": {
+    "sharedWasmGzipBytes": 330,
+    "queryWasmGzipBytes": 503,
+    "scanWorkerGzipBytes": 6384,
+    "groupWorkerGzipBytes": 6500
+  }
+}

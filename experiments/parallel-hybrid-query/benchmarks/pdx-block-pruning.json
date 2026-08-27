@@ -1,0 +1,44 @@
+{
+  "runtime": {
+    "deno": "2.6.4",
+    "v8": "14.2.231.17-rusty",
+    "typescript": "5.9.2",
+    "target": "aarch64-apple-darwin",
+    "arch": "aarch64",
+    "os": "darwin",
+    "vendor": "apple",
+    "standalone": false
+  },
+  "configuration": {
+    "rows": 65536,
+    "dimensions": 128,
+    "queries": 8,
+    "k": 10,
+    "warmups": 5,
+    "samples": 15
+  },
+  "measurements": [
+    {
+      "layout": "clustered-blocks",
+      "initMs": 69.87,
+      "metadataBytes": 1048576,
+      "metadataOverheadPercent": 3.13,
+      "exactMedianMs": 1.31,
+      "prunedMedianMs": 0.6,
+      "speedup": 2.19,
+      "evaluatedBlockPercent": 5.7,
+      "evaluatedRowPercent": 5.7
+    },
+    {
+      "layout": "shuffled-clusters",
+      "initMs": 84.49,
+      "metadataBytes": 1048576,
+      "metadataOverheadPercent": 3.13,
+      "exactMedianMs": 1.32,
+      "prunedMedianMs": 1.32,
+      "speedup": 1,
+      "evaluatedBlockPercent": 100,
+      "evaluatedRowPercent": 100
+    }
+  ]
+}

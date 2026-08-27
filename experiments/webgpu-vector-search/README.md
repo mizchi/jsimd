@@ -2,36 +2,22 @@
 
 Status: experimental and not exported from `@mizchi/jsimd`.
 
-This experiment finds the workload size at which exact WebGPU squared-L2 top-k beats the existing
-single-threaded Wasm SIMD `BlockedVectorArray`, including the asynchronous result readback. It is
-not an ANN index.
+This experiment finds the workload size at which exact WebGPU squared-L2 top-k beats main-thread
+`BlockedVectorArray` and a persistent multi-Worker Wasm SIMD index, including asynchronous result
+readback. It is not an ANN index.
 
 ## Conclusion
 
-Do not use WebGPU for a single exact top-k query or when vectors must be uploaded for each query. On
-the recorded Apple M5 / Deno 2.6.4 setup, no single-query crossover appeared through 262,144 rows x
-128 dimensions: resident WebGPU took 15.87 ms while Wasm SIMD took 2.23 ms. Uploading and
-transposing the same 128 MiB input for every query increased WebGPU latency to 217.59 ms.
+Runtime scheduling changes the crossover by more than the kernel implementation. On Apple M5,
+Chromium 152 reduced resident WebGPU's fixed boundary from Deno's 13-15 ms to roughly 0.3-0.7 ms.
+The Chromium path beat main-thread Wasm SIMD at 65,536 rows x 128 dimensions for one query and beat
+the persistent four-Worker SIMD index at 262,144 rows for one query. With four or more queries per
+batch, WebGPU won earlier and reached roughly 2.2-2.5x over the Worker index on the largest input.
 
-The viable workload is a resident index with many queries submitted as one batch and only final
-top-k pairs returned:
-
-- 65,536 rows x 128 dimensions x 128 queries: 1.09x faster than sequential Wasm SIMD.
-- 262,144 rows x 128 dimensions x 64 queries: 1.30x faster.
-- 262,144 rows x 128 dimensions x 128 queries: 1.29x faster.
-
-The observed crossover was approximately one billion `rows * dimensions * queries` distance terms
-per readback. This is an empirical threshold for this adapter/runtime, not a portable constant. The
-implementation therefore remains an experiment and is not a package export.
-
-The next admission checks are:
-
-1. reproduce the matrix in Chromium rather than assuming Deno/wgpu scheduling is representative;
-2. overlap batches with a ring of staging/readback buffers;
-3. compare against the persistent multi-Worker SIMD index, not only single-threaded
-   `BlockedVectorArray`;
-4. admit a public API only if the complete resident workload still wins after scheduling and
-   readback.
+This is still not a package export. Uploading and transposing a 128 MiB input for each query costs
+roughly 190-220 ms, only one hardware adapter has been recorded, and small workloads remain much
+faster on Wasm SIMD. The viable contract is a long-lived resident GPU index with batched queries and
+only final top-k pairs read back.
 
 The GPU index transposes row-major input once into a dimension-major resident buffer. One invocation
 computes each row distance, every 256-row workgroup emits local top-k candidates, and further GPU
@@ -52,18 +38,73 @@ row-major Float32 input
 await using search = await WebGpuVectorSearch.create({
   maxK: 10,
   maxBatchSize: 64,
+  inFlightSlots: 3,
 });
 using index = search.upload(vectors, rows, dimensions);
 
 const one = await index.topK(query, 10);
 const batch = await index.topKBatch(queries, 64, 10);
+
+// Experimental alternatives measured by this experiment:
+const combined = await index.topKBatchSingleSubmission(queries, 64, 10);
+const overlapped = await Promise.all([
+  index.topKBatch(queriesA, 64, 10),
+  index.topKBatch(queriesB, 64, 10),
+]);
 ```
 
-The owning search object uses `await using`; each uploaded index uses `using`. Queries on one index
-are intentionally serialized because its query, scratch, and mapping buffers are reused. Use
-separate indexes or a future staging-ring implementation for concurrent submissions.
+The owning search object uses `await using`; each uploaded index uses `using`. Concurrent queries
+use independent query, parameter, scratch, and readback slots. Submitting more promises than
+`inFlightSlots` rejects instead of silently allocating more GPU memory.
 
-## Recorded baseline
+## Chromium 152 matrix
+
+Apple M5 / Metal 3, 128 dimensions, exact `k=10`, four persistent Wasm Workers, five warmups, and 15
+samples. Every recorded GPU result matched `BlockedVectorArray` IDs and distances. Raw samples,
+runtime, adapter, CPU, p95, construction-inclusive upload, ring, and submission results are in
+[`benchmarks/chromium.json`](./benchmarks/chromium.json).
+
+Each cell is resident WebGPU speedup over sequential main-thread Wasm SIMD:
+
+| Rows / query batch |     1 |     4 |    16 |    64 |   128 |
+| -----------------: | ----: | ----: | ----: | ----: | ----: |
+|              1,024 | 0.03x | 0.05x | 0.16x | 0.67x | 1.39x |
+|              4,096 | 0.10x | 0.38x | 1.55x | 1.54x | 2.32x |
+|             16,384 | 0.28x | 1.24x | 2.50x | 2.38x | 2.47x |
+|             65,536 | 1.01x | 2.31x | 2.58x | 2.75x | 2.83x |
+|            262,144 | 1.17x | 2.77x | 2.93x | 2.87x | 2.83x |
+
+Each cell is resident WebGPU speedup over the persistent four-Worker SIMD index:
+
+| Rows / query batch |     1 |     4 |    16 |    64 |   128 |
+| -----------------: | ----: | ----: | ----: | ----: | ----: |
+|              1,024 | 0.09x | 0.30x | 0.95x | 2.71x | 6.69x |
+|              4,096 | 0.30x | 0.85x | 2.44x | 3.00x | 5.48x |
+|             16,384 | 0.37x | 1.02x | 2.10x | 2.51x | 3.01x |
+|             65,536 | 0.58x | 1.70x | 2.36x | 2.39x | 2.50x |
+|            262,144 | 1.01x | 2.22x | 2.36x | 2.30x | 2.43x |
+
+The Worker comparison uses the shared-memory PDX64 kernel from `experiments/parallel-hybrid-query`,
+includes Worker notification and result merging, and keeps its Worker pool persistent. It
+intentionally runs batch members sequentially because that index exposes a single shared query slot.
+
+### In-flight ring
+
+Two or three slots overlap scheduling and mapping for independent submissions. At 16,384 rows, three
+single-query submissions completed 2.01x faster than repeating the one-slot latency three times.
+Once a large batch saturates GPU compute, the benefit disappeared: three 64-query submissions were
+only 1.04x at 16,384 rows and 1.01x at 262,144 rows. Each slot duplicates query, candidate, and
+readback storage, so one slot remains preferable for saturated workloads.
+
+### Fewer submissions
+
+`topKBatchSingleSubmission()` encodes the distance pass, recursive reductions, and readback copy in
+one command buffer. Across the matrix it was usually 0.94-1.04x versus separate submissions; the
+largest isolated improvement was 1.26x at 65,536 rows with one query. Queue submission count is not
+the general crossover bottleneck, so this remains an experimental comparison method rather than the
+default path.
+
+## Historical Deno baseline
 
 Apple M5, Deno 2.6.4 `--unstable-webgpu`, 128 dimensions, exact `k=10`, 5 warmups and 15 samples.
 The production resident path submits compute and the final copy before one `mapAsync`. The profiled
@@ -109,6 +150,8 @@ See the [WebGPU buffer mapping specification](https://www.w3.org/TR/webgpu/#buff
 ```sh
 just test-webgpu-vector-search
 just bench-webgpu-vector-search
+just bench-webgpu-vector-search-browser
+just bench-record-webgpu-vector-search-browser
 ```
 
 Environment overrides:
@@ -117,9 +160,11 @@ Environment overrides:
 JSIMD_WEBGPU_ROWS=16384,65536 \
 JSIMD_WEBGPU_BATCHES=1,16,64 \
 JSIMD_WEBGPU_DIMENSIONS=128 \
-just bench-webgpu-vector-search
+JSIMD_WEBGPU_IN_FLIGHT=1,2,3 \
+JSIMD_WEBGPU_WORKERS=4 \
+just bench-webgpu-vector-search-browser
 ```
 
-The experiment deliberately keeps GPU code out of the package exports. A browser benchmark, multiple
-in-flight staging buffers, command-encoder reuse, and a comparison against the persistent
-multi-Worker index are required before considering a public API.
+The experiment deliberately keeps GPU code out of the package exports. Before reconsidering a public
+API, reproduce the win on additional adapters and browser versions and define how callers keep a
+large index resident without making upload latency part of the interactive query path.

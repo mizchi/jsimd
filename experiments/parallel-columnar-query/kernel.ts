@@ -8,6 +8,18 @@ export interface QueryKernels extends WebAssembly.Exports {
     maximum: number,
     resultPointer: number,
   ): void;
+  scan_i32_between_group_by_u8(
+    filterPointer: number,
+    valuesPointer: number,
+    groupsPointer: number,
+    length: number,
+    minimum: number,
+    maximum: number,
+    countsPointer: number,
+    sumsPointer: number,
+    minimumsPointer: number,
+    maximumsPointer: number,
+  ): void;
 }
 
 let modulePromise: Promise<WebAssembly.Module> | undefined;

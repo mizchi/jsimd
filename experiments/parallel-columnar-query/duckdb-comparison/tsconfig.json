@@ -14,5 +14,10 @@
     "verbatimModuleSyntax": true
   },
   "include": ["../../../src/shared-buffer/**/*.ts", "../*.ts", "src.ts"],
-  "exclude": ["../../../src/shared-buffer/*_test.ts", "../*_test.ts", "../bench.ts"]
+  "exclude": [
+    "../../../src/shared-buffer/*_test.ts",
+    "../*_test.ts",
+    "../*_bench.ts",
+    "../bench.ts"
+  ]
 }

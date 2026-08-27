@@ -9,26 +9,45 @@ import { decodeColumnPage, encodeColumnPage } from "./page_format.ts";
 import {
   type ColumnDefinition,
   type ColumnOutput,
+  type NullableColumn,
   type SchemaDefinition,
   schemaFingerprint,
   type TableDefinition,
   type TableInput,
 } from "./schema.ts";
+import {
+  decodeDictionaryStringPage,
+  decodeNullableStoredPage,
+  type DictionaryStringPage,
+  encodeDictionaryStringPage,
+  encodeNullableStoredPage,
+  stringPageHostBytes,
+} from "./stored_page.ts";
 
-const MANIFEST_VERSION = 1;
+const MANIFEST_VERSION = 2;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
 type TableName<Schema extends SchemaDefinition> = keyof Schema["tables"] & string;
 type ColumnName<Table extends TableDefinition> = keyof Table["columns"] & string;
 type NumericArray = Int32Array | Uint32Array | Uint8Array;
+type Scalar = number | string;
+type ResidentColumn = AdaptiveI32Column | AdaptiveU32Column | BitSlicedU8Column;
+type ColumnChunk = NumericArray | NullableColumn<NumericArray> | readonly (string | null)[];
+
+interface StoredColumnDefinition {
+  readonly kind: ColumnDefinition["kind"];
+  readonly nullable: boolean;
+  readonly bitWidth?: number;
+}
 
 interface ColumnManifest {
   readonly key: string;
   readonly kind: ColumnDefinition["kind"];
   readonly format: PageFormat;
-  readonly min: number;
-  readonly max: number;
+  readonly min: Scalar | null;
+  readonly max: Scalar | null;
+  readonly nullCount: number;
   readonly byteLength: number;
 }
 
@@ -43,18 +62,19 @@ interface TableManifest {
   readonly version: number;
   readonly generation: string;
   readonly fingerprint: string;
+  readonly definitions: Readonly<Record<string, StoredColumnDefinition>>;
   readonly rowCount: number;
   readonly rowGroupSize: number;
   readonly rowGroups: readonly RowGroupManifest[];
 }
 
-export type PredicateOperator = "eq" | "lt" | "between";
+export type PredicateOperator = "eq" | "lt" | "between" | "is-null" | "is-not-null";
 
 interface Predicate {
   readonly column: string;
   readonly operator: PredicateOperator;
-  readonly minimum: number;
-  readonly maximum?: number;
+  readonly minimum?: Scalar;
+  readonly maximum?: Scalar;
 }
 
 export interface QueryStats {
@@ -64,6 +84,15 @@ export interface QueryStats {
   readonly cacheHits: number;
   readonly bytesRead: number;
   readonly rowsMatched: number;
+}
+
+export interface CacheStats {
+  readonly maximumBytes: number;
+  readonly hostBytes: number;
+  readonly wasmBytes: number;
+  readonly totalBytes: number;
+  readonly pages: number;
+  readonly evictions: number;
 }
 
 export type QueryColumns<
@@ -96,61 +125,210 @@ interface MutableStats {
   rowsMatched: number;
 }
 
-type ResidentColumn = AdaptiveI32Column | AdaptiveU32Column | BitSlicedU8Column;
-export type PageFormat = "raw" | "snapshot";
+interface PageFootprint {
+  readonly hostBytes: number;
+  readonly wasmBytes: number;
+}
 
 class CachedColumnPage {
   readonly key: string;
-  readonly values: NumericArray | undefined;
-  readonly byteLength: number;
+  readonly storedByteLength: number;
+  readonly length: number;
   readonly #definition: ColumnDefinition;
+  readonly #onFootprintChange: (
+    previous: PageFootprint,
+    next: PageFootprint,
+  ) => void;
+  #values: NumericArray | undefined;
+  #validity: Uint8Array | undefined;
+  #dictionary: readonly string[] | undefined;
+  #dictionaryHostBytes = 0;
   #resident: ResidentColumn | undefined;
+  #validityResident: BitSlicedU8Column | undefined;
   pins = 0;
 
   constructor(
     key: string,
     definition: ColumnDefinition,
-    values: NumericArray | undefined,
-    byteLength: number,
-    resident?: ResidentColumn,
+    length: number,
+    storedByteLength: number,
+    options: {
+      readonly values?: NumericArray;
+      readonly validity?: Uint8Array;
+      readonly stringPage?: DictionaryStringPage;
+      readonly resident?: ResidentColumn;
+      readonly onFootprintChange?: (
+        previous: PageFootprint,
+        next: PageFootprint,
+      ) => void;
+    },
   ) {
     this.key = key;
     this.#definition = definition;
-    this.values = values;
-    this.byteLength = byteLength;
-    this.#resident = resident;
+    this.length = length;
+    this.storedByteLength = storedByteLength;
+    this.#values = options.values;
+    this.#validity = options.validity;
+    this.#resident = options.resident;
+    this.#onFootprintChange = options.onFootprintChange ?? (() => {});
+    if (options.stringPage !== undefined) {
+      this.#values = options.stringPage.codes;
+      this.#validity = options.stringPage.validity;
+      this.#dictionary = options.stringPage.dictionary;
+      this.#dictionaryHostBytes = stringPageHostBytes({
+        ...options.stringPage,
+        codes: new Uint32Array(),
+        validity: undefined,
+      });
+    }
+    if (
+      this.#resident !== undefined && definition.nullable &&
+      definition.kind !== "u8"
+    ) {
+      this.#validityResident = validityColumn(length, this.#validity!);
+      this.#validity = undefined;
+    }
   }
 
-  resident(): ResidentColumn {
-    if (this.#resident !== undefined) return this.#resident;
-    this.#resident = this.#definition.kind === "i32"
-      ? AdaptiveI32Column.from(this.values as Int32Array)
-      : this.#definition.kind === "u32"
-      ? AdaptiveU32Column.from(this.values as Uint32Array)
-      : BitSlicedU8Column.from(this.values as Uint8Array, this.#definition.bitWidth);
-    return this.#resident;
+  footprint(): PageFootprint {
+    return Object.freeze({
+      hostBytes: (this.#values?.byteLength ?? 0) + (this.#validity?.byteLength ?? 0) +
+        this.#dictionaryHostBytes,
+      wasmBytes: residentBytes(this.#resident) + (this.#validityResident?.encodedBytes ?? 0),
+    });
   }
 
-  gatherInto(selection: SelectionMask, output: NumericArray): number {
-    const resident = this.resident();
+  scan(predicate: Predicate, output: SelectionMask): void {
+    const resident = this.#ensureResident();
+    if (predicate.operator === "is-null" || predicate.operator === "is-not-null") {
+      if (!this.#definition.nullable) {
+        if (predicate.operator === "is-null") output.clear();
+        else output.fill();
+        return;
+      }
+      if (this.#definition.kind === "u8") {
+        resident.scanBetween(0, 2 ** this.#definition.bitWidth, output);
+      } else {
+        this.#validityResident!.scanEq(0, output);
+      }
+      if (predicate.operator === "is-null") output.invert();
+      return;
+    }
+    if (this.#definition.kind === "string") {
+      const dictionary = this.#dictionary!;
+      if (typeof predicate.minimum !== "string") {
+        throw new TypeError("string predicate requires a string");
+      }
+      const minimum = lowerBound(dictionary, predicate.minimum);
+      if (predicate.operator === "eq") {
+        if (dictionary[minimum] !== predicate.minimum) {
+          output.clear();
+          return;
+        }
+        resident.scanEq(minimum, output);
+      } else if (predicate.operator === "lt") {
+        resident.scanLt(minimum, output);
+      } else {
+        if (typeof predicate.maximum !== "string") {
+          throw new TypeError("string between predicate requires string bounds");
+        }
+        resident.scanBetween(minimum, lowerBound(dictionary, predicate.maximum), output);
+      }
+    } else {
+      if (typeof predicate.minimum !== "number") {
+        throw new TypeError("numeric predicate requires a number");
+      }
+      if (predicate.operator === "eq") resident.scanEq(predicate.minimum, output);
+      else if (predicate.operator === "lt") resident.scanLt(predicate.minimum, output);
+      else resident.scanBetween(predicate.minimum, predicate.maximum as number, output);
+    }
+    if (this.#validityResident !== undefined) {
+      using validity = new SelectionMask(this.length);
+      this.#validityResident.scanEq(0, validity);
+      output.andAssign(validity);
+    }
+  }
+
+  gather(selection: SelectionMask): ColumnChunk {
+    const count = selection.countOnes();
+    const resident = this.#ensureResident();
+    if (this.#definition.kind === "string") {
+      const codes = new Uint32Array(count);
+      const validity = this.#definition.nullable ? new Uint8Array(count) : undefined;
+      (resident as AdaptiveU32Column).gatherInto(selection, codes);
+      this.#gatherValidity(selection, validity);
+      const output: (string | null)[] = new Array(count);
+      for (let index = 0; index < count; index++) {
+        output[index] = validity !== undefined && validity[index] === 0
+          ? null
+          : this.#dictionary![codes[index]!]!;
+      }
+      return output;
+    }
+    const output = newTypedArray(this.#definition, count);
+    const validity = this.#definition.nullable ? new Uint8Array(count) : undefined;
     if (this.#definition.kind === "i32") {
-      return (resident as AdaptiveI32Column).gatherInto(selection, output as Int32Array);
+      (resident as AdaptiveI32Column).gatherInto(selection, output as Int32Array);
+    } else if (this.#definition.kind === "u32") {
+      (resident as AdaptiveU32Column).gatherInto(selection, output as Uint32Array);
+    } else {
+      (resident as BitSlicedU8Column).gatherInto(
+        selection,
+        output as Uint8Array,
+        validity,
+      );
     }
-    if (this.#definition.kind === "u32") {
-      return (resident as AdaptiveU32Column).gatherInto(selection, output as Uint32Array);
-    }
-    return (resident as BitSlicedU8Column).gatherInto(selection, output as Uint8Array);
+    if (this.#definition.kind !== "u8") this.#gatherValidity(selection, validity);
+    return validity === undefined ? output : Object.freeze({ values: output, validity });
   }
 
   [Symbol.dispose](): void {
     this.#resident?.[Symbol.dispose]();
     this.#resident = undefined;
+    this.#validityResident?.[Symbol.dispose]();
+    this.#validityResident = undefined;
+    this.#values = undefined;
+    this.#validity = undefined;
+    this.#dictionary = undefined;
+    this.#dictionaryHostBytes = 0;
+  }
+
+  #ensureResident(): ResidentColumn {
+    if (this.#resident !== undefined) return this.#resident;
+    const previous = this.footprint();
+    if (this.#definition.kind === "i32") {
+      this.#resident = AdaptiveI32Column.from(this.#values as Int32Array);
+    } else if (this.#definition.kind === "u32" || this.#definition.kind === "string") {
+      this.#resident = AdaptiveU32Column.from(this.#values as Uint32Array);
+    } else {
+      this.#resident = BitSlicedU8Column.from(
+        this.#values as Uint8Array,
+        this.#definition.bitWidth,
+        this.#validity,
+      );
+    }
+    if (
+      this.#definition.nullable && this.#definition.kind !== "u8" &&
+      this.#validityResident === undefined
+    ) {
+      this.#validityResident = validityColumn(this.length, this.#validity!);
+    }
+    this.#values = undefined;
+    this.#validity = undefined;
+    this.#onFootprintChange(previous, this.footprint());
+    return this.#resident;
+  }
+
+  #gatherValidity(selection: SelectionMask, output: Uint8Array | undefined): void {
+    if (output === undefined) return;
+    const resident = this.#validityResident;
+    if (resident === undefined) throw new Error("nullable column is missing validity");
+    resident.gatherInto(selection, new Uint8Array(output.length), output);
   }
 }
 
 interface PageLease {
   readonly page: CachedColumnPage;
-  readonly hit: boolean;
   release(): void;
 }
 
@@ -158,13 +336,26 @@ class ResidentPageCache {
   readonly #maximumBytes: number;
   readonly #pages = new Map<string, CachedColumnPage>();
   readonly #loads = new Map<string, Promise<CachedColumnPage>>();
-  #bytes = 0;
+  #hostBytes = 0;
+  #wasmBytes = 0;
+  #evictions = 0;
 
   constructor(maximumBytes: number) {
     if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0) {
       throw new RangeError("cacheBytes must be a non-negative safe integer");
     }
     this.#maximumBytes = maximumBytes;
+  }
+
+  stats(): CacheStats {
+    return Object.freeze({
+      maximumBytes: this.#maximumBytes,
+      hostBytes: this.#hostBytes,
+      wasmBytes: this.#wasmBytes,
+      totalBytes: this.#hostBytes + this.#wasmBytes,
+      pages: this.#pages.size,
+      evictions: this.#evictions,
+    });
   }
 
   async acquire(
@@ -177,7 +368,6 @@ class ResidentPageCache {
     stats: MutableStats,
   ): Promise<PageLease> {
     let page = this.#pages.get(key);
-    let hit = page !== undefined;
     if (page === undefined) {
       let loading = this.#loads.get(key);
       if (loading === undefined) {
@@ -196,10 +386,9 @@ class ResidentPageCache {
           if (this.#loads.get(key) === loading) this.#loads.delete(key);
         }
         stats.pagesRead++;
-        stats.bytesRead += page.byteLength;
+        stats.bytesRead += page.storedByteLength;
       } else {
         page = await loading;
-        hit = true;
         stats.cacheHits++;
       }
     } else {
@@ -211,7 +400,6 @@ class ResidentPageCache {
     let released = false;
     return {
       page,
-      hit,
       release: () => {
         if (released) return;
         released = true;
@@ -234,65 +422,109 @@ class ResidentPageCache {
     if (bytes.byteLength !== expectedBytes) {
       throw new RangeError(`column page ${key} byte mismatch`);
     }
-    let page: CachedColumnPage;
-    if (format === "raw") {
-      const values = decodeColumnPage(definition, bytes);
-      if (values.length !== expectedLength) {
-        throw new RangeError(`column page ${key} length mismatch`);
-      }
-      page = new CachedColumnPage(key, definition, values, bytes.byteLength);
+    let values: NumericArray | undefined;
+    let validity: Uint8Array | undefined;
+    let stringPage: DictionaryStringPage | undefined;
+    let resident: ResidentColumn | undefined;
+    if (definition.kind === "string") {
+      stringPage = decodeDictionaryStringPage(bytes, definition.nullable);
     } else {
-      const resident = restoreResidentColumn(definition, bytes);
-      if (resident.length !== expectedLength) {
-        resident[Symbol.dispose]();
-        throw new RangeError(`column page ${key} length mismatch`);
+      let inner = bytes;
+      if (definition.nullable && (definition.kind !== "u8" || format === "raw")) {
+        const decoded = decodeNullableStoredPage(bytes);
+        inner = decoded.inner;
+        validity = decoded.validity;
+        if (validity.length !== expectedLength) {
+          throw new RangeError(`column page ${key} validity length mismatch`);
+        }
       }
-      page = new CachedColumnPage(key, definition, undefined, bytes.byteLength, resident);
+      if (format === "raw") {
+        values = decodeColumnPage(definition, inner);
+        if (values.length !== expectedLength) {
+          throw new RangeError(`column page ${key} length mismatch`);
+        }
+      } else {
+        resident = restoreResidentColumn(definition, inner);
+        if (resident.length !== expectedLength) {
+          resident[Symbol.dispose]();
+          throw new RangeError(`column page ${key} length mismatch`);
+        }
+      }
     }
+    const page = new CachedColumnPage(
+      key,
+      definition,
+      expectedLength,
+      bytes.byteLength,
+      {
+        values,
+        validity,
+        stringPage,
+        resident,
+        onFootprintChange: (previous, next) => {
+          this.#hostBytes += next.hostBytes - previous.hostBytes;
+          this.#wasmBytes += next.wasmBytes - previous.wasmBytes;
+          this.#evict();
+        },
+      },
+    );
     this.#pages.set(key, page);
-    this.#bytes += page.byteLength;
+    const footprint = page.footprint();
+    this.#hostBytes += footprint.hostBytes;
+    this.#wasmBytes += footprint.wasmBytes;
     return page;
   }
 
   clear(prefix = ""): void {
     for (const [key, page] of this.#pages) {
       if (!key.startsWith(prefix) || page.pins !== 0) continue;
-      this.#pages.delete(key);
-      this.#bytes -= page.byteLength;
-      page[Symbol.dispose]();
+      this.#remove(key, page);
     }
   }
 
   [Symbol.dispose](): void {
     for (const page of this.#pages.values()) page[Symbol.dispose]();
     this.#pages.clear();
-    this.#bytes = 0;
+    this.#hostBytes = 0;
+    this.#wasmBytes = 0;
   }
 
   #evict(): void {
-    if (this.#bytes <= this.#maximumBytes) return;
+    if (this.#hostBytes + this.#wasmBytes <= this.#maximumBytes) return;
     for (const [key, page] of this.#pages) {
-      if (this.#bytes <= this.#maximumBytes) break;
+      if (this.#hostBytes + this.#wasmBytes <= this.#maximumBytes) break;
       if (page.pins !== 0) continue;
-      this.#pages.delete(key);
-      this.#bytes -= page.byteLength;
-      page[Symbol.dispose]();
+      this.#remove(key, page);
+      this.#evictions++;
     }
   }
+
+  #remove(key: string, page: CachedColumnPage): void {
+    this.#pages.delete(key);
+    const footprint = page.footprint();
+    this.#hostBytes -= footprint.hostBytes;
+    this.#wasmBytes -= footprint.wasmBytes;
+    page[Symbol.dispose]();
+  }
 }
+
+export type PageFormat = "raw" | "snapshot" | "dictionary";
 
 export class SchemaEngine<Schema extends SchemaDefinition> {
   readonly schema: Schema;
   readonly backend: PageBackend;
   readonly #cache: ResidentPageCache;
   readonly #manifests = new Map<string, TableManifest>();
-  readonly #pageFormat: PageFormat;
+  readonly #pageFormat: Exclude<PageFormat, "dictionary">;
   #disposed = false;
 
   constructor(
     schema: Schema,
     backend: PageBackend,
-    options: { readonly cacheBytes?: number; readonly pageFormat?: PageFormat } = {},
+    options: {
+      readonly cacheBytes?: number;
+      readonly pageFormat?: Exclude<PageFormat, "dictionary">;
+    } = {},
   ) {
     this.schema = schema;
     this.backend = backend;
@@ -319,20 +551,23 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
       const columns: Record<string, ColumnManifest> = {};
       for (const columnName of columnNames) {
         const definition = table.columns[columnName]!;
-        const values = (input as Readonly<Record<string, NumericArray>>)[columnName]!;
-        const pageValues = values.slice(rowOffset, rowOffset + pageLength) as NumericArray;
-        const bytes = this.#pageFormat === "raw"
-          ? encodeColumnPage(definition, pageValues)
-          : serializeResidentColumn(definition, pageValues);
+        const pageInput = sliceColumnInput(
+          definition,
+          (input as Readonly<Record<string, unknown>>)[columnName],
+          rowOffset,
+          pageLength,
+        );
+        const bytes = encodeStoredColumn(definition, pageInput, this.#pageFormat);
         const key = `tables/${name}/pages/${generation}/${index}/${columnName}.bin`;
         await this.backend.put(key, bytes);
-        const [minimum, maximum] = minMax(pageValues);
+        const [minimum, maximum, nullCount] = minMax(definition, pageInput);
         columns[columnName] = Object.freeze({
           key,
           kind: definition.kind,
-          format: this.#pageFormat,
+          format: definition.kind === "string" ? "dictionary" : this.#pageFormat,
           min: minimum,
           max: maximum,
+          nullCount,
           byteLength: bytes.byteLength,
         });
       }
@@ -343,10 +578,17 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
         columns: Object.freeze(columns),
       }));
     }
+    const definitions = Object.fromEntries(
+      Object.entries(table.columns).map(([columnName, definition]) => [
+        columnName,
+        storedDefinition(definition),
+      ]),
+    );
     const manifest: TableManifest = Object.freeze({
       version: MANIFEST_VERSION,
       generation,
       fingerprint: schemaFingerprint(table),
+      definitions: Object.freeze(definitions),
       rowCount: length,
       rowGroupSize: table.rowGroupSize,
       rowGroups: Object.freeze(rowGroups),
@@ -370,6 +612,11 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
   clearCache(): void {
     this.#assertAlive();
     this.#cache.clear();
+  }
+
+  cacheStats(): CacheStats {
+    this.#assertAlive();
+    return this.#cache.stats();
   }
 
   /** Reloads a table manifest published by another engine and drops its resident pages. */
@@ -420,11 +667,19 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
       rowsMatched: 0,
     };
     const rowIdChunks: Uint32Array[] = [];
-    const chunks = new Map<string, NumericArray[]>();
+    const chunks = new Map<string, ColumnChunk[]>();
     for (const name of selected) chunks.set(name, []);
 
     for (const group of manifest.rowGroups) {
-      if (predicates.some((predicate) => !mayMatch(group.columns[predicate.column]!, predicate))) {
+      if (
+        predicates.some((predicate) => {
+          const definition = table.columns[predicate.column]!;
+          const metadata = group.columns[predicate.column];
+          return metadata === undefined
+            ? !defaultMayMatch(definition, predicate)
+            : !mayMatch(metadata, group.length, predicate);
+        })
+      ) {
         stats.rowGroupsSkipped++;
         continue;
       }
@@ -434,9 +689,15 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
       try {
         await Promise.all(Array.from(needed, async (columnName) => {
           const definition = table.columns[columnName];
+          if (definition === undefined) throw new RangeError(`unknown column ${columnName}`);
           const metadata = group.columns[columnName];
-          if (definition === undefined || metadata === undefined) {
-            throw new RangeError(`manifest is missing column ${columnName}`);
+          if (metadata === undefined) {
+            const page = virtualDefaultPage(columnName, definition, group.length);
+            leases.set(columnName, {
+              page,
+              release: () => page[Symbol.dispose](),
+            });
+            return;
           }
           const lease = await this.#cache.acquire(
             this.backend,
@@ -454,8 +715,7 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
         using temporary = new SelectionMask(group.length);
         selection.fill();
         for (const predicate of predicates) {
-          const resident = leases.get(predicate.column)!.page.resident();
-          scan(resident, predicate, temporary);
+          leases.get(predicate.column)!.page.scan(predicate, temporary);
           selection.andAssign(temporary);
           if (selection.countOnes() === 0) break;
         }
@@ -469,11 +729,7 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
         }
         rowIdChunks.push(rowIds);
         for (const columnName of selected) {
-          const page = leases.get(columnName)!.page;
-          const output = newTypedArray(table.columns[columnName]!, localRows.length);
-          const written = page.gatherInto(selection, output);
-          if (written !== localRows.length) throw new Error("projected column length mismatch");
-          chunks.get(columnName)!.push(output);
+          chunks.get(columnName)!.push(leases.get(columnName)!.page.gather(selection));
         }
       } finally {
         for (const lease of leases.values()) lease.release();
@@ -482,9 +738,12 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
 
     const frozenStats = Object.freeze({ ...stats });
     if (!materialize) return Object.freeze({ value: stats.rowsMatched, stats: frozenStats });
-    const columns: Record<string, NumericArray> = {};
+    const columns: Record<string, ColumnChunk> = {};
     for (const columnName of selected) {
-      columns[columnName] = concatenate(table.columns[columnName]!, chunks.get(columnName)!);
+      columns[columnName] = concatenate(
+        table.columns[columnName]!,
+        chunks.get(columnName)!,
+      );
     }
     return Object.freeze({
       rowIds: concatenateU32(rowIdChunks),
@@ -517,9 +776,7 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
       throw new RangeError(`invalid table manifest: ${String(error)}`);
     }
     const manifest = validateManifest(value);
-    if (manifest.fingerprint !== schemaFingerprint(table)) {
-      throw new RangeError(`schema mismatch for table ${name}`);
-    }
+    validateSchemaEvolution(table, manifest, name);
     return manifest;
   }
 
@@ -527,6 +784,10 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
     if (this.#disposed) throw new Error("SchemaEngine has been disposed");
   }
 }
+
+type PredicateValue<Definition extends ColumnDefinition> = Definition["kind"] extends "string"
+  ? string
+  : number;
 
 export class QueryBuilder<
   Table extends TableDefinition,
@@ -556,25 +817,26 @@ export class QueryBuilder<
   where<Name extends ColumnName<Table>>(
     column: Name,
     operator: "eq" | "lt",
-    value: number,
+    value: PredicateValue<Table["columns"][Name]>,
   ): QueryBuilder<Table, Selected, Schema>;
   where<Name extends ColumnName<Table>>(
     column: Name,
     operator: "between",
-    minimum: number,
-    maximum: number,
+    minimum: PredicateValue<Table["columns"][Name]>,
+    maximum: PredicateValue<Table["columns"][Name]>,
   ): QueryBuilder<Table, Selected, Schema>;
   where<Name extends ColumnName<Table>>(
     column: Name,
     operator: PredicateOperator,
-    minimum: number,
-    maximum?: number,
+    minimum: Scalar,
+    maximum?: Scalar,
   ): QueryBuilder<Table, Selected, Schema> {
-    if (this.#table.columns[column] === undefined) throw new RangeError(`unknown column ${column}`);
-    validatePredicateValue(minimum);
+    const definition = this.#table.columns[column];
+    if (definition === undefined) throw new RangeError(`unknown column ${column}`);
+    validatePredicateValue(definition, minimum);
     if (operator === "between") {
       if (maximum === undefined) throw new TypeError("between requires a maximum");
-      validatePredicateValue(maximum);
+      validatePredicateValue(definition, maximum);
     }
     const predicate = Object.freeze({ column, operator, minimum, maximum });
     return new QueryBuilder(
@@ -584,6 +846,18 @@ export class QueryBuilder<
       [...this.#predicates, predicate],
       this.#selected,
     );
+  }
+
+  whereNull<Name extends ColumnName<Table>>(
+    column: Name,
+  ): QueryBuilder<Table, Selected, Schema> {
+    return this.#whereValidity(column, "is-null");
+  }
+
+  whereNotNull<Name extends ColumnName<Table>>(
+    column: Name,
+  ): QueryBuilder<Table, Selected, Schema> {
+    return this.#whereValidity(column, "is-not-null");
   }
 
   select<const Names extends readonly ColumnName<Table>[]>(
@@ -622,30 +896,63 @@ export class QueryBuilder<
       false,
     ) as Promise<CountResult>;
   }
+
+  #whereValidity(
+    column: ColumnName<Table>,
+    operator: "is-null" | "is-not-null",
+  ): QueryBuilder<Table, Selected, Schema> {
+    if (this.#table.columns[column] === undefined) throw new RangeError(`unknown column ${column}`);
+    return new QueryBuilder(
+      this.#engine,
+      this.#tableName,
+      this.#table,
+      [...this.#predicates, Object.freeze({ column, operator })],
+      this.#selected,
+    );
+  }
 }
 
-function scan(column: ResidentColumn, predicate: Predicate, output: SelectionMask): void {
-  if (predicate.operator === "eq") column.scanEq(predicate.minimum, output);
-  else if (predicate.operator === "lt") column.scanLt(predicate.minimum, output);
-  else column.scanBetween(predicate.minimum, predicate.maximum!, output);
+function encodeStoredColumn(
+  definition: ColumnDefinition,
+  input: unknown,
+  format: Exclude<PageFormat, "dictionary">,
+): Uint8Array {
+  if (definition.kind === "string") {
+    return encodeDictionaryStringPage(
+      input as readonly (string | null)[],
+      definition.nullable,
+    );
+  }
+  const { values, validity } = numericParts(definition, input);
+  const inner = format === "raw"
+    ? encodeColumnPage(definition, values)
+    : serializeResidentColumn(definition, values, validity);
+  return definition.nullable && (definition.kind !== "u8" || format === "raw")
+    ? encodeNullableStoredPage(inner, validity!)
+    : inner;
 }
 
-function serializeResidentColumn(definition: ColumnDefinition, values: NumericArray): Uint8Array {
-  using resident = createResidentColumn(definition, values);
+function serializeResidentColumn(
+  definition: Exclude<ColumnDefinition, { readonly kind: "string" }>,
+  values: NumericArray,
+  validity?: Uint8Array,
+): Uint8Array {
+  using resident = createResidentColumn(definition, values, validity);
   return resident.serialize();
 }
 
 function createResidentColumn(
-  definition: ColumnDefinition,
+  definition: Exclude<ColumnDefinition, { readonly kind: "string" }>,
   values: NumericArray,
+  validity?: Uint8Array,
 ): ResidentColumn {
   if (definition.kind === "i32") return AdaptiveI32Column.from(values as Int32Array);
   if (definition.kind === "u32") return AdaptiveU32Column.from(values as Uint32Array);
-  return BitSlicedU8Column.from(values as Uint8Array, definition.bitWidth);
+  return BitSlicedU8Column.from(values as Uint8Array, definition.bitWidth, validity);
 }
 
 function restoreResidentColumn(
-  definition: ColumnDefinition,
+  definition: Exclude<ColumnDefinition, { readonly kind: "string" }>,
   snapshot: Uint8Array,
 ): ResidentColumn {
   if (definition.kind === "i32") return AdaptiveI32Column.fromSnapshot(snapshot);
@@ -653,67 +960,217 @@ function restoreResidentColumn(
   return BitSlicedU8Column.fromSnapshot(snapshot);
 }
 
-function mayMatch(metadata: ColumnManifest, predicate: Predicate): boolean {
+function validityColumn(length: number, validity: Uint8Array): BitSlicedU8Column {
+  return BitSlicedU8Column.from(new Uint8Array(length), 1, validity);
+}
+
+function residentBytes(resident: ResidentColumn | undefined): number {
+  return resident?.encodedBytes ?? 0;
+}
+
+function mayMatch(
+  metadata: ColumnManifest,
+  rowCount: number,
+  predicate: Predicate,
+): boolean {
+  if (predicate.operator === "is-null") return metadata.nullCount > 0;
+  if (predicate.operator === "is-not-null") return metadata.nullCount < rowCount;
+  if (metadata.min === null || metadata.max === null) return false;
+  return scalarMatches(metadata.min, metadata.max, predicate);
+}
+
+function defaultMayMatch(definition: ColumnDefinition, predicate: Predicate): boolean {
+  const value = defaultValue(definition);
+  if (predicate.operator === "is-null") return value === null;
+  if (predicate.operator === "is-not-null") return value !== null;
+  return value !== null && scalarMatches(value, value, predicate);
+}
+
+function scalarMatches(minimum: Scalar, maximum: Scalar, predicate: Predicate): boolean {
+  if (predicate.minimum === undefined) return false;
+  if (typeof minimum !== typeof predicate.minimum) return false;
   if (predicate.operator === "eq") {
-    return predicate.minimum >= metadata.min && predicate.minimum <= metadata.max;
+    return compare(predicate.minimum, minimum) >= 0 && compare(predicate.minimum, maximum) <= 0;
   }
-  if (predicate.operator === "lt") return metadata.min < predicate.minimum;
-  return predicate.minimum < predicate.maximum! && metadata.max >= predicate.minimum &&
-    metadata.min < predicate.maximum!;
+  if (predicate.operator === "lt") return compare(minimum, predicate.minimum) < 0;
+  return compare(predicate.minimum, predicate.maximum!) < 0 &&
+    compare(maximum, predicate.minimum) >= 0 &&
+    compare(minimum, predicate.maximum!) < 0;
 }
 
 function validateTableInput(table: TableDefinition, input: object): number {
   let length: number | undefined;
   for (const [name, definition] of Object.entries(table.columns)) {
     const value = (input as Readonly<Record<string, unknown>>)[name];
-    const valid = definition.kind === "i32"
-      ? value instanceof Int32Array
-      : definition.kind === "u32"
-      ? value instanceof Uint32Array
-      : value instanceof Uint8Array;
-    if (!valid) throw new TypeError(`column ${name} must be a ${typedArrayName(definition)}`);
-    const values = value as NumericArray;
-    if (length === undefined) length = values.length;
-    else if (length !== values.length) throw new RangeError("all columns must have equal length");
-    if (definition.kind === "u8") {
-      const limit = 2 ** definition.bitWidth;
-      for (const item of values) {
-        if (item >= limit) {
-          throw new RangeError(`column ${name} contains a value outside its bit width`);
-        }
-      }
-    }
+    const columnLength = validateColumnInput(name, definition, value);
+    if (length === undefined) length = columnLength;
+    else if (length !== columnLength) throw new RangeError("all columns must have equal length");
   }
   return length ?? 0;
 }
 
-function typedArrayName(definition: ColumnDefinition): string {
+function validateColumnInput(
+  name: string,
+  definition: ColumnDefinition,
+  input: unknown,
+): number {
+  if (definition.kind === "string") {
+    if (!Array.isArray(input)) throw new TypeError(`column ${name} must be an Array`);
+    for (const item of input) {
+      if (typeof item !== "string" && !(definition.nullable && item === null)) {
+        throw new TypeError(`column ${name} contains an invalid string value`);
+      }
+    }
+    return input.length;
+  }
+  const { values, validity } = numericParts(definition, input);
+  const valid = definition.kind === "i32"
+    ? values instanceof Int32Array
+    : definition.kind === "u32"
+    ? values instanceof Uint32Array
+    : values instanceof Uint8Array;
+  if (!valid) throw new TypeError(`column ${name} must be a ${typedArrayName(definition)}`);
+  if (definition.nullable) {
+    if (!(validity instanceof Uint8Array) || validity.length !== values.length) {
+      throw new RangeError(`column ${name} validity must have one byte per value`);
+    }
+  }
+  if (definition.kind === "u8") {
+    const limit = 2 ** definition.bitWidth;
+    for (let index = 0; index < values.length; index++) {
+      if (validity !== undefined && validity[index] === 0) continue;
+      if (values[index]! >= limit) {
+        throw new RangeError(`column ${name} contains a value outside its bit width`);
+      }
+    }
+  }
+  return values.length;
+}
+
+function numericParts(
+  definition: Exclude<ColumnDefinition, { readonly kind: "string" }>,
+  input: unknown,
+): { readonly values: NumericArray; readonly validity: Uint8Array | undefined } {
+  if (!definition.nullable) {
+    return { values: input as NumericArray, validity: undefined };
+  }
+  if (typeof input !== "object" || input === null) {
+    throw new TypeError("nullable numeric input requires values and validity");
+  }
+  const candidate = input as Partial<NullableColumn<NumericArray>>;
+  return { values: candidate.values as NumericArray, validity: candidate.validity };
+}
+
+function sliceColumnInput(
+  definition: ColumnDefinition,
+  input: unknown,
+  offset: number,
+  length: number,
+): unknown {
+  if (definition.kind === "string") {
+    return (input as readonly (string | null)[]).slice(offset, offset + length);
+  }
+  const parts = numericParts(definition, input);
+  const values = parts.values.slice(offset, offset + length) as NumericArray;
+  if (!definition.nullable) return values;
+  return Object.freeze({
+    values,
+    validity: parts.validity!.slice(offset, offset + length),
+  });
+}
+
+function typedArrayName(
+  definition: Exclude<ColumnDefinition, { readonly kind: "string" }>,
+): string {
   if (definition.kind === "i32") return "Int32Array";
   if (definition.kind === "u32") return "Uint32Array";
   return "Uint8Array";
 }
 
-function minMax(values: NumericArray): readonly [number, number] {
-  let minimum = values[0] ?? 0;
-  let maximum = minimum;
-  for (let index = 1; index < values.length; index++) {
-    const value = values[index]!;
-    if (value < minimum) minimum = value;
-    if (value > maximum) maximum = value;
+function minMax(
+  definition: ColumnDefinition,
+  input: unknown,
+): readonly [Scalar | null, Scalar | null, number] {
+  if (definition.kind === "string") {
+    const values = input as readonly (string | null)[];
+    let minimum: string | null = null;
+    let maximum: string | null = null;
+    let nullCount = 0;
+    for (const value of values) {
+      if (value === null) {
+        nullCount++;
+        continue;
+      }
+      if (minimum === null || value < minimum) minimum = value;
+      if (maximum === null || value > maximum) maximum = value;
+    }
+    return [minimum, maximum, nullCount];
   }
-  return [minimum, maximum];
+  const { values, validity } = numericParts(definition, input);
+  let minimum: number | null = null;
+  let maximum: number | null = null;
+  let nullCount = 0;
+  for (let index = 0; index < values.length; index++) {
+    if (validity !== undefined && validity[index] === 0) {
+      nullCount++;
+      continue;
+    }
+    const value = values[index]!;
+    if (minimum === null || value < minimum) minimum = value;
+    if (maximum === null || value > maximum) maximum = value;
+  }
+  return [minimum, maximum, nullCount];
 }
 
-function newTypedArray(definition: ColumnDefinition, length: number): NumericArray {
+function newTypedArray(
+  definition: Exclude<ColumnDefinition, { readonly kind: "string" }>,
+  length: number,
+): NumericArray {
   if (definition.kind === "i32") return new Int32Array(length);
   if (definition.kind === "u32") return new Uint32Array(length);
   return new Uint8Array(length);
 }
 
-function concatenate(definition: ColumnDefinition, chunks: readonly NumericArray[]): NumericArray {
+function concatenate(
+  definition: ColumnDefinition,
+  chunks: readonly ColumnChunk[],
+): ColumnChunk {
+  if (definition.kind === "string") {
+    const output: (string | null)[] = [];
+    for (const chunk of chunks) output.push(...chunk as readonly (string | null)[]);
+    return output;
+  }
+  if (definition.nullable) {
+    const nullableChunks = chunks as readonly NullableColumn<NumericArray>[];
+    const values = concatenateNumeric(
+      definition,
+      nullableChunks.map((chunk) => chunk.values),
+    );
+    const validity = concatenateBytes(nullableChunks.map((chunk) => chunk.validity));
+    return Object.freeze({ values, validity });
+  }
+  return concatenateNumeric(definition, chunks as readonly NumericArray[]);
+}
+
+function concatenateNumeric(
+  definition: Exclude<ColumnDefinition, { readonly kind: "string" }>,
+  chunks: readonly NumericArray[],
+): NumericArray {
   let length = 0;
   for (const chunk of chunks) length += chunk.length;
   const output = newTypedArray(definition, length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return output;
+}
+
+function concatenateBytes(chunks: readonly Uint8Array[]): Uint8Array {
+  let length = 0;
+  for (const chunk of chunks) length += chunk.length;
+  const output = new Uint8Array(length);
   let offset = 0;
   for (const chunk of chunks) {
     output.set(chunk, offset);
@@ -734,8 +1191,96 @@ function concatenateU32(chunks: readonly Uint32Array[]): Uint32Array {
   return output;
 }
 
-function validatePredicateValue(value: number): void {
-  if (!Number.isSafeInteger(value)) throw new RangeError("predicate values must be safe integers");
+function virtualDefaultPage(
+  key: string,
+  definition: ColumnDefinition,
+  length: number,
+): CachedColumnPage {
+  const value = defaultValue(definition);
+  if (definition.kind === "string") {
+    return new CachedColumnPage(key, definition, length, 0, {
+      stringPage: decodeDictionaryStringPage(
+        encodeDictionaryStringPage(
+          Array.from({ length }, () => value as string | null),
+          definition.nullable,
+        ),
+        definition.nullable,
+      ),
+    });
+  }
+  const values = newTypedArray(definition, length);
+  const validity = definition.nullable ? new Uint8Array(length) : undefined;
+  if (value !== null) {
+    values.fill(value as number);
+    validity?.fill(1);
+  }
+  return new CachedColumnPage(key, definition, length, 0, { values, validity });
+}
+
+function defaultValue(definition: ColumnDefinition): Scalar | null {
+  if (Object.hasOwn(definition, "default")) return definition.default ?? null;
+  if (definition.nullable) return null;
+  throw new RangeError("added non-nullable columns require a default");
+}
+
+function storedDefinition(definition: ColumnDefinition): StoredColumnDefinition {
+  return Object.freeze({
+    kind: definition.kind,
+    nullable: definition.nullable,
+    ...(definition.kind === "u8" ? { bitWidth: definition.bitWidth } : {}),
+  });
+}
+
+function validateSchemaEvolution(
+  table: TableDefinition,
+  manifest: TableManifest,
+  tableName: string,
+): void {
+  if (manifest.rowGroupSize !== table.rowGroupSize) {
+    throw new RangeError(`schema mismatch for table ${tableName}: rowGroupSize changed`);
+  }
+  for (const [name, stored] of Object.entries(manifest.definitions)) {
+    const current = table.columns[name];
+    if (
+      current === undefined || current.kind !== stored.kind ||
+      current.nullable !== stored.nullable ||
+      (current.kind === "u8" && current.bitWidth !== stored.bitWidth)
+    ) {
+      throw new RangeError(`schema mismatch for table ${tableName}: column ${name} changed`);
+    }
+  }
+  for (const [name, current] of Object.entries(table.columns)) {
+    if (manifest.definitions[name] !== undefined) continue;
+    if (!current.nullable && !Object.hasOwn(current, "default")) {
+      throw new RangeError(
+        `schema mismatch for table ${tableName}: added column ${name} requires a default`,
+      );
+    }
+  }
+}
+
+function validatePredicateValue(definition: ColumnDefinition, value: Scalar): void {
+  if (definition.kind === "string") {
+    if (typeof value !== "string") throw new TypeError("string predicate values must be strings");
+  } else if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+    throw new RangeError("numeric predicate values must be safe integers");
+  }
+}
+
+function compare(left: Scalar, right: Scalar): number {
+  if (typeof left !== typeof right) return Number.NaN;
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function lowerBound(values: readonly string[], target: string): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (values[middle]! < target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
 }
 
 function manifestKey(name: string): string {
@@ -747,10 +1292,15 @@ function validateManifest(value: unknown): TableManifest {
   const candidate = value as Partial<TableManifest>;
   if (
     candidate.version !== MANIFEST_VERSION || typeof candidate.generation !== "string" ||
-    typeof candidate.fingerprint !== "string" || !Number.isSafeInteger(candidate.rowCount) ||
+    typeof candidate.fingerprint !== "string" ||
+    typeof candidate.definitions !== "object" || candidate.definitions === null ||
+    !Number.isSafeInteger(candidate.rowCount) ||
     !Number.isSafeInteger(candidate.rowGroupSize) || !Array.isArray(candidate.rowGroups)
   ) {
     throw new RangeError("invalid table manifest");
+  }
+  for (const definition of Object.values(candidate.definitions)) {
+    if (!validStoredDefinition(definition)) throw new RangeError("invalid stored schema");
   }
   for (const group of candidate.rowGroups) {
     if (
@@ -762,12 +1312,33 @@ function validateManifest(value: unknown): TableManifest {
       const column = metadata as Partial<ColumnManifest>;
       if (
         typeof metadata !== "object" || metadata === null || typeof column.key !== "string" ||
-        typeof column.kind !== "string" || !["i32", "u32", "u8"].includes(column.kind) ||
-        typeof column.format !== "string" || !["raw", "snapshot"].includes(column.format) ||
-        typeof column.min !== "number" || typeof column.max !== "number" ||
+        typeof column.kind !== "string" ||
+        !["i32", "u32", "u8", "string"].includes(column.kind) ||
+        typeof column.format !== "string" ||
+        !["raw", "snapshot", "dictionary"].includes(column.format) ||
+        !validScalarOrNull(column.min) || !validScalarOrNull(column.max) ||
+        !Number.isSafeInteger(column.nullCount) ||
         !Number.isSafeInteger(column.byteLength)
       ) throw new RangeError("invalid column manifest");
     }
   }
   return candidate as TableManifest;
+}
+
+function validStoredDefinition(value: unknown): value is StoredColumnDefinition {
+  if (typeof value !== "object" || value === null) return false;
+  const definition = value as Partial<StoredColumnDefinition>;
+  if (
+    typeof definition.kind !== "string" ||
+    !["i32", "u32", "u8", "string"].includes(definition.kind) ||
+    typeof definition.nullable !== "boolean"
+  ) return false;
+  return definition.kind !== "u8" ||
+    (Number.isInteger(definition.bitWidth) && definition.bitWidth! >= 1 &&
+      definition.bitWidth! <= 8);
+}
+
+function validScalarOrNull(value: unknown): value is Scalar | null {
+  return value === null || typeof value === "string" ||
+    (typeof value === "number" && Number.isFinite(value));
 }

@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "name": "adaptive-simd-page-i32",
+      "path": "examples/tree-shake-adaptive-simd-page-i32/dist/assets",
+      "jsMaxGzipBytes": 6600,
+      "wasmMaxGzipBytes": 1900
+    },
+    {
+      "name": "binary-vector-index",
+      "path": "examples/tree-shake-binary-vector-index/dist/assets",
+      "jsMaxGzipBytes": 4900,
+      "wasmMaxGzipBytes": 600
+    },
+    {
+      "name": "bit-histogram32",
+      "path": "examples/tree-shake-bit-histogram32/dist/assets",
+      "jsMaxGzipBytes": 2600,
+      "wasmMaxGzipBytes": 400
+    },
+    {
+      "name": "bit-matrix",
+      "path": "examples/tree-shake-bit-matrix/dist/assets",
+      "jsMaxGzipBytes": 3800,
+      "wasmMaxGzipBytes": 550
+    },
+    {
+      "name": "bit-sliced-column",
+      "path": "examples/tree-shake-bit-sliced-column/dist/assets",
+      "jsMaxGzipBytes": 3500,
+      "wasmMaxGzipBytes": 600
+    },
+    {
+      "name": "bitmap",
+      "path": "examples/tree-shake-bitmap/dist/assets",
+      "jsMaxGzipBytes": 3400,
+      "wasmMaxGzipBytes": 400
+    },
+    {
+      "name": "blocked-bloom-filter",
+      "path": "examples/tree-shake-blocked-bloom-filter/dist/assets",
+      "jsMaxGzipBytes": 2900,
+      "wasmMaxGzipBytes": 500
+    },
+    {
+      "name": "blocked-vector-array",
+      "path": "examples/tree-shake-blocked-vector-array/dist/assets",
+      "jsMaxGzipBytes": 3400,
+      "wasmMaxGzipBytes": 1100
+    },
+    {
+      "name": "byte-key-flat-hash",
+      "path": "examples/tree-shake-byte-key-flat-hash/dist/assets",
+      "jsMaxGzipBytes": 4000,
+      "wasmMaxGzipBytes": 900
+    },
+    {
+      "name": "bytes",
+      "path": "examples/tree-shake-bytes/dist/assets",
+      "jsMaxGzipBytes": 1700,
+      "wasmMaxGzipBytes": 650
+    },
+    {
+      "name": "columnar",
+      "path": "examples/tree-shake-columnar/dist/assets",
+      "jsMaxGzipBytes": 8200,
+      "wasmMaxGzipBytes": 1400
+    },
+    {
+      "name": "compressed-string-table",
+      "path": "examples/tree-shake-compressed-string-table/dist/assets",
+      "jsMaxGzipBytes": 4900,
+      "wasmMaxGzipBytes": 500
+    },
+    {
+      "name": "elias-fano-sequence",
+      "path": "examples/tree-shake-elias-fano-sequence/dist/assets",
+      "jsMaxGzipBytes": 5900,
+      "wasmMaxGzipBytes": 1050
+    },
+    {
+      "name": "endian",
+      "path": "examples/tree-shake-endian/dist/assets",
+      "jsMaxGzipBytes": 1400,
+      "wasmMaxGzipBytes": 300
+    },
+    {
+      "name": "f32-vector",
+      "path": "examples/tree-shake-f32-vector/dist/assets",
+      "jsMaxGzipBytes": 2500,
+      "wasmMaxGzipBytes": 450
+    },
+    {
+      "name": "fingerprint-group16",
+      "path": "examples/tree-shake-fingerprint-group16/dist/assets",
+      "jsMaxGzipBytes": 2800,
+      "wasmMaxGzipBytes": 400
+    },
+    {
+      "name": "flat-hash",
+      "path": "examples/tree-shake-flat-hash/dist/assets",
+      "jsMaxGzipBytes": 4000,
+      "wasmMaxGzipBytes": 1150
+    },
+    {
+      "name": "flat-hash-fixed16",
+      "path": "examples/tree-shake-flat-hash-fixed16/dist/assets",
+      "jsMaxGzipBytes": 3600,
+      "wasmMaxGzipBytes": 800
+    },
+    {
+      "name": "fm-index-bytes",
+      "path": "examples/tree-shake-fm-index-bytes/dist/assets",
+      "jsMaxGzipBytes": 5800,
+      "wasmMaxGzipBytes": 1550
+    },
+    {
+      "name": "i32-array",
+      "path": "examples/tree-shake-i32-array/dist/assets",
+      "jsMaxGzipBytes": 2600,
+      "wasmMaxGzipBytes": 500
+    },
+    {
+      "name": "json",
+      "path": "examples/tree-shake-json/dist/assets",
+      "jsMaxGzipBytes": 1300,
+      "wasmMaxGzipBytes": 400
+    },
+    {
+      "name": "matrix2d",
+      "path": "examples/tree-shake-matrix2d/dist/assets",
+      "jsMaxGzipBytes": 3000,
+      "wasmMaxGzipBytes": 350
+    },
+    {
+      "name": "matrix3d",
+      "path": "examples/tree-shake-matrix3d/dist/assets",
+      "jsMaxGzipBytes": 3200,
+      "wasmMaxGzipBytes": 400
+    },
+    {
+      "name": "packed-delta-uint32-list",
+      "path": "examples/tree-shake-packed-delta-uint32-list/dist/assets",
+      "jsMaxGzipBytes": 3400,
+      "wasmMaxGzipBytes": 1050
+    },
+    {
+      "name": "rank-select-bit-vector",
+      "path": "examples/tree-shake-rank-select-bit-vector/dist/assets",
+      "jsMaxGzipBytes": 3500,
+      "wasmMaxGzipBytes": 950
+    },
+    {
+      "name": "roaring-bitmap",
+      "path": "examples/tree-shake-roaring-bitmap/dist/assets",
+      "jsMaxGzipBytes": 5500,
+      "wasmMaxGzipBytes": 700
+    },
+    {
+      "name": "shared-buffer",
+      "path": "examples/tree-shake-shared-buffer/dist/assets",
+      "jsMaxGzipBytes": 30000,
+      "wasmMaxGzipBytes": 500
+    },
+    {
+      "name": "static-mphf-u32",
+      "path": "examples/tree-shake-static-mphf-u32/dist/assets",
+      "jsMaxGzipBytes": 4800,
+      "wasmMaxGzipBytes": 550
+    },
+    {
+      "name": "wavelet-matrix-uint16",
+      "path": "examples/tree-shake-wavelet-matrix-uint16/dist/assets",
+      "jsMaxGzipBytes": 5000,
+      "wasmMaxGzipBytes": 1200
+    },
+    {
+      "name": "wavelet-matrix-uint32",
+      "path": "examples/tree-shake-wavelet-matrix-uint32/dist/assets",
+      "jsMaxGzipBytes": 5000,
+      "wasmMaxGzipBytes": 1200
+    },
+    {
+      "name": "wavelet-matrix-uint8",
+      "path": "examples/tree-shake-wavelet-matrix-uint8/dist/assets",
+      "jsMaxGzipBytes": 5000,
+      "wasmMaxGzipBytes": 1200
+    }
+  ],
+  "requiredCorrectnessTests": [
+    "mod_test.ts",
+    "src/columnar/snapshot_test.ts",
+    "src/shared-buffer/buffer_test.ts"
+  ]
+}

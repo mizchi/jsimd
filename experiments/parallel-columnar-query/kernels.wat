@@ -150,4 +150,253 @@
     local.get $sum
     i64.store offset=8 align=8
   )
+
+  (func $group_update
+    (param $group i32)
+    (param $value i32)
+    (param $counts i32)
+    (param $sums i32)
+    (param $minimums i32)
+    (param $maximums i32)
+    (local $word_offset i32)
+    (local $sum_offset i32)
+    (local $count i32)
+
+    local.get $group
+    i32.const 2
+    i32.shl
+    local.set $word_offset
+    local.get $group
+    i32.const 3
+    i32.shl
+    local.set $sum_offset
+
+    local.get $counts
+    local.get $word_offset
+    i32.add
+    i32.load align=4
+    local.set $count
+
+    local.get $counts
+    local.get $word_offset
+    i32.add
+    local.get $count
+    i32.const 1
+    i32.add
+    i32.store align=4
+
+    local.get $sums
+    local.get $sum_offset
+    i32.add
+    local.get $sums
+    local.get $sum_offset
+    i32.add
+    i64.load align=8
+    local.get $value
+    i64.extend_i32_s
+    i64.add
+    i64.store align=8
+
+    local.get $count
+    i32.eqz
+    if
+      local.get $minimums
+      local.get $word_offset
+      i32.add
+      local.get $value
+      i32.store align=4
+      local.get $maximums
+      local.get $word_offset
+      i32.add
+      local.get $value
+      i32.store align=4
+    else
+      local.get $value
+      local.get $minimums
+      local.get $word_offset
+      i32.add
+      i32.load align=4
+      i32.lt_s
+      if
+        local.get $minimums
+        local.get $word_offset
+        i32.add
+        local.get $value
+        i32.store align=4
+      end
+      local.get $value
+      local.get $maximums
+      local.get $word_offset
+      i32.add
+      i32.load align=4
+      i32.gt_s
+      if
+        local.get $maximums
+        local.get $word_offset
+        i32.add
+        local.get $value
+        i32.store align=4
+      end
+    end
+  )
+
+  ;; Filters four i32 rows at a time, then updates worker-private low-cardinality u8 groups.
+  (func (export "scan_i32_between_group_by_u8")
+    (param $filter i32)
+    (param $values i32)
+    (param $groups i32)
+    (param $length i32)
+    (param $minimum i32)
+    (param $maximum i32)
+    (param $counts i32)
+    (param $sums i32)
+    (param $minimums i32)
+    (param $maximums i32)
+    (local $filters v128)
+    (local $mask i32)
+    (local $filter_value i32)
+
+    (block $simd_done
+      (loop $simd
+        local.get $length
+        i32.const 4
+        i32.lt_u
+        br_if $simd_done
+
+        local.get $filter
+        v128.load align=4
+        local.tee $filters
+        local.get $minimum
+        i32x4.splat
+        i32x4.ge_s
+        local.get $filters
+        local.get $maximum
+        i32x4.splat
+        i32x4.lt_s
+        v128.and
+        i32x4.bitmask
+        local.set $mask
+
+        local.get $mask
+        i32.const 1
+        i32.and
+        if
+          local.get $groups
+          i32.load8_u
+          local.get $values
+          i32.load align=4
+          local.get $counts
+          local.get $sums
+          local.get $minimums
+          local.get $maximums
+          call $group_update
+        end
+        local.get $mask
+        i32.const 2
+        i32.and
+        if
+          local.get $groups
+          i32.load8_u offset=1
+          local.get $values
+          i32.load offset=4 align=4
+          local.get $counts
+          local.get $sums
+          local.get $minimums
+          local.get $maximums
+          call $group_update
+        end
+        local.get $mask
+        i32.const 4
+        i32.and
+        if
+          local.get $groups
+          i32.load8_u offset=2
+          local.get $values
+          i32.load offset=8 align=4
+          local.get $counts
+          local.get $sums
+          local.get $minimums
+          local.get $maximums
+          call $group_update
+        end
+        local.get $mask
+        i32.const 8
+        i32.and
+        if
+          local.get $groups
+          i32.load8_u offset=3
+          local.get $values
+          i32.load offset=12 align=4
+          local.get $counts
+          local.get $sums
+          local.get $minimums
+          local.get $maximums
+          call $group_update
+        end
+
+        local.get $filter
+        i32.const 16
+        i32.add
+        local.set $filter
+        local.get $values
+        i32.const 16
+        i32.add
+        local.set $values
+        local.get $groups
+        i32.const 4
+        i32.add
+        local.set $groups
+        local.get $length
+        i32.const 4
+        i32.sub
+        local.set $length
+        br $simd
+      )
+    )
+
+    (block $scalar_done
+      (loop $scalar
+        local.get $length
+        i32.eqz
+        br_if $scalar_done
+        local.get $filter
+        i32.load align=4
+        local.tee $filter_value
+        local.get $minimum
+        i32.ge_s
+        local.get $filter_value
+        local.get $maximum
+        i32.lt_s
+        i32.and
+        if
+          local.get $groups
+          i32.load8_u
+          local.get $values
+          i32.load align=4
+          local.get $counts
+          local.get $sums
+          local.get $minimums
+          local.get $maximums
+          call $group_update
+        end
+        local.get $filter
+        i32.const 4
+        i32.add
+        local.set $filter
+        local.get $values
+        i32.const 4
+        i32.add
+        local.set $values
+        local.get $groups
+        i32.const 1
+        i32.add
+        local.set $groups
+        local.get $length
+        i32.const 1
+        i32.sub
+        local.set $length
+        br $scalar
+      )
+    )
+  )
 )

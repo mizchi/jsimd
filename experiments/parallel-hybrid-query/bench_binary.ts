@@ -1,3 +1,4 @@
+import { createEmbeddingWorkload, type EmbeddingDistribution } from "./embedding_workloads.ts";
 import { ParallelHybridVectorIndex } from "./parallel_index.ts";
 
 const ROWS = Number(Deno.env.get("JSIMD_BINARY_ROWS") ?? 65_536);
@@ -10,107 +11,109 @@ const SAMPLES = Number(Deno.env.get("JSIMD_BINARY_SAMPLES") ?? 15);
 const QUERY_COUNT = 8;
 const K = 10;
 const MULTIPLIERS = [2, 4, 8] as const;
+const DISTRIBUTIONS = requestedDistributions();
 
-const filters = new Int32Array(ROWS);
-const vectors = new Float32Array(ROWS * DIMENSIONS);
-let random = 0x1234_5678;
-for (let row = 0; row < ROWS; row++) {
-  filters[row] = row % 1_000;
-  let squaredNorm = 0;
-  for (let dimension = 0; dimension < DIMENSIONS; dimension++) {
-    random = (Math.imul(random, 1_664_525) + 1_013_904_223) >>> 0;
-    const value = (random >>> 8) / 0x80_0000 - 1;
-    vectors[row * DIMENSIONS + dimension] = value;
-    squaredNorm += value * value;
-  }
-  const scale = 1 / Math.sqrt(squaredNorm);
-  for (let dimension = 0; dimension < DIMENSIONS; dimension++) {
-    vectors[row * DIMENSIONS + dimension] *= scale;
-  }
-}
+const measurements: Record<string, unknown>[] = [];
+const workloads: Record<string, unknown>[] = [];
 
-const queries = Array.from({ length: QUERY_COUNT }, (_, index) => {
-  const sourceRow = 5_000 + index;
-  const query = vectors.slice(sourceRow * DIMENSIONS, (sourceRow + 1) * DIMENSIONS);
-  let squaredNorm = 0;
-  for (let dimension = 0; dimension < DIMENSIONS; dimension++) {
-    const noise = ((dimension * 17 + index * 31) % 23 - 11) * 0.0005;
-    query[dimension] += noise;
-    squaredNorm += query[dimension]! * query[dimension]!;
-  }
-  const scale = 1 / Math.sqrt(squaredNorm);
-  for (let dimension = 0; dimension < DIMENSIONS; dimension++) query[dimension] *= scale;
-  return query;
-});
-
-const initialized = performance.now();
-await using index = await ParallelHybridVectorIndex.create(filters, vectors, DIMENSIONS, {
-  workerCount: WORKERS,
-  maxK: K,
-  maxCandidateMultiplier: Math.max(...MULTIPLIERS),
-});
-const initMs = performance.now() - initialized;
-const measurements = [];
-
-for (const selectivity of [0.01, 0.1, 1]) {
-  const maximum = Math.round(selectivity * 1_000);
-  const references = [];
-  for (const query of queries) {
-    references.push(await index.searchBetween(query, 0, maximum, { k: K }));
-  }
-  const exactDurations = await measureBatch(async (query) => {
-    await index.searchBetween(query, 0, maximum, { k: K });
+for (const distribution of DISTRIBUTIONS) {
+  const workload = createEmbeddingWorkload({
+    distribution,
+    rows: ROWS,
+    dimensions: DIMENSIONS,
+    queryCount: QUERY_COUNT,
   });
-  measurements.push({
-    selectivity,
-    mode: "exact-pdx64",
-    medianMs: round(percentile(exactDurations, 0.5)),
-    p95Ms: round(percentile(exactDurations, 0.95)),
-    recallAtK: 1,
+  const initialized = performance.now();
+  await using index = await ParallelHybridVectorIndex.create(
+    workload.filters,
+    workload.vectors,
+    DIMENSIONS,
+    {
+      workerCount: WORKERS,
+      maxK: K,
+      maxCandidateMultiplier: Math.max(...MULTIPLIERS),
+    },
+  );
+  workloads.push({
+    distribution,
+    initMs: round(performance.now() - initialized),
+    diagnostics: roundDiagnostics(workload.diagnostics),
   });
 
-  for (const candidateMultiplier of MULTIPLIERS) {
-    const actual = [];
-    for (const query of queries) {
-      actual.push(
-        await index.searchBetweenBinaryRerank(query, 0, maximum, { k: K, candidateMultiplier }),
-      );
+  for (const selectivity of [0.01, 0.1, 1]) {
+    const maximum = Math.round(selectivity * 1_000);
+    const references = [];
+    for (const query of workload.queries) {
+      references.push(await index.searchBetween(query, 0, maximum, { k: K }));
     }
-    const durations = await measureBatch(async (query) => {
-      await index.searchBetweenBinaryRerank(query, 0, maximum, { k: K, candidateMultiplier });
+    const exactDurations = await measureBatch(workload.queries, async (query) => {
+      await index.searchBetween(query, 0, maximum, { k: K });
     });
     measurements.push({
+      distribution,
       selectivity,
-      mode: "binary-rerank",
-      candidateMultiplier,
-      medianMs: round(percentile(durations, 0.5)),
-      p95Ms: round(percentile(durations, 0.95)),
-      speedupVsExact: round(percentile(exactDurations, 0.5) / percentile(durations, 0.5)),
-      recallAtK: round(meanRecall(references, actual)),
+      mode: "exact-pdx64",
+      medianMs: round(percentile(exactDurations, 0.5)),
+      p95Ms: round(percentile(exactDurations, 0.95)),
+      recallAtK: 1,
     });
+
+    for (const candidateMultiplier of MULTIPLIERS) {
+      const actual = [];
+      for (const query of workload.queries) {
+        actual.push(
+          await index.searchBetweenBinaryRerank(query, 0, maximum, {
+            k: K,
+            candidateMultiplier,
+          }),
+        );
+      }
+      const durations = await measureBatch(workload.queries, async (query) => {
+        await index.searchBetweenBinaryRerank(query, 0, maximum, {
+          k: K,
+          candidateMultiplier,
+        });
+      });
+      measurements.push({
+        distribution,
+        selectivity,
+        mode: "binary-rerank",
+        candidateMultiplier,
+        medianMs: round(percentile(durations, 0.5)),
+        p95Ms: round(percentile(durations, 0.95)),
+        speedupVsExact: round(
+          percentile(exactDurations, 0.5) / percentile(durations, 0.5),
+        ),
+        recallAtK: round(meanRecall(references, actual)),
+      });
+    }
   }
 }
 
-console.log(JSON.stringify(
-  {
-    runtime: { ...Deno.version, ...Deno.build, logicalCpus: navigator.hardwareConcurrency },
-    workload: {
-      rows: ROWS,
-      dimensions: DIMENSIONS,
-      workers: index.workerCount,
-      queries: QUERY_COUNT,
-      k: K,
-      warmups: WARMUPS,
-      samples: SAMPLES,
-    },
-    initMs: round(initMs),
-    measurements,
+const report = {
+  runtime: { ...Deno.version, ...Deno.build, logicalCpus: navigator.hardwareConcurrency },
+  configuration: {
+    rows: ROWS,
+    dimensions: DIMENSIONS,
+    workers: WORKERS,
+    queries: QUERY_COUNT,
+    k: K,
+    warmups: WARMUPS,
+    samples: SAMPLES,
+    distributions: DISTRIBUTIONS,
   },
-  null,
-  2,
-));
+  workloads,
+  measurements,
+};
+const reportJson = JSON.stringify(report, null, 2) + "\n";
+const output = Deno.env.get("JSIMD_BINARY_OUTPUT");
+if (output !== undefined) await Deno.writeTextFile(output, reportJson);
+console.log(reportJson);
 
-async function measureBatch(operation: (query: Float32Array) => Promise<void>): Promise<number[]> {
+async function measureBatch(
+  queries: readonly Float32Array[],
+  operation: (query: Float32Array) => Promise<void>,
+): Promise<number[]> {
   const durations: number[] = [];
   for (let sample = -WARMUPS; sample < SAMPLES; sample++) {
     const started = performance.now();
@@ -138,6 +141,30 @@ function meanRecall(
 function percentile(values: readonly number[], quantile: number): number {
   const sorted = [...values].sort((left, right) => left - right);
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * quantile))]!;
+}
+
+function roundDiagnostics(diagnostics: {
+  readonly meanNorm: number;
+  readonly signOneRate: number;
+  readonly dominantDimensionVarianceShare: number;
+}): Record<string, number> {
+  return {
+    meanNorm: round(diagnostics.meanNorm),
+    signOneRate: round(diagnostics.signOneRate),
+    dominantDimensionVarianceShare: round(diagnostics.dominantDimensionVarianceShare),
+  };
+}
+
+function requestedDistributions(): readonly EmbeddingDistribution[] {
+  const requested = Deno.env.get("JSIMD_BINARY_DISTRIBUTION");
+  if (requested === undefined) {
+    return ["isotropic-unit", "clustered-anisotropic", "mean-shifted"];
+  }
+  if (
+    requested === "isotropic-unit" || requested === "clustered-anisotropic" ||
+    requested === "mean-shifted"
+  ) return [requested];
+  throw new RangeError(`unknown JSIMD_BINARY_DISTRIBUTION ${JSON.stringify(requested)}`);
 }
 
 function round(value: number): number {

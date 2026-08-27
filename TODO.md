@@ -4,21 +4,6 @@ This file contains only release work, future experiments, and admission decision
 `@mizchi/jsimd`. Completed APIs, algorithms, benchmark results, and implementation history belong in
 the README next to each implementation. Experimental evidence stays under `experiments/<name>/`.
 
-## Next release: v0.2.1
-
-Do not add another public data structure to this patch. The current public additions are
-backwards-compatible column snapshot/gather operations and shared-memory recovery improvements.
-
-- [x] Commit the current WebGPU experiment without adding it to package exports.
-- [x] Review the public API diff and confirm that the release contains no unintended removals.
-- [x] Bump `package.json` and `deno.json` from `0.2.0` to `0.2.1` together.
-- [x] Run `just check`.
-- [x] Run `just memory-profile` and require every owning structure to return live allocations to its
-      baseline.
-- [x] Run `pnpm pack --dry-run`; confirm rejected prototypes, tests, examples, and `experiments/`
-      are absent from the tarball.
-- [x] Smoke-test the packed artifact in Node 24.5+, Deno 2.6+, and the existing Vite fixtures.
-
 ## Experiment priority
 
 An experiment does not become a package export merely because its isolated kernel is fast. It must
@@ -32,13 +17,16 @@ The physical execution hypothesis is recorded in
 Keep low-level shared-memory ABIs and kernels here; move a schema DSL, planner, catalog, and
 product-facing query engine to a separate repository once the boundary is stable.
 
-- [ ] Compose row-group pruning, filter, count/sum/min/max, low-cardinality group-by, and
+- [x] Compose row-group pruning, filter, count/sum/min/max, low-cardinality group-by, and
       partial-result reduction over immutable pages.
-- [ ] Benchmark TPC-H Q1/Q6-shaped kernels and log filter/group-by against optimized JavaScript,
+- [x] Benchmark TPC-H Q1/Q6-shaped kernels and log filter/group-by against optimized JavaScript,
       default DuckDB-Wasm, and a reproducible threaded DuckDB-Wasm build.
-- [ ] Add string/null handling, schema evolution, and bounded host+Wasm cache accounting to the
+  - [x] Record Q1/Q6-shaped JavaScript, direct SIMD, persistent Worker, DuckDB `eh`, and DuckDB
+        `coi` comparisons.
+  - [x] Add the page-pruned log filter/group-by workload before closing this item.
+- [x] Add string/null handling, schema evolution, and bounded host+Wasm cache accounting to the
       columnar schema experiment before considering extraction.
-- [ ] Run real-browser IndexedDB cold/warm restoration benchmarks; do not infer them from the Deno
+- [x] Run real-browser IndexedDB cold/warm restoration benchmarks; do not infer them from the Deno
       IndexedDB implementation.
 - [ ] Replace whole-column double buffering with page-versioned publication if snapshot memory
       amplification becomes the limiting cost.
@@ -48,9 +36,9 @@ product-facing query engine to a separate repository once the boundary is stable
 The shared selection-mask and binary-rerank work remains under
 [`experiments/parallel-hybrid-query`](./experiments/parallel-hybrid-query/README.md).
 
-- [ ] Define a representative embedding distribution before testing learned or rotated binary
+- [x] Define a representative embedding distribution before testing learned or rotated binary
       quantization. Dense recall in the current sign-bit experiment is insufficient.
-- [ ] Evaluate PDX block selection or dimension pruning only with a workload that can avoid enough
+- [x] Evaluate PDX block selection or dimension pruning only with a workload that can avoid enough
       resident reads to repay its metadata and branch cost.
 - [ ] Add cancellation, Worker restart, and index replacement only if the experiment graduates into
       a reusable query-engine component.
@@ -99,12 +87,12 @@ Do not add names merely for symmetry. `SimdFloat32Array`, `SimdInt32Vector`, and
 
 ### P5: experiment infrastructure
 
-- [ ] Add a reusable browser benchmark harness that records runtime, adapter/CPU, warmup, sample
+- [x] Add a reusable browser benchmark harness that records runtime, adapter/CPU, warmup, sample
       count, input shape, end-to-end latency, and output correctness in one result format.
-- [ ] Add comparison helpers for resident, construction-inclusive, and materialization-inclusive
+- [x] Add comparison helpers for resident, construction-inclusive, and materialization-inclusive
       workloads so new experiments do not accidentally compare different boundaries.
-- [ ] Add a benchmark-result schema check and keep recorded JSON colocated with each experiment.
-- [ ] Automate detection of regressions in gzip bundle size and previously admitted primary
+- [x] Add a benchmark-result schema check and keep recorded JSON colocated with each experiment.
+- [x] Automate detection of regressions in gzip bundle size and previously admitted primary
       workloads without treating noisy microbenchmark changes as release failures.
 
 ### P6: WebGPU crossover and scheduling
@@ -114,15 +102,20 @@ shared-memory experiments have stable workloads. The existing exact squared-L2 b
 evidence under [`experiments/webgpu-vector-search`](./experiments/webgpu-vector-search/README.md).
 On Apple M5 / Deno 2.6.4, single queries and upload-per-query never beat Wasm SIMD. A resident index
 crossed at 65,536 rows x 128 dimensions x 128 batched queries (1.09x) and reached 1.30x at 262,144
-rows x 128 dimensions x 64 queries.
+rows x 128 dimensions x 64 queries. Chromium 152 moved the crossover much lower: the resident GPU
+won at 65,536 rows for one query and was 2.30x faster than the persistent four-Worker index at
+262,144 rows x 128 dimensions x 64 queries. The implementation remains private to the experiment
+until another adapter/runtime reproduces the result.
 
-- [ ] Reproduce the complete size/batch matrix in Chromium and record adapter/runtime variance.
-- [ ] Implement a ring of staging/readback buffers and measure multiple in-flight batches.
-- [ ] Compare against the persistent multi-Worker SIMD index, not only single-threaded
+- [x] Reproduce the complete size/batch matrix in Chromium and record adapter/runtime identity plus
+      raw sample variance.
+- [x] Implement a ring of staging/readback buffers and measure multiple in-flight batches.
+- [x] Compare against the persistent multi-Worker SIMD index, not only single-threaded
       `BlockedVectorArray`.
-- [ ] Measure whether command reuse, fewer submissions, or a parallel workgroup top-k materially
+- [x] Measure whether command reuse, fewer submissions, or a parallel workgroup top-k materially
       lowers the current boundary.
-- [ ] Export nothing until a browser workload still wins after scheduling and readback.
+- [x] Keep the implementation experimental: Chromium wins after scheduling/readback on Apple M5, but
+      one adapter/runtime is not enough evidence for a package export.
 
 ## Maintenance
 

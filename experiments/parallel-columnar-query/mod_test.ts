@@ -1,4 +1,9 @@
 import { ParallelI32Query, type ScanAggregate, scanBetweenReference } from "./mod.ts";
+import {
+  type GroupByAggregate,
+  groupByBetweenReference,
+  ParallelI32GroupByU8Query,
+} from "./group_by.ts";
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -11,6 +16,23 @@ function assertAggregate(
 ): void {
   assert(actual.count === expected.count, `${message}: count ${actual.count}`);
   assert(actual.sum === expected.sum, `${message}: sum ${actual.sum}`);
+}
+
+function assertGroupAggregates(
+  actual: readonly GroupByAggregate[],
+  expected: readonly GroupByAggregate[],
+  message: string,
+): void {
+  assert(actual.length === expected.length, `${message}: group count ${actual.length}`);
+  for (let index = 0; index < expected.length; index++) {
+    const left = actual[index]!;
+    const right = expected[index]!;
+    assert(left.group === right.group, `${message}: group ${index}`);
+    assert(left.count === right.count, `${message}: count ${left.group}`);
+    assert(left.sum === right.sum, `${message}: sum ${left.group}`);
+    assert(left.min === right.min, `${message}: min ${left.group}`);
+    assert(left.max === right.max, `${message}: max ${left.group}`);
+  }
 }
 
 Deno.test("ParallelI32Query agrees with the scalar contract across repeated queries", async () => {
@@ -125,4 +147,56 @@ Deno.test("ParallelI32Query restarts its Worker pool without losing the snapshot
     scanBetweenReference(values, -100, 100),
     "restarted Workers",
   );
+});
+
+Deno.test("ParallelI32GroupByU8Query composes pruning, filtering, and partial aggregates", async () => {
+  const filter = Int32Array.from({ length: 1_037 }, (_, index) => index);
+  const values = Int32Array.from(
+    { length: filter.length },
+    (_, index) => ((index * 31) % 257) - 128,
+  );
+  const groups = Uint8Array.from({ length: filter.length }, (_, index) => index % 7);
+  await using query = await ParallelI32GroupByU8Query.create(
+    { filter, values, groups },
+    { groupCount: 8, workerCount: 4, pageRows: 128 },
+  );
+
+  const expected = groupByBetweenReference(filter, values, groups, 300, 340, 8);
+  const parallel = await query.aggregateBetween(300, 340);
+  const single = query.aggregateBetweenSingleThread(300, 340);
+  assertGroupAggregates(parallel.groups, expected.groups, "parallel group-by");
+  assertGroupAggregates(single.groups, expected.groups, "single-thread group-by");
+  assert(parallel.pagesScanned === 1, "only one row group should be scanned");
+  assert(parallel.pagesSkipped === 8, "disjoint row groups should be pruned");
+  assert(parallel.groups.every((group) => group.group !== 7), "empty groups are omitted");
+});
+
+Deno.test("ParallelI32GroupByU8Query validates column and group contracts", async () => {
+  try {
+    await ParallelI32GroupByU8Query.create(
+      {
+        filter: new Int32Array([1, 2]),
+        values: new Int32Array([1]),
+        groups: new Uint8Array([0, 1]),
+      },
+      { groupCount: 2 },
+    );
+  } catch (error) {
+    assert(error instanceof RangeError && error.message.includes("same length"), "length contract");
+  }
+
+  try {
+    await ParallelI32GroupByU8Query.create(
+      {
+        filter: new Int32Array([1]),
+        values: new Int32Array([1]),
+        groups: new Uint8Array([2]),
+      },
+      { groupCount: 2 },
+    );
+  } catch (error) {
+    assert(error instanceof RangeError && error.message.includes("groupCount"), "group contract");
+    return;
+  }
+  throw new Error("out-of-range group keys must reject construction");
 });

@@ -264,6 +264,94 @@ Deno.test("masked PDX fused top-k matches stable distance and row-id ordering", 
   );
 });
 
+Deno.test("PDX block bounds prune separated blocks without changing exact top-k", async () => {
+  const count = 256;
+  const dimensions = 8;
+  const k = 5;
+  using shared = await SharedBuffer.create({ initialPages: 3, maximumPages: 3 });
+  const layout = createLayout(count, dimensions);
+  const mask = SharedSelectionMask.initialize(shared, layout.maskOffset, count);
+  const vectors = float32View(shared, layout.vectorsOffset, layout.paddedCount * dimensions);
+  const rowMajor = new Float32Array(count * dimensions);
+  for (let row = 0; row < count; row++) {
+    const block = row >>> 6;
+    for (let dimension = 0; dimension < dimensions; dimension++) {
+      const value = block * 50 + (row & 63) * 0.001 + dimension * 0.01;
+      rowMajor[row * dimensions + dimension] = value;
+      vectors[pdxOffset(row, dimension, dimensions)] = value;
+    }
+  }
+  const query = float32View(shared, layout.queryOffset, dimensions);
+  query.set(rowMajor.subarray(2 * dimensions, 3 * dimensions));
+  let generation = 0;
+  {
+    using writer = mask.claimWriter();
+    writer.fillAll();
+    generation = writer.publish();
+  }
+
+  const blocks = Math.ceil(count / 64);
+  const blockMinimumsOffset = alignTo(layout.resultOffset + 16, 16);
+  const blockMaximumsOffset = blockMinimumsOffset + blocks * dimensions * 4;
+  const baselineIdsOffset = blockMaximumsOffset + blocks * dimensions * 4;
+  const baselineDistancesOffset = baselineIdsOffset + k * 4;
+  const prunedIdsOffset = baselineDistancesOffset + k * 4;
+  const prunedDistancesOffset = prunedIdsOffset + k * 4;
+  const prunedScratchOffset = alignTo(prunedDistancesOffset + k * 4, 16);
+  const statsOffset = prunedScratchOffset + 64 * 4;
+  writeBlockBounds(
+    rowMajor,
+    count,
+    dimensions,
+    float32View(shared, blockMinimumsOffset, blocks * dimensions),
+    float32View(shared, blockMaximumsOffset, blocks * dimensions),
+  );
+  const published = mask.read(generation);
+  const kernels = await instantiateHybridKernels(shared.memory);
+  const baselineFilled = kernels.masked_squared_l2_topk_pdx64(
+    absolute(shared, layout.vectorsOffset),
+    absolute(shared, layout.queryOffset),
+    count,
+    dimensions,
+    absolute(shared, published.dataByteOffset),
+    absolute(shared, layout.scratchOffset),
+    absolute(shared, layout.resultOffset),
+    absolute(shared, baselineIdsOffset),
+    absolute(shared, baselineDistancesOffset),
+    k,
+  );
+  const prunedFilled = kernels.masked_squared_l2_topk_pdx64_pruned(
+    absolute(shared, layout.vectorsOffset),
+    absolute(shared, blockMinimumsOffset),
+    absolute(shared, blockMaximumsOffset),
+    absolute(shared, layout.queryOffset),
+    count,
+    dimensions,
+    absolute(shared, published.dataByteOffset),
+    absolute(shared, prunedScratchOffset),
+    absolute(shared, prunedIdsOffset),
+    absolute(shared, prunedDistancesOffset),
+    k,
+    absolute(shared, statsOffset),
+  );
+
+  assert(prunedFilled === baselineFilled, "same result length");
+  assert(
+    shared.uint32Array(prunedIdsOffset, k).join(",") ===
+      shared.uint32Array(baselineIdsOffset, k).join(","),
+    "same exact top-k IDs",
+  );
+  assert(
+    float32View(shared, prunedDistancesOffset, k).join(",") ===
+      float32View(shared, baselineDistancesOffset, k).join(","),
+    "same exact top-k distances",
+  );
+  const stats = shared.uint32Array(statsOffset, 3);
+  assert(stats[0] === 1, `evaluated blocks: ${stats[0]}`);
+  assert(stats[1] === 3, `pruned blocks: ${stats[1]}`);
+  assert(stats[2] === 64, `evaluated selected rows: ${stats[2]}`);
+});
+
 interface Layout {
   readonly maskOffset: number;
   readonly filterOffset: number;
@@ -297,6 +385,31 @@ function pdxOffset(row: number, dimension: number, dimensions: number): number {
   const block = row >>> 6;
   const lane = row & 63;
   return (block * dimensions + dimension) * 64 + lane;
+}
+
+function writeBlockBounds(
+  rowMajor: Float32Array,
+  count: number,
+  dimensions: number,
+  minimums: Float32Array,
+  maximums: Float32Array,
+): void {
+  const blocks = Math.ceil(count / 64);
+  for (let block = 0; block < blocks; block++) {
+    const start = block * 64;
+    const end = Math.min(count, start + 64);
+    for (let dimension = 0; dimension < dimensions; dimension++) {
+      let minimum = Infinity;
+      let maximum = -Infinity;
+      for (let row = start; row < end; row++) {
+        const value = rowMajor[row * dimensions + dimension]!;
+        minimum = Math.min(minimum, value);
+        maximum = Math.max(maximum, value);
+      }
+      minimums[block * dimensions + dimension] = minimum;
+      maximums[block * dimensions + dimension] = maximum;
+    }
+  }
 }
 
 function float32View(shared: SharedBuffer, byteOffset: number, length: number): Float32Array {

@@ -115,8 +115,8 @@ build:
     wasm-tools print src/columnar/kernels.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into|i8x16.popcnt'
     ! wasm-tools print src/columnar/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/blocked-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|merge|i32x4.all_true'
-    wasm-tools print experiments/parallel-columnar-query/kernels.wasm | rg -q 'scan_i32_between_aggregate|i64x2.extend_low_i32x4_s|shared'
-    wasm-tools print experiments/parallel-hybrid-query/kernels.wasm | rg -q 'scan_i32_between_mask|masked_squared_l2_top1_pdx64|masked_squared_l2_topk_pdx64|masked_hamming_top1|masked_hamming_topk|pdx64_squared_l2_selected|i32x4.bitmask|f32x4.mul|i8x16.popcnt|shared'
+    wasm-tools print experiments/parallel-columnar-query/kernels.wasm | rg -q 'scan_i32_between_aggregate|scan_i32_between_group_by_u8|i64x2.extend_low_i32x4_s|i32x4.bitmask|shared'
+    wasm-tools print experiments/parallel-hybrid-query/kernels.wasm | rg -q 'scan_i32_between_mask|masked_squared_l2_top1_pdx64|masked_squared_l2_topk_pdx64|masked_squared_l2_topk_pdx64_pruned|masked_hamming_top1|masked_hamming_topk|pdx64_squared_l2_selected|i32x4.bitmask|f32x4.mul|i8x16.popcnt|shared'
 
 test-parallel-columnar-query: build
     deno test -A experiments/parallel-columnar-query/mod_test.ts
@@ -127,6 +127,9 @@ test-parallel-hybrid-query: build
 bench-parallel-columnar-query: build
     deno run -A experiments/parallel-columnar-query/bench.ts
 
+bench-parallel-columnar-group-by: build
+    deno run -A experiments/parallel-columnar-query/group_bench.ts
+
 bench-parallel-hybrid-query: build
     deno run -A experiments/parallel-hybrid-query/bench.ts
 
@@ -136,16 +139,51 @@ bench-parallel-hybrid-topk: build
 bench-parallel-hybrid-binary: build
     deno run -A experiments/parallel-hybrid-query/bench_binary.ts
 
+bench-record-parallel-hybrid-binary: build
+    JSIMD_BINARY_OUTPUT=experiments/parallel-hybrid-query/benchmarks/binary-rerank.json deno run -A experiments/parallel-hybrid-query/bench_binary.ts
+
+bench-parallel-hybrid-pdx-pruning: build
+    deno run -A experiments/parallel-hybrid-query/bench_pdx_block_pruning.ts
+
+bench-record-parallel-hybrid-pdx-pruning: build
+    JSIMD_PDX_PRUNING_OUTPUT=experiments/parallel-hybrid-query/benchmarks/pdx-block-pruning.json deno run -A experiments/parallel-hybrid-query/bench_pdx_block_pruning.ts
+
 test-webgpu-vector-search:
     deno test -A --unstable-webgpu experiments/webgpu-vector-search/gpu_index_test.ts
 
 bench-webgpu-vector-search: build
     deno run -A --unstable-webgpu experiments/webgpu-vector-search/bench.ts
 
+bench-webgpu-vector-search-browser: build
+    deno check --unstable-webgpu experiments/webgpu-vector-search/browser-benchmark/src.ts
+    pnpm exec vite build experiments/webgpu-vector-search/browser-benchmark
+    deno run -A tools/bench-webgpu-vector-search-browser.ts
+
+bench-record-webgpu-vector-search-browser: build
+    deno check --unstable-webgpu experiments/webgpu-vector-search/browser-benchmark/src.ts
+    pnpm exec vite build experiments/webgpu-vector-search/browser-benchmark
+    JSIMD_WEBGPU_BROWSER_OUTPUT=experiments/webgpu-vector-search/benchmarks/chromium.json deno run -A tools/bench-webgpu-vector-search-browser.ts
+
 bench-parallel-columnar-duckdb-browser: build
     pnpm exec tsc -p experiments/parallel-columnar-query/duckdb-comparison/tsconfig.json
     pnpm exec vite build experiments/parallel-columnar-query/duckdb-comparison
     deno run -A tools/bench-parallel-columnar-duckdb-browser.ts
+
+bench-columnar-schema-indexeddb-browser: build
+    pnpm exec tsc -p experiments/columnar-schema-engine/browser-benchmark/tsconfig.json
+    pnpm exec vite build experiments/columnar-schema-engine/browser-benchmark
+    deno run -A tools/bench-columnar-schema-indexeddb-browser.ts
+
+bench-record-columnar-schema-indexeddb-browser: build
+    pnpm exec tsc -p experiments/columnar-schema-engine/browser-benchmark/tsconfig.json
+    pnpm exec vite build experiments/columnar-schema-engine/browser-benchmark
+    JSIMD_INDEXEDDB_OUTPUT=experiments/columnar-schema-engine/benchmarks/indexeddb-browser.json deno run -A tools/bench-columnar-schema-indexeddb-browser.ts
+
+check-benchmark-results:
+    deno run -A tools/check-benchmark-results.ts
+
+check-build-budgets:
+    deno run -A tools/check-build-budgets.ts
 
 build-package: build
     deno run -A tools/build-package.ts
@@ -169,6 +207,7 @@ check: test package-smoke
     test "$(find dist -name '*_test.js' -o -name '*_test.d.ts' | wc -l | tr -d ' ')" = "0"
     deno fmt --check
     deno lint
+    deno run -A tools/check-benchmark-results.ts
     pnpm exec tsc -p experiments/parallel-columnar-query/duckdb-comparison/tsconfig.json
     pnpm exec vite build experiments/parallel-columnar-query/duckdb-comparison
     deno eval 'const p = JSON.parse(await Deno.readTextFile("package.json")); const d = JSON.parse(await Deno.readTextFile("deno.json")); if (p.version !== d.version || JSON.stringify(Object.keys(p.exports)) !== JSON.stringify(Object.keys(d.exports))) throw new Error("package.json and deno.json release metadata differ")'
@@ -192,6 +231,8 @@ check: test package-smoke
     test "$(find experiments/columnar-schema-engine/tree-shake-fixture/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print experiments/columnar-schema-engine/tree-shake-fixture/dist/assets/*.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into'
     ! rg -q 'node:fs|node:path' experiments/columnar-schema-engine/tree-shake-fixture/dist/assets/*.js
+    pnpm exec tsc -p experiments/columnar-schema-engine/browser-benchmark/tsconfig.json
+    pnpm exec vite build experiments/columnar-schema-engine/browser-benchmark
     pnpm exec tsc -p examples/tree-shake-binary-vector-index/tsconfig.json
     pnpm exec vite build examples/tree-shake-binary-vector-index
     test "$(find examples/tree-shake-binary-vector-index/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
@@ -339,3 +380,4 @@ check: test package-smoke
     pnpm exec vite build examples/tree-shake-compressed-string-table
     test "$(find examples/tree-shake-compressed-string-table/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-compressed-string-table/dist/assets/*.wasm | rg -q 'equals_many|i8x16.bitmask'
+    deno run -A tools/check-build-budgets.ts

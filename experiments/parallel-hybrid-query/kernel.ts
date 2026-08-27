@@ -29,6 +29,20 @@ export interface HybridKernels extends WebAssembly.Exports {
     outputDistances: number,
     k: number,
   ): number;
+  masked_squared_l2_topk_pdx64_pruned(
+    vectors: number,
+    blockMinimums: number,
+    blockMaximums: number,
+    query: number,
+    count: number,
+    dimensions: number,
+    mask: number,
+    scratch: number,
+    outputIds: number,
+    outputDistances: number,
+    k: number,
+    stats: number,
+  ): number;
   masked_hamming_top1(
     signatures: number,
     query: number,
