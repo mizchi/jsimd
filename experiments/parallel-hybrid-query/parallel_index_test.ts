@@ -65,6 +65,9 @@ Deno.test("parallel hybrid index validates top-k and releases Worker leases", as
   });
   const query = vectors.slice(0, 4);
   await assertRejects(() => index.searchBetween(query, 0, 5, { k: 5 }));
+  await assertRejects(() =>
+    index.searchBetweenBinaryRerank(query, 0, 5, { k: 1, candidateMultiplier: 9 })
+  );
   await index[Symbol.asyncDispose]();
   assert(index.disposed, "disposed state");
   await assertRejects(() => index.searchBetween(query, 0, 5, { k: 1 }));
@@ -90,6 +93,41 @@ Deno.test("fused Wasm and JavaScript Worker-local selectors agree", async () => 
     assert(wasm.ids.join(",") === javascript.ids.join(","), `k=${k}: ids`);
     assert(wasm.distances.join(",") === javascript.distances.join(","), `k=${k}: distances`);
   }
+});
+
+Deno.test("binary shortlist reranks selected candidates by exact PDX distance", async () => {
+  const count = 129;
+  const dimensions = 16;
+  const filters = new Int32Array(count);
+  const vectors = new Float32Array(count * dimensions);
+  for (let row = 0; row < count; row++) {
+    filters[row] = row % 4;
+    const code = Math.imul(row + 1, 0x9e37_79b1) >>> 0;
+    for (let dimension = 0; dimension < dimensions; dimension++) {
+      vectors[row * dimensions + dimension] = (code >>> dimension & 1) === 0 ? -1 : 1;
+    }
+  }
+  await using index = await ParallelHybridVectorIndex.create(filters, vectors, dimensions, {
+    workerCount: 3,
+    maxK: 4,
+    maxCandidateMultiplier: 8,
+  });
+  const query = vectors.slice(77 * dimensions, 78 * dimensions);
+
+  const approximate = await index.searchBetweenBinaryRerank(query, 1, 2, {
+    k: 4,
+    candidateMultiplier: 4,
+  });
+  const exact = await index.searchBetween(query, 1, 2, { k: 4 });
+  assert(approximate.ids[0] === 77, "exact query row survives the binary shortlist");
+  assert(approximate.distances[0] === 0, "candidate is reranked with exact squared L2");
+  assert(approximate.selectedCount === 32, "metadata filter cardinality");
+  assert(approximate.candidateCount <= 3 * 4 * 4, "only bounded Worker-local candidates rerank");
+  assert(approximate.ids.join(",") === exact.ids.join(","), "complete shortlist is exact");
+  assert(
+    approximate.distances.join(",") === exact.distances.join(","),
+    "PDX rerank matches exhaustive squared L2",
+  );
 });
 
 async function assertRejects(operation: () => Promise<unknown>): Promise<void> {

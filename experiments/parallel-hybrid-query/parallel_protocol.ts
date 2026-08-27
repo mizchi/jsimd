@@ -5,6 +5,9 @@ export interface HybridWorkerInit {
   readonly memory: WebAssembly.Memory;
   readonly vectorsOffset: number;
   readonly queryOffset: number;
+  readonly signaturesOffset: number;
+  readonly binaryQueryOffset: number;
+  readonly binaryStride: number;
   readonly predicateMaskOffset: number;
   readonly allMaskOffset: number;
   readonly scratchOffset: number;
@@ -18,6 +21,7 @@ export interface HybridWorkerInit {
 
 export interface HybridWorkerSearch {
   readonly type: "search";
+  readonly mode: "exact";
   readonly epoch: number;
   readonly generation: number;
   readonly mask: "predicate" | "all";
@@ -25,11 +29,24 @@ export interface HybridWorkerSearch {
   readonly k: number;
 }
 
+export interface HybridWorkerBinaryRerank {
+  readonly type: "search";
+  readonly mode: "binary-rerank";
+  readonly epoch: number;
+  readonly generation: number;
+  readonly k: number;
+  readonly candidateCount: number;
+}
+
 export interface HybridWorkerStop {
   readonly type: "stop";
 }
 
-export type HybridWorkerRequest = HybridWorkerInit | HybridWorkerSearch | HybridWorkerStop;
+export type HybridWorkerRequest =
+  | HybridWorkerInit
+  | HybridWorkerSearch
+  | HybridWorkerBinaryRerank
+  | HybridWorkerStop;
 
 export type HybridWorkerResponse =
   | { readonly type: "ready"; readonly lease: SharedWorkerLease }
@@ -39,6 +56,7 @@ export type HybridWorkerResponse =
     readonly ids: readonly number[];
     readonly distances: readonly number[];
     readonly selectedCount: number;
+    readonly candidateCount: number;
     readonly exhausted: boolean;
   }
   | { readonly type: "stopped" }

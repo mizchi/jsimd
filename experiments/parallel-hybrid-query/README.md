@@ -98,11 +98,39 @@ The Wasm selector wins or ties eight of nine recorded medians and wins every `k=
 dense `k=100` query remains a documented slower case; callers experimenting with that workload can
 select the JavaScript reference explicitly. Run `just bench-parallel-hybrid-topk` to reproduce the
 matrix. Tail latency was noisier than the medians, including a slower recorded p95 for the 1%,
-`k=10` Wasm case. The complete experimental kernel module is 0.97 kB gzip; it is not part of the
+`k=10` Wasm case. The complete experimental kernel module is 1.36 kB gzip; it is not part of the
 published package.
+
+## Binary shortlist and exact rerank
+
+Each Worker shard also stores one sign bit per Float32 dimension. An approximate query applies the
+metadata mask first, keeps a bounded Hamming shortlist with XOR + popcount, then reranks only those
+local IDs against the PDX64 Float32 vectors. `candidateMultiplier` is per Worker, so four Workers
+with `k=10` and multiplier 4 rerank at most 160 candidates globally.
+
+65,536 normalized vectors x 128 dimensions, four Workers, eight queries, `k=10`:
+
+| Selectivity | Candidate multiplier |  Median | Speedup vs exact | Recall@10 |
+| ----------: | -------------------: | ------: | ---------------: | --------: |
+|          1% |                   2x | 0.11 ms |            1.37x |      0.83 |
+|          1% |                   4x | 0.10 ms |            1.41x |      0.95 |
+|          1% |                   8x | 0.11 ms |            1.36x |      1.00 |
+|         10% |                   2x | 0.09 ms |            1.87x |      0.61 |
+|         10% |                   4x | 0.09 ms |            1.76x |      0.79 |
+|         10% |                   8x | 0.11 ms |            1.49x |      0.88 |
+|        100% |                   2x | 0.14 ms |            3.87x |      0.45 |
+|        100% |                   4x | 0.20 ms |            2.64x |      0.51 |
+|        100% |                   8x | 0.23 ms |            2.33x |      0.65 |
+
+This is useful as a selective metadata-filtered shortlist, not as a general ANN index. At 1%
+selectivity, 4x candidates retained 0.95 recall with a 1.41x speedup and 8x reached full recorded
+recall. Recall was inadequate for dense scans even though latency improved. The API therefore
+requires an explicit candidate multiplier and never presents this path as exact. Run
+`just bench-parallel-hybrid-binary` to reproduce the result.
 
 ## Current limits
 
-The pool does not yet support index replacement, cancellation, Worker restart, binary-index
-sharding, or browser-specific scheduling measurements. Exact vector-first expansion still uses the
-JavaScript selector because its candidate count can grow beyond the configured result `maxK`.
+The pool does not yet support index replacement, cancellation, Worker restart, learned/rotated
+binary quantization, or browser-specific scheduling measurements. Exact vector-first expansion still
+uses the JavaScript selector because its candidate count can grow beyond the configured result
+`maxK`.

@@ -116,7 +116,7 @@ build:
     ! wasm-tools print src/columnar/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/blocked-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|merge|i32x4.all_true'
     wasm-tools print experiments/parallel-columnar-query/kernels.wasm | rg -q 'scan_i32_between_aggregate|i64x2.extend_low_i32x4_s|shared'
-    wasm-tools print experiments/parallel-hybrid-query/kernels.wasm | rg -q 'scan_i32_between_mask|masked_squared_l2_top1_pdx64|masked_squared_l2_topk_pdx64|masked_hamming_top1|i32x4.bitmask|f32x4.mul|i8x16.popcnt|shared'
+    wasm-tools print experiments/parallel-hybrid-query/kernels.wasm | rg -q 'scan_i32_between_mask|masked_squared_l2_top1_pdx64|masked_squared_l2_topk_pdx64|masked_hamming_top1|masked_hamming_topk|pdx64_squared_l2_selected|i32x4.bitmask|f32x4.mul|i8x16.popcnt|shared'
 
 test-parallel-columnar-query: build
     deno test -A experiments/parallel-columnar-query/mod_test.ts
@@ -132,6 +132,9 @@ bench-parallel-hybrid-query: build
 
 bench-parallel-hybrid-topk: build
     deno run -A experiments/parallel-hybrid-query/bench_topk.ts
+
+bench-parallel-hybrid-binary: build
+    deno run -A experiments/parallel-hybrid-query/bench_binary.ts
 
 bench-parallel-columnar-duckdb-browser: build
     pnpm exec tsc -p experiments/parallel-columnar-query/duckdb-comparison/tsconfig.json

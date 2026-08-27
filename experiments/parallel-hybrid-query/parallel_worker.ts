@@ -1,6 +1,7 @@
 import { SharedBuffer } from "../../src/shared-buffer/mod.ts";
 import { instantiateHybridKernels } from "./kernel.ts";
 import type {
+  HybridWorkerBinaryRerank,
   HybridWorkerInit,
   HybridWorkerRequest,
   HybridWorkerResponse,
@@ -64,7 +65,10 @@ class WorkerState implements Disposable {
     }
   }
 
-  search(task: HybridWorkerSearch): Extract<HybridWorkerResponse, { type: "result" }> {
+  search(
+    task: HybridWorkerSearch | HybridWorkerBinaryRerank,
+  ): Extract<HybridWorkerResponse, { type: "result" }> {
+    if (task.mode === "binary-rerank") return this.#binaryRerank(task);
     const mask = task.mask === "predicate" ? this.#predicateMask : this.#allMask;
     const view = mask.read(task.generation);
     const maskOffset = view.dataByteOffset + (this.#init.rowStart >>> 5) * 4;
@@ -92,6 +96,7 @@ class WorkerState implements Disposable {
         ids: Array.from(localIds, (id) => id + this.#init.rowStart),
         distances: Array.from(distances),
         selectedCount,
+        candidateCount: filled,
         exhausted: task.k >= selectedCount,
       };
     }
@@ -119,7 +124,51 @@ class WorkerState implements Disposable {
       ids: pairs.map((pair) => pair.id),
       distances: pairs.map((pair) => pair.distance),
       selectedCount,
+      candidateCount: pairs.length,
       exhausted: task.k >= selectedCount,
+    };
+  }
+
+  #binaryRerank(
+    task: HybridWorkerBinaryRerank,
+  ): Extract<HybridWorkerResponse, { type: "result" }> {
+    const view = this.#predicateMask.read(task.generation);
+    const maskOffset = view.dataByteOffset + (this.#init.rowStart >>> 5) * 4;
+    const vectorOffset = this.#init.vectorsOffset +
+      this.#init.rowStart * this.#init.dimensions * 4;
+    const signaturesOffset = this.#init.signaturesOffset +
+      this.#init.rowStart * this.#init.binaryStride;
+    const filled = this.#kernels.masked_hamming_topk(
+      absolute(this.shared, signaturesOffset),
+      absolute(this.shared, this.#init.binaryQueryOffset),
+      this.#init.rowCount,
+      this.#init.binaryStride,
+      absolute(this.shared, maskOffset),
+      absolute(this.shared, this.#init.resultOffset),
+      absolute(this.shared, this.#init.outputIdsOffset),
+      absolute(this.shared, this.#init.outputDistancesOffset),
+      task.candidateCount,
+    );
+    this.#kernels.pdx64_squared_l2_selected(
+      absolute(this.shared, vectorOffset),
+      absolute(this.shared, this.#init.queryOffset),
+      absolute(this.shared, this.#init.outputIdsOffset),
+      filled,
+      this.#init.dimensions,
+      absolute(this.shared, this.#init.outputDistancesOffset),
+    );
+    const selectedCount = this.shared.uint32Array(this.#init.resultOffset, 3)[2]!;
+    const localIds = this.shared.uint32Array(this.#init.outputIdsOffset, filled);
+    const exactDistances = float32View(this.shared, this.#init.outputDistancesOffset, filled);
+    const pairs = selectPairs(localIds, exactDistances, this.#init.rowStart, task.k);
+    return {
+      type: "result",
+      epoch: task.epoch,
+      ids: pairs.map((pair) => pair.id),
+      distances: pairs.map((pair) => pair.distance),
+      selectedCount,
+      candidateCount: filled,
+      exhausted: task.candidateCount >= selectedCount,
     };
   }
 
@@ -194,6 +243,20 @@ function siftDown(heap: Pair[], index: number): void {
 
 function comparePair(left: Pair, right: Pair): number {
   return left.distance - right.distance || left.id - right.id;
+}
+
+function selectPairs(
+  localIds: Uint32Array,
+  distances: Float32Array,
+  rowStart: number,
+  k: number,
+): Pair[] {
+  const pairs = Array.from(localIds, (id, index) => ({
+    id: rowStart + id,
+    distance: distances[index]!,
+  }));
+  pairs.sort(comparePair);
+  return pairs.slice(0, Math.min(k, pairs.length));
 }
 
 function float32View(shared: SharedBuffer, byteOffset: number, length: number): Float32Array {

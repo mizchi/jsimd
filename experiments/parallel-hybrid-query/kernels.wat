@@ -327,4 +327,227 @@
     local.get $result local.get $best_id i32.store
     local.get $result local.get $best_distance i32.store offset=4
     local.get $result local.get $selected i32.store offset=8)
+
+  (func $pair_greater_u32
+    (param $left_distance i32) (param $left_id i32)
+    (param $right_distance i32) (param $right_id i32) (result i32)
+    local.get $left_distance local.get $right_distance i32.gt_u
+    if (result i32)
+      i32.const 1
+    else
+      local.get $left_distance local.get $right_distance i32.eq
+      if (result i32)
+        local.get $left_id local.get $right_id i32.gt_u
+      else
+        i32.const 0
+      end
+    end)
+
+  (func $swap_pair_u32
+    (param $ids i32) (param $distances i32) (param $left i32) (param $right i32)
+    (local $left_id i32) (local $left_distance i32)
+    local.get $ids local.get $left i32.const 2 i32.shl i32.add i32.load local.set $left_id
+    local.get $distances local.get $left i32.const 2 i32.shl i32.add
+    i32.load local.set $left_distance
+    local.get $ids local.get $left i32.const 2 i32.shl i32.add
+    local.get $ids local.get $right i32.const 2 i32.shl i32.add i32.load i32.store
+    local.get $distances local.get $left i32.const 2 i32.shl i32.add
+    local.get $distances local.get $right i32.const 2 i32.shl i32.add i32.load i32.store
+    local.get $ids local.get $right i32.const 2 i32.shl i32.add local.get $left_id i32.store
+    local.get $distances local.get $right i32.const 2 i32.shl i32.add
+    local.get $left_distance i32.store)
+
+  (func $sift_up_u32
+    (param $ids i32) (param $distances i32) (param $start i32)
+    (local $child i32) (local $parent i32)
+    local.get $start local.set $child
+    block $done loop $loop
+      local.get $child i32.eqz br_if $done
+      local.get $child i32.const 1 i32.sub i32.const 1 i32.shr_u local.set $parent
+      local.get $distances local.get $parent i32.const 2 i32.shl i32.add i32.load
+      local.get $ids local.get $parent i32.const 2 i32.shl i32.add i32.load
+      local.get $distances local.get $child i32.const 2 i32.shl i32.add i32.load
+      local.get $ids local.get $child i32.const 2 i32.shl i32.add i32.load
+      call $pair_greater_u32 br_if $done
+      local.get $ids local.get $distances local.get $parent local.get $child call $swap_pair_u32
+      local.get $parent local.set $child
+      br $loop
+    end end)
+
+  (func $sift_down_u32
+    (param $ids i32) (param $distances i32) (param $start i32) (param $size i32)
+    (local $parent i32) (local $left i32) (local $right i32) (local $child i32)
+    local.get $start local.set $parent
+    block $done loop $loop
+      local.get $parent i32.const 1 i32.shl i32.const 1 i32.add local.set $left
+      local.get $left local.get $size i32.ge_u br_if $done
+      local.get $left i32.const 1 i32.add local.set $right
+      local.get $left local.set $child
+      local.get $right local.get $size i32.lt_u
+      if
+        local.get $distances local.get $right i32.const 2 i32.shl i32.add i32.load
+        local.get $ids local.get $right i32.const 2 i32.shl i32.add i32.load
+        local.get $distances local.get $left i32.const 2 i32.shl i32.add i32.load
+        local.get $ids local.get $left i32.const 2 i32.shl i32.add i32.load
+        call $pair_greater_u32
+        if local.get $right local.set $child end
+      end
+      local.get $distances local.get $child i32.const 2 i32.shl i32.add i32.load
+      local.get $ids local.get $child i32.const 2 i32.shl i32.add i32.load
+      local.get $distances local.get $parent i32.const 2 i32.shl i32.add i32.load
+      local.get $ids local.get $parent i32.const 2 i32.shl i32.add i32.load
+      call $pair_greater_u32 i32.eqz br_if $done
+      local.get $ids local.get $distances local.get $parent local.get $child call $swap_pair_u32
+      local.get $child local.set $parent
+      br $loop
+    end end)
+
+  ;; Keeps the nearest selected binary signatures in Hamming order.
+  (func (export "masked_hamming_topk")
+    (param $signatures i32) (param $query i32) (param $count i32) (param $stride i32)
+    (param $mask i32) (param $result i32) (param $output_ids i32)
+    (param $output_distances i32) (param $k i32) (result i32)
+    (local $word_index i32) (local $word_count i32) (local $word i32)
+    (local $bit i32) (local $row i32) (local $selected i32)
+    (local $offset i32) (local $distance i32) (local $sums v128)
+    (local $filled i32) (local $heap_size i32)
+
+    local.get $k i32.eqz if i32.const 0 return end
+    local.get $count i32.const 31 i32.add i32.const 5 i32.shr_u local.set $word_count
+    block $words_done loop $word_loop
+      local.get $word_index local.get $word_count i32.ge_u br_if $words_done
+      local.get $mask local.get $word_index i32.const 2 i32.shl i32.add i32.load local.set $word
+      block $bits_done loop $bit_loop
+        local.get $word i32.eqz br_if $bits_done
+        local.get $word i32.ctz local.set $bit
+        local.get $word_index i32.const 5 i32.shl local.get $bit i32.add local.set $row
+        local.get $row local.get $count i32.lt_u
+        if
+          i32.const 0 local.set $offset
+          i32.const 0 local.set $distance
+          block $signature_done loop $signature_loop
+            local.get $offset local.get $stride i32.ge_u br_if $signature_done
+            local.get $signatures local.get $row local.get $stride i32.mul i32.add
+            local.get $offset i32.add v128.load
+            local.get $query local.get $offset i32.add v128.load
+            v128.xor i8x16.popcnt
+            i16x8.extadd_pairwise_i8x16_u
+            i32x4.extadd_pairwise_i16x8_u local.set $sums
+            local.get $distance
+            local.get $sums i32x4.extract_lane 0 i32.add
+            local.get $sums i32x4.extract_lane 1 i32.add
+            local.get $sums i32x4.extract_lane 2 i32.add
+            local.get $sums i32x4.extract_lane 3 i32.add local.set $distance
+            local.get $offset i32.const 16 i32.add local.set $offset
+            br $signature_loop
+          end end
+          local.get $selected i32.const 1 i32.add local.set $selected
+          local.get $filled local.get $k i32.lt_u
+          if
+            local.get $output_ids local.get $filled i32.const 2 i32.shl i32.add local.get $row i32.store
+            local.get $output_distances local.get $filled i32.const 2 i32.shl i32.add
+            local.get $distance i32.store
+            local.get $output_ids local.get $output_distances local.get $filled call $sift_up_u32
+            local.get $filled i32.const 1 i32.add local.set $filled
+          else
+            local.get $output_distances i32.load local.get $output_ids i32.load
+            local.get $distance local.get $row call $pair_greater_u32
+            if
+              local.get $output_ids local.get $row i32.store
+              local.get $output_distances local.get $distance i32.store
+              local.get $output_ids local.get $output_distances i32.const 0 local.get $k
+              call $sift_down_u32
+            end
+          end
+        end
+        local.get $word local.get $word i32.const 1 i32.sub i32.and local.set $word
+        br $bit_loop
+      end end
+      local.get $word_index i32.const 1 i32.add local.set $word_index
+      br $word_loop
+    end end
+
+    local.get $filled local.set $heap_size
+    block $sort_done loop $sort_loop
+      local.get $heap_size i32.const 1 i32.le_u br_if $sort_done
+      local.get $heap_size i32.const 1 i32.sub local.set $heap_size
+      local.get $output_ids local.get $output_distances i32.const 0 local.get $heap_size
+      call $swap_pair_u32
+      local.get $output_ids local.get $output_distances i32.const 0 local.get $heap_size
+      call $sift_down_u32
+      br $sort_loop
+    end end
+    local.get $result local.get $selected i32.store offset=8
+    local.get $filled)
+
+  (func $pdx64_lane
+    (param $vectors i32) (param $dimensions i32) (param $id i32) (param $dimension i32)
+    (result f32)
+    local.get $vectors
+    local.get $id i32.const 6 i32.shr_u local.get $dimensions i32.mul
+    local.get $dimension i32.add i32.const 8 i32.shl i32.add
+    local.get $id i32.const 63 i32.and i32.const 2 i32.shl i32.add
+    f32.load)
+
+  ;; Reranks sparse local IDs against the resident PDX64 Float32 vectors.
+  (func (export "pdx64_squared_l2_selected")
+    (param $vectors i32) (param $query i32) (param $ids i32)
+    (param $count i32) (param $dimensions i32) (param $output i32)
+    (local $group i32) (local $dimension i32) (local $index i32)
+    (local $candidates v128) (local $delta v128) (local $sum v128)
+    block $done loop $groups_loop
+      local.get $group local.get $count i32.ge_u br_if $done
+      v128.const i32x4 0 0 0 0 local.set $sum
+      i32.const 0 local.set $dimension
+      block $dimensions_done loop $dimensions_loop
+        local.get $dimension local.get $dimensions i32.ge_u br_if $dimensions_done
+        v128.const i32x4 0 0 0 0 local.set $candidates
+        local.get $group local.set $index
+        local.get $index local.get $count i32.lt_u if
+          local.get $candidates local.get $vectors local.get $dimensions
+          local.get $ids local.get $index i32.const 2 i32.shl i32.add i32.load
+          local.get $dimension call $pdx64_lane f32x4.replace_lane 0 local.set $candidates
+        end
+        local.get $group i32.const 1 i32.add local.set $index
+        local.get $index local.get $count i32.lt_u if
+          local.get $candidates local.get $vectors local.get $dimensions
+          local.get $ids local.get $index i32.const 2 i32.shl i32.add i32.load
+          local.get $dimension call $pdx64_lane f32x4.replace_lane 1 local.set $candidates
+        end
+        local.get $group i32.const 2 i32.add local.set $index
+        local.get $index local.get $count i32.lt_u if
+          local.get $candidates local.get $vectors local.get $dimensions
+          local.get $ids local.get $index i32.const 2 i32.shl i32.add i32.load
+          local.get $dimension call $pdx64_lane f32x4.replace_lane 2 local.set $candidates
+        end
+        local.get $group i32.const 3 i32.add local.set $index
+        local.get $index local.get $count i32.lt_u if
+          local.get $candidates local.get $vectors local.get $dimensions
+          local.get $ids local.get $index i32.const 2 i32.shl i32.add i32.load
+          local.get $dimension call $pdx64_lane f32x4.replace_lane 3 local.set $candidates
+        end
+        local.get $candidates
+        local.get $query local.get $dimension i32.const 2 i32.shl i32.add v128.load32_splat
+        f32x4.sub local.tee $delta local.get $delta f32x4.mul
+        local.get $sum f32x4.add local.set $sum
+        local.get $dimension i32.const 1 i32.add local.set $dimension
+        br $dimensions_loop
+      end end
+      local.get $output local.get $group i32.const 2 i32.shl i32.add
+      local.get $sum f32x4.extract_lane 0 f32.store
+      local.get $group i32.const 1 i32.add local.tee $index local.get $count i32.lt_u if
+        local.get $output local.get $index i32.const 2 i32.shl i32.add
+        local.get $sum f32x4.extract_lane 1 f32.store
+      end
+      local.get $group i32.const 2 i32.add local.tee $index local.get $count i32.lt_u if
+        local.get $output local.get $index i32.const 2 i32.shl i32.add
+        local.get $sum f32x4.extract_lane 2 f32.store
+      end
+      local.get $group i32.const 3 i32.add local.tee $index local.get $count i32.lt_u if
+        local.get $output local.get $index i32.const 2 i32.shl i32.add
+        local.get $sum f32x4.extract_lane 3 f32.store
+      end
+      local.get $group i32.const 4 i32.add local.set $group
+      br $groups_loop
+    end end)
 )

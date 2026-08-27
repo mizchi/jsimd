@@ -1,0 +1,104 @@
+{
+  "runtime": {
+    "deno": "2.6.4",
+    "v8": "14.2.231.17-rusty",
+    "target": "aarch64-apple-darwin",
+    "logicalCpus": 10
+  },
+  "workload": {
+    "rows": 65536,
+    "dimensions": 128,
+    "workers": 4,
+    "queries": 8,
+    "k": 10,
+    "warmups": 5,
+    "samples": 15
+  },
+  "initMs": 91.69,
+  "measurements": [
+    { "selectivity": 0.01, "mode": "exact-pdx64", "medianMs": 0.15, "p95Ms": 0.2, "recallAtK": 1 },
+    {
+      "selectivity": 0.01,
+      "mode": "binary-rerank",
+      "candidateMultiplier": 2,
+      "medianMs": 0.11,
+      "p95Ms": 0.14,
+      "speedupVsExact": 1.37,
+      "recallAtK": 0.83
+    },
+    {
+      "selectivity": 0.01,
+      "mode": "binary-rerank",
+      "candidateMultiplier": 4,
+      "medianMs": 0.1,
+      "p95Ms": 0.15,
+      "speedupVsExact": 1.41,
+      "recallAtK": 0.95
+    },
+    {
+      "selectivity": 0.01,
+      "mode": "binary-rerank",
+      "candidateMultiplier": 8,
+      "medianMs": 0.11,
+      "p95Ms": 0.13,
+      "speedupVsExact": 1.36,
+      "recallAtK": 1
+    },
+    { "selectivity": 0.1, "mode": "exact-pdx64", "medianMs": 0.16, "p95Ms": 0.27, "recallAtK": 1 },
+    {
+      "selectivity": 0.1,
+      "mode": "binary-rerank",
+      "candidateMultiplier": 2,
+      "medianMs": 0.09,
+      "p95Ms": 0.15,
+      "speedupVsExact": 1.87,
+      "recallAtK": 0.61
+    },
+    {
+      "selectivity": 0.1,
+      "mode": "binary-rerank",
+      "candidateMultiplier": 4,
+      "medianMs": 0.09,
+      "p95Ms": 0.16,
+      "speedupVsExact": 1.76,
+      "recallAtK": 0.79
+    },
+    {
+      "selectivity": 0.1,
+      "mode": "binary-rerank",
+      "candidateMultiplier": 8,
+      "medianMs": 0.11,
+      "p95Ms": 0.15,
+      "speedupVsExact": 1.49,
+      "recallAtK": 0.88
+    },
+    { "selectivity": 1, "mode": "exact-pdx64", "medianMs": 0.54, "p95Ms": 0.62, "recallAtK": 1 },
+    {
+      "selectivity": 1,
+      "mode": "binary-rerank",
+      "candidateMultiplier": 2,
+      "medianMs": 0.14,
+      "p95Ms": 0.18,
+      "speedupVsExact": 3.87,
+      "recallAtK": 0.45
+    },
+    {
+      "selectivity": 1,
+      "mode": "binary-rerank",
+      "candidateMultiplier": 4,
+      "medianMs": 0.2,
+      "p95Ms": 0.23,
+      "speedupVsExact": 2.64,
+      "recallAtK": 0.51
+    },
+    {
+      "selectivity": 1,
+      "mode": "binary-rerank",
+      "candidateMultiplier": 8,
+      "medianMs": 0.23,
+      "p95Ms": 0.28,
+      "speedupVsExact": 2.33,
+      "recallAtK": 0.65
+    }
+  ]
+}

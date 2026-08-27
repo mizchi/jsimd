@@ -92,6 +92,7 @@
     "bench:parallel-columnar-query": "just bench-parallel-columnar-query",
     "bench:parallel-hybrid-query": "just bench-parallel-hybrid-query",
     "bench:parallel-hybrid-topk": "just bench-parallel-hybrid-topk",
+    "bench:parallel-hybrid-binary": "just bench-parallel-hybrid-binary",
     "bench:parallel-columnar-duckdb-browser": "just bench-parallel-columnar-duckdb-browser",
     "bench:freeze-bridges": "vitest bench experiments/freeze-bridges",
     "bench:blocked-bloom-filter": "vitest bench experiments/blocked-bloom-filter",

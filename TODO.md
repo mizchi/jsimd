@@ -48,6 +48,10 @@ move to a separate repository once the low-level boundary is stable and measured
       eight of nine recorded medians and all `k=10` workloads, so it is now the filter-first
       default. Keep dense `k=100` as a documented slower case and retain the JavaScript selector for
       direct comparison and exact vector-first expansion.
+- [x] Add persistent Worker-local sign signatures, masked Hamming top-k, and sparse PDX64 exact
+      reranking. The recorded 1%-selective workload reached 1.41x at 0.95 recall with 4x candidates
+      and full recall at 1.36x with 8x. Dense recall remained inadequate, so keep this explicitly
+      approximate and scoped to selective metadata-filtered search.
 - [ ] Add cancellation and forced Worker restart only if this experiment graduates into a separate
       query-engine repository.
 
