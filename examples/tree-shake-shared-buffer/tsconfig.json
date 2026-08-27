@@ -1,18 +1,17 @@
 {
   "compilerOptions": {
     "allowArbitraryExtensions": true,
-    "declaration": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "erasableSyntaxOnly": true,
+    "lib": ["DOM", "ESNext"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "outDir": "dist",
-    "rewriteRelativeImportExtensions": true,
-    "rootDir": "src",
     "skipLibCheck": true,
     "strict": true,
     "target": "ESNext",
     "verbatimModuleSyntax": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*_test.ts"]
+  "include": ["../../src/shared-buffer/**/*.ts", "src.ts", "worker.ts"],
+  "exclude": ["../../src/shared-buffer/*_test.ts"]
 }

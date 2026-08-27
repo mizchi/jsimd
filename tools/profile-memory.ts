@@ -38,6 +38,20 @@ import { SimdMatrix3D } from "../src/matrix3d/mod.ts";
 import { PackedDeltaUint32List } from "../src/packed-delta-uint32-list/mod.ts";
 import { RankSelectBitVector } from "../src/rank-select-bit-vector/mod.ts";
 import { RoaringBitmap } from "../src/roaring-bitmap/mod.ts";
+import {
+  AtomicDenseBitmap,
+  MpmcRingBufferU32,
+  MpmcRingBufferU64,
+  ShardedBitmap,
+  SharedBlockPool,
+  SharedBuffer,
+  SharedSlotMap,
+  SpscRingBufferU32,
+  SpscRingBufferU64,
+  StripedHistogram,
+  VersionedBuffer,
+  WorkStealingDequeU32,
+} from "../src/shared-buffer/mod.ts";
 import { StaticMphfU32 } from "../src/static-mphf-u32/mod.ts";
 import { WaveletMatrixUint32 } from "../src/wavelet-matrix-uint32/mod.ts";
 import { WaveletMatrixUint8 } from "../src/wavelet-matrix-uint8/mod.ts";
@@ -85,6 +99,92 @@ const ROUNDS = Number(process.env.JSIMD_MEMORY_ROUNDS ?? 16);
 if (!Number.isSafeInteger(ROUNDS) || ROUNDS < 4) {
   throw new RangeError("JSIMD_MEMORY_ROUNDS must be an integer of at least 4");
 }
+const requestedScenarioIndex = process.argv.indexOf("--scenario");
+const requestedScenario = requestedScenarioIndex >= 0
+  ? process.argv[requestedScenarioIndex + 1]
+  : undefined;
+const sharedPoolBuffer = requestedScenario === "shared-block-pool"
+  ? await SharedBuffer.create({ initialPages: 2, maximumPages: 2, maxWorkers: 1 })
+  : undefined;
+const sharedBlockPool = sharedPoolBuffer === undefined
+  ? undefined
+  : SharedBlockPool.initialize(sharedPoolBuffer, 0);
+const sharedRingBuffer = requestedScenario === "shared-spsc-ring"
+  ? await SharedBuffer.create({ initialPages: 1, maximumPages: 1, maxWorkers: 1 })
+  : undefined;
+const sharedRing = sharedRingBuffer === undefined
+  ? undefined
+  : SpscRingBufferU32.initialize(sharedRingBuffer, 0, 4_096);
+const sharedRingValues = Uint32Array.from({ length: 4_096 }, (_, index) => index);
+const sharedRingOutput = new Uint32Array(4_096);
+const sharedMpmcBuffer = requestedScenario === "shared-mpmc-ring"
+  ? await SharedBuffer.create({ initialPages: 1, maximumPages: 1, maxWorkers: 1 })
+  : undefined;
+const sharedMpmcRing = sharedMpmcBuffer === undefined
+  ? undefined
+  : MpmcRingBufferU32.initialize(sharedMpmcBuffer, 0, 4_096);
+const sharedRingU64Buffer = requestedScenario === "shared-spsc-ring-u64"
+  ? await SharedBuffer.create({ initialPages: 1, maximumPages: 1, maxWorkers: 1 })
+  : undefined;
+const sharedRingU64 = sharedRingU64Buffer === undefined
+  ? undefined
+  : SpscRingBufferU64.initialize(sharedRingU64Buffer, 0, 2_048);
+const sharedMpmcU64Buffer = requestedScenario === "shared-mpmc-ring-u64"
+  ? await SharedBuffer.create({ initialPages: 1, maximumPages: 1, maxWorkers: 1 })
+  : undefined;
+const sharedMpmcU64Ring = sharedMpmcU64Buffer === undefined
+  ? undefined
+  : MpmcRingBufferU64.initialize(sharedMpmcU64Buffer, 0, 2_048);
+const sharedRingU64Values = BigUint64Array.from(
+  { length: 2_048 },
+  (_, index) => 0x7fff_ffff_0000_0000n | BigInt(index),
+);
+const sharedRingU64Output = new BigUint64Array(2_048);
+const sharedSlotMapBuffer = requestedScenario === "shared-slot-map"
+  ? await SharedBuffer.create({ initialPages: 1, maximumPages: 1, maxWorkers: 1 })
+  : undefined;
+const sharedSlotMap = sharedSlotMapBuffer === undefined
+  ? undefined
+  : SharedSlotMap.initialize(sharedSlotMapBuffer, 0, {
+    capacity: 64,
+    payloadByteLength: 32,
+  });
+const atomicBitmapBuffer = requestedScenario === "atomic-dense-bitmap"
+  ? await SharedBuffer.create({ initialPages: 1, maximumPages: 1, maxWorkers: 1 })
+  : undefined;
+const atomicBitmap = atomicBitmapBuffer === undefined
+  ? undefined
+  : AtomicDenseBitmap.initialize(atomicBitmapBuffer, 0, 32_768);
+const shardedBitmapBuffer = requestedScenario === "sharded-bitmap"
+  ? await SharedBuffer.create({ initialPages: 1, maximumPages: 1, maxWorkers: 1 })
+  : undefined;
+const shardedBitmap = shardedBitmapBuffer === undefined
+  ? undefined
+  : ShardedBitmap.initialize(shardedBitmapBuffer, 0, { capacity: 8_192, shardCount: 4 });
+const stripedHistogramBuffer = requestedScenario === "striped-histogram"
+  ? await SharedBuffer.create({ initialPages: 2, maximumPages: 2, maxWorkers: 1 })
+  : undefined;
+const stripedHistogram = stripedHistogramBuffer === undefined
+  ? undefined
+  : StripedHistogram.initialize(stripedHistogramBuffer, 0, {
+    bucketCount: 2_048,
+    stripeCount: 4,
+  });
+const stripedHistogramOutput = new Uint32Array(2_048);
+const versionedBufferBacking = requestedScenario === "versioned-buffer"
+  ? await SharedBuffer.create({ initialPages: 1, maximumPages: 1, maxWorkers: 1 })
+  : undefined;
+const versionedBuffer = versionedBufferBacking === undefined
+  ? undefined
+  : VersionedBuffer.initialize(versionedBufferBacking, 0, 16_384);
+const workDequeBuffer = requestedScenario === "work-stealing-deque"
+  ? await SharedBuffer.create({ initialPages: 1, maximumPages: 1, maxWorkers: 1 })
+  : undefined;
+const workDeque = workDequeBuffer === undefined
+  ? undefined
+  : WorkStealingDequeU32.initialize(workDequeBuffer, 0, 4_096);
+const workDequeValues = Uint32Array.from({ length: 4_096 }, (_, index) => index);
+const workDequeOutput = new Uint32Array(4_096);
 
 const i32Values = Int32Array.from(
   { length: U32_LENGTH },
@@ -195,6 +295,222 @@ const staticMphfSnapshot = makeSnapshot(() => StaticMphfU32.fromUint32Array(u32K
 let sink = 0;
 
 const scenarios: readonly Scenario[] = [
+  {
+    name: "work-stealing-deque",
+    iterations: 250,
+    run() {
+      if (workDeque === undefined) throw new Error("work-stealing deque profile not initialized");
+      using owner = workDeque.owner();
+      if (owner.pushMany(workDequeValues) !== workDequeValues.length) {
+        throw new Error("work-stealing deque profile push was incomplete");
+      }
+      if (owner.popMany(workDequeOutput) !== workDequeOutput.length) {
+        throw new Error("work-stealing deque profile pop was incomplete");
+      }
+      sink += workDequeOutput[0]!;
+    },
+    stats: () => sharedQueueStats(workDequeBuffer, "work-stealing deque"),
+  },
+  {
+    name: "versioned-buffer",
+    iterations: 250,
+    run() {
+      if (versionedBuffer === undefined) {
+        throw new Error("versioned buffer profile not initialized");
+      }
+      {
+        using writer = versionedBuffer.beginWrite();
+        writer.bytes.fill(sink & 0xff);
+        writer.publish();
+      }
+      using snapshot = versionedBuffer.acquire();
+      sink += snapshot.bytes[0]!;
+    },
+    stats: () => sharedQueueStats(versionedBufferBacking, "versioned buffer"),
+  },
+  {
+    name: "striped-histogram",
+    iterations: 250,
+    run() {
+      if (stripedHistogram === undefined) {
+        throw new Error("striped histogram profile not initialized");
+      }
+      for (let stripeIndex = 0; stripeIndex < stripedHistogram.stripeCount; stripeIndex++) {
+        using stripe = stripedHistogram.claimStripe(stripeIndex);
+        stripe.clearAll();
+        for (let bucket = stripeIndex; bucket < stripedHistogram.bucketCount; bucket += 4) {
+          stripe.increment(bucket);
+        }
+      }
+      stripedHistogram.reduceInto(stripedHistogramOutput);
+      sink += stripedHistogramOutput[sink & (stripedHistogram.bucketCount - 1)]!;
+    },
+    stats: () => sharedQueueStats(stripedHistogramBuffer, "striped histogram"),
+  },
+  {
+    name: "sharded-bitmap",
+    iterations: 250,
+    run() {
+      if (shardedBitmap === undefined) throw new Error("sharded bitmap profile not initialized");
+      for (let shardIndex = 0; shardIndex < shardedBitmap.shardCount; shardIndex++) {
+        using shard = shardedBitmap.claimShard(shardIndex);
+        shard.clearAll();
+        for (let bit = shardIndex; bit < shardedBitmap.capacity; bit += 32) shard.set(bit);
+      }
+      sink += shardedBitmap.reduceOr().countOnes();
+      sink += shardedBitmap.reduceAnd().countOnes();
+    },
+    stats: () => sharedQueueStats(shardedBitmapBuffer, "sharded bitmap"),
+  },
+  {
+    name: "atomic-dense-bitmap",
+    iterations: 250,
+    run() {
+      if (atomicBitmap === undefined) throw new Error("atomic bitmap profile not initialized");
+      for (let bit = 0; bit < atomicBitmap.capacity; bit += 8) atomicBitmap.set(bit);
+      for (let bit = 0; bit < atomicBitmap.capacity; bit += 8) atomicBitmap.clear(bit);
+      sink += Number(atomicBitmap.has(0));
+    },
+    stats: () => sharedQueueStats(atomicBitmapBuffer, "atomic bitmap"),
+  },
+  {
+    name: "shared-mpmc-ring-u64",
+    iterations: 250,
+    run() {
+      if (sharedMpmcU64Ring === undefined) {
+        throw new Error("shared u64 MPMC profile not initialized");
+      }
+      if (sharedMpmcU64Ring.pushMany(sharedRingU64Values) !== sharedRingU64Values.length) {
+        throw new Error("shared u64 MPMC profile push was incomplete");
+      }
+      if (sharedMpmcU64Ring.popMany(sharedRingU64Output) !== sharedRingU64Output.length) {
+        throw new Error("shared u64 MPMC profile pop was incomplete");
+      }
+      sink += Number(sharedRingU64Output[sharedRingU64Output.length - 1]! & 0xffffn);
+    },
+    stats: () => sharedQueueStats(sharedMpmcU64Buffer, "shared u64 MPMC"),
+  },
+  {
+    name: "shared-spsc-ring-u64",
+    iterations: 250,
+    run() {
+      if (sharedRingU64 === undefined) throw new Error("shared u64 SPSC profile not initialized");
+      using producer = sharedRingU64.producer();
+      using consumer = sharedRingU64.consumer();
+      if (producer.pushMany(sharedRingU64Values) !== sharedRingU64Values.length) {
+        throw new Error("shared u64 SPSC profile push was incomplete");
+      }
+      if (consumer.popMany(sharedRingU64Output) !== sharedRingU64Output.length) {
+        throw new Error("shared u64 SPSC profile pop was incomplete");
+      }
+      sink += Number(sharedRingU64Output[sharedRingU64Output.length - 1]! & 0xffffn);
+    },
+    stats: () => sharedQueueStats(sharedRingU64Buffer, "shared u64 SPSC"),
+  },
+  {
+    name: "shared-slot-map",
+    iterations: 250,
+    run() {
+      if (sharedSlotMap === undefined) throw new Error("shared slot map profile not initialized");
+      const slots = Array.from({ length: sharedSlotMap.capacity }, () => sharedSlotMap.allocate());
+      for (const slot of slots) {
+        slot.uint32Array(0, 1)[0] = slot.index;
+        slot[Symbol.dispose]();
+      }
+      sink += sharedSlotMap.outstandingSlots;
+    },
+    stats: () => {
+      if (sharedSlotMap === undefined || sharedSlotMapBuffer === undefined) {
+        throw new Error("shared slot map profile not initialized");
+      }
+      return {
+        liveAllocations: sharedSlotMap.outstandingSlots,
+        liveBytes: sharedSlotMap.outstandingSlots * sharedSlotMap.payloadByteLength,
+        freeBytes: (sharedSlotMap.capacity - sharedSlotMap.outstandingSlots) *
+          sharedSlotMap.slotStride,
+        reservedBytes: sharedSlotMap.byteLength,
+        memoryBytes: sharedSlotMapBuffer.memory.buffer.byteLength,
+      };
+    },
+  },
+  {
+    name: "shared-mpmc-ring",
+    iterations: 250,
+    run() {
+      if (sharedMpmcRing === undefined) throw new Error("shared MPMC ring profile not initialized");
+      if (sharedMpmcRing.pushMany(sharedRingValues) !== sharedRingValues.length) {
+        throw new Error("shared MPMC profile push was incomplete");
+      }
+      if (sharedMpmcRing.popMany(sharedRingOutput) !== sharedRingOutput.length) {
+        throw new Error("shared MPMC profile pop was incomplete");
+      }
+      sink += sharedRingOutput[sharedRingOutput.length - 1]!;
+    },
+    stats: () => {
+      if (sharedMpmcBuffer === undefined) {
+        throw new Error("shared MPMC ring profile not initialized");
+      }
+      return {
+        liveAllocations: 0,
+        liveBytes: 0,
+        freeBytes: sharedMpmcBuffer.byteLength,
+        reservedBytes: sharedMpmcBuffer.byteLength,
+        memoryBytes: sharedMpmcBuffer.memory.buffer.byteLength,
+      };
+    },
+  },
+  {
+    name: "shared-spsc-ring",
+    iterations: 250,
+    run() {
+      if (sharedRing === undefined) throw new Error("shared SPSC ring profile not initialized");
+      using producer = sharedRing.producer();
+      using consumer = sharedRing.consumer();
+      if (producer.pushMany(sharedRingValues) !== sharedRingValues.length) {
+        throw new Error("shared SPSC profile push was incomplete");
+      }
+      if (consumer.popMany(sharedRingOutput) !== sharedRingOutput.length) {
+        throw new Error("shared SPSC profile pop was incomplete");
+      }
+      sink += sharedRingOutput[sharedRingOutput.length - 1]!;
+    },
+    stats: () => {
+      if (sharedRingBuffer === undefined) {
+        throw new Error("shared SPSC ring profile not initialized");
+      }
+      return {
+        liveAllocations: 0,
+        liveBytes: 0,
+        freeBytes: sharedRingBuffer.byteLength,
+        reservedBytes: sharedRingBuffer.byteLength,
+        memoryBytes: sharedRingBuffer.memory.buffer.byteLength,
+      };
+    },
+  },
+  {
+    name: "shared-block-pool",
+    iterations: 250,
+    run() {
+      if (sharedBlockPool === undefined) {
+        throw new Error("shared block pool profile not initialized");
+      }
+      const blocks = Array.from({ length: 32 }, () => sharedBlockPool.allocate(256));
+      for (const block of blocks) block[Symbol.dispose]();
+      sink += sharedBlockPool.reservedBytes;
+    },
+    stats: () => {
+      if (sharedBlockPool === undefined || sharedPoolBuffer === undefined) {
+        throw new Error("shared block pool profile not initialized");
+      }
+      return {
+        liveAllocations: sharedBlockPool.outstandingBlocks,
+        liveBytes: 0,
+        freeBytes: sharedBlockPool.reservedBytes,
+        reservedBytes: sharedBlockPool.reservedBytes,
+        memoryBytes: sharedPoolBuffer.memory.buffer.byteLength,
+      };
+    },
+  },
   {
     name: "bytes-scratch",
     iterations: 250,
@@ -686,6 +1002,17 @@ const scenarios: readonly Scenario[] = [
   },
 ];
 
+function sharedQueueStats(buffer: SharedBuffer | undefined, name: string): AllocatorStats {
+  if (buffer === undefined) throw new Error(`${name} profile not initialized`);
+  return {
+    liveAllocations: 0,
+    liveBytes: 0,
+    freeBytes: buffer.byteLength,
+    reservedBytes: buffer.byteLength,
+    memoryBytes: buffer.memory.buffer.byteLength,
+  };
+}
+
 function makeSnapshot<T extends Disposable & { serialize(): Uint8Array }>(build: () => T) {
   using value = build();
   return value.serialize();
@@ -791,7 +1118,9 @@ if (scenarioArgument >= 0) {
   const name = process.argv[scenarioArgument + 1];
   const scenario = scenarios.find((value) => value.name === name);
   if (scenario === undefined) throw new Error(`unknown memory scenario: ${name}`);
-  console.log(JSON.stringify(runScenario(scenario)));
+  const result = runScenario(scenario);
+  sharedPoolBuffer?.[Symbol.dispose]();
+  console.log(JSON.stringify(result));
 } else {
   const results: ProfileResult[] = [];
   for (const scenario of scenarios) {

@@ -1,6 +1,6 @@
 {
   "name": "@mizchi/jsimd",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "exports": {
     "./bytes": "./src/bytes/mod.ts",
     "./adaptive-simd-page-i32": "./src/adaptive-simd-page-i32/mod.ts",
@@ -23,6 +23,7 @@
     "./matrix2d": "./src/matrix2d/mod.ts",
     "./matrix3d": "./src/matrix3d/mod.ts",
     "./roaring-bitmap": "./src/roaring-bitmap/mod.ts",
+    "./shared-buffer": "./src/shared-buffer/mod.ts",
     "./static-mphf-u32": "./src/static-mphf-u32/mod.ts",
     "./packed-delta-uint32-list": "./src/packed-delta-uint32-list/mod.ts",
     "./wavelet-matrix-uint16": "./src/wavelet-matrix-uint16/mod.ts",

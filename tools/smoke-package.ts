@@ -19,8 +19,11 @@ try {
   );
 
   const expression =
-    `import { indexOf } from "${metadata.name}/bytes"; import { DenseBitmap } from "${metadata.name}/bitmap"; import { BitHistogram32 } from "${metadata.name}/bit-histogram32"; import { RankSelectBitVector } from "${metadata.name}/rank-select-bit-vector"; import { RoaringBitmap } from "${metadata.name}/roaring-bitmap"; import { AdaptiveU32Column, SelectionMask } from "${metadata.name}/columnar"; import { BlockedVectorArray } from "${metadata.name}/blocked-vector-array"; import { WaveletMatrixUint16 } from "${metadata.name}/wavelet-matrix-uint16"; using bits = DenseBitmap.from(128, [1, 10]); using histogram = new BitHistogram32(); using ranked = RankSelectBitVector.from(128, [1, 10]); using roaring = RoaringBitmap.from([1, 10]); using column = AdaptiveU32Column.from(new Uint32Array([0xffffffff, 1, 2])); using selected = new SelectionMask(3); using vectors = BlockedVectorArray.from(new Float32Array([0, 1, 1, 0]), 2, 2); using wavelet = WaveletMatrixUint16.from(new Uint16Array([3, 1, 2, 1])); const counts = new Uint32Array(32); histogram.add(new Uint32Array([1, 3])).writeInto(counts); const distances = new Float32Array(2); const nearestIds = new Uint32Array(1); const nearestDistances = new Float32Array(1); column.scanLt(3, selected); vectors.squaredDistanceMany(new Float32Array([0, 0]), distances); vectors.topKInto(new Float32Array([0, 0]), nearestIds, nearestDistances); if (indexOf(new Uint8Array([1, 2, 3]), 2) !== 1 || counts[0] !== 2 || bits.countOnes() !== 2 || ranked.rank1(128) !== 2 || roaring.size !== 2 || selected.countOnes() !== 2 || distances[0] !== 1 || distances[1] !== 1 || nearestIds[0] !== 0 || wavelet.rank(1, 4) !== 2) throw new Error("unexpected SIMD result");`;
+    `import { indexOf } from "${metadata.name}/bytes"; import { DenseBitmap } from "${metadata.name}/bitmap"; import { BitHistogram32 } from "${metadata.name}/bit-histogram32"; import { RankSelectBitVector } from "${metadata.name}/rank-select-bit-vector"; import { RoaringBitmap } from "${metadata.name}/roaring-bitmap"; import { SHARED_SYNC_BYTE_LENGTH, SharedBlockPool, SharedBuffer, SharedMutex, SpscRingBufferU32 } from "${metadata.name}/shared-buffer"; import { AdaptiveU32Column, SelectionMask } from "${metadata.name}/columnar"; import { BlockedVectorArray } from "${metadata.name}/blocked-vector-array"; import { WaveletMatrixUint16 } from "${metadata.name}/wavelet-matrix-uint16"; using bits = DenseBitmap.from(128, [1, 10]); using histogram = new BitHistogram32(); using ranked = RankSelectBitVector.from(128, [1, 10]); using roaring = RoaringBitmap.from([1, 10]); using shared = await SharedBuffer.create({maxWorkers: 2}); const sharedMutex = SharedMutex.initialize(shared, 0); sharedMutex.lock(); sharedMutex.unlock(); const sharedPool = SharedBlockPool.initialize(shared, SHARED_SYNC_BYTE_LENGTH * 2); { using block = sharedPool.allocate(256); block.uint8Array()[0] = 1; } const ring = SpscRingBufferU32.initialize(shared, SHARED_SYNC_BYTE_LENGTH * 8, 8); using producer = ring.producer(); using consumer = ring.consumer(); producer.push(42); using column = AdaptiveU32Column.from(new Uint32Array([0xffffffff, 1, 2])); using selected = new SelectionMask(3); using vectors = BlockedVectorArray.from(new Float32Array([0, 1, 1, 0]), 2, 2); using wavelet = WaveletMatrixUint16.from(new Uint16Array([3, 1, 2, 1])); const counts = new Uint32Array(32); histogram.add(new Uint32Array([1, 3])).writeInto(counts); const sharedCounter = shared.uint32Array(SHARED_SYNC_BYTE_LENGTH, 1); Atomics.add(sharedCounter, 0, 1); const distances = new Float32Array(2); const nearestIds = new Uint32Array(1); const nearestDistances = new Float32Array(1); column.scanLt(3, selected); vectors.squaredDistanceMany(new Float32Array([0, 0]), distances); vectors.topKInto(new Float32Array([0, 0]), nearestIds, nearestDistances); if (indexOf(new Uint8Array([1, 2, 3]), 2) !== 1 || counts[0] !== 2 || bits.countOnes() !== 2 || ranked.rank1(128) !== 2 || roaring.size !== 2 || sharedPool.outstandingBlocks !== 0 || consumer.pop() !== 42 || Atomics.load(sharedCounter, 0) !== 1 || selected.countOnes() !== 2 || distances[0] !== 1 || distances[1] !== 1 || nearestIds[0] !== 0 || wavelet.rank(1, 4) !== 2) throw new Error("unexpected SIMD result");`;
   await run("node", ["--input-type=module", "--eval", expression], temporaryDirectory);
+  const queueExpression =
+    `import { AtomicDenseBitmap, MpmcRingBufferU32, MpmcRingBufferU64, SharedBuffer, SharedSlotMap, ShardedBitmap, StripedHistogram, VersionedBuffer, WorkStealingDequeU32 } from "${metadata.name}/shared-buffer"; using shared = await SharedBuffer.create(); const queue = MpmcRingBufferU32.initialize(shared, 0, 8); queue.push(42); const handles = MpmcRingBufferU64.initialize(shared, 256, 8); const slots = SharedSlotMap.initialize(shared, 576, {capacity: 1, payloadByteLength: 16}); const bitmap = AtomicDenseBitmap.initialize(shared, 832, 65); bitmap.set(64); const sharded = ShardedBitmap.initialize(shared, 960, {capacity: 65, shardCount: 2}); { using shard = sharded.claimShard(0); shard.set(64); } const histogram = StripedHistogram.initialize(shared, 1280, {bucketCount: 5, stripeCount: 2}); { using stripe = histogram.claimStripe(0); stripe.add(2, 7); } const histogramOutput = new Uint32Array(5); histogram.reduceInto(histogramOutput); const versions = VersionedBuffer.initialize(shared, 1600, 16); { using writer = versions.beginWrite(); writer.bytes[0] = 9; writer.publish(); } using snapshot = versions.acquire(); const deque = WorkStealingDequeU32.initialize(shared, 1920, 8); { using owner = deque.owner(); owner.tryPush(44); } { using slot = slots.allocate(); slot.uint32Array(0, 1)[0] = 43; handles.push(slot.handle); if (handles.pop() !== slot.handle || slots.get(slot.handle)?.uint32Array(0, 1)[0] !== 43) throw new Error("unexpected slot result"); } if (queue.pop() !== 42 || slots.outstandingSlots !== 0 || !bitmap.has(64) || !sharded.reduceOr().has(64) || histogramOutput[2] !== 7 || snapshot.bytes[0] !== 9 || deque.trySteal() !== 44) throw new Error("unexpected shared result");`;
+  await run("node", ["--input-type=module", "--eval", queueExpression], temporaryDirectory);
   await assertImportFails(metadata.name, temporaryDirectory);
 
   for (
@@ -47,12 +50,21 @@ try {
   const installedModule = `${temporaryDirectory}/node_modules/${metadata.name}/dist/bitmap/mod.js`;
   const installedBytesModule =
     `${temporaryDirectory}/node_modules/${metadata.name}/dist/bytes/mod.js`;
+  const installedSharedBufferModule =
+    `${temporaryDirectory}/node_modules/${metadata.name}/dist/shared-buffer/mod.js`;
   const denoExpression = `import { DenseBitmap } from ${
     JSON.stringify(installedModule)
   }; import { indexOf } from ${
     JSON.stringify(installedBytesModule)
-  }; using bits = DenseBitmap.from(128, [1, 10]); if (bits.countOnes() !== 2 || indexOf(new Uint8Array([1, 2, 3]), 2) !== 1) throw new Error("unexpected SIMD result");`;
+  }; import { SHARED_SYNC_BYTE_LENGTH, SharedBlockPool, SharedBuffer, SharedMutex, SpscRingBufferU32 } from ${
+    JSON.stringify(installedSharedBufferModule)
+  }; using bits = DenseBitmap.from(128, [1, 10]); using shared = await SharedBuffer.create({maxWorkers: 2}); const mutex = SharedMutex.initialize(shared, 0); mutex.lock(); mutex.unlock(); const pool = SharedBlockPool.initialize(shared, SHARED_SYNC_BYTE_LENGTH * 2); { using block = pool.allocate(256); block.uint8Array()[0] = 1; } const ring = SpscRingBufferU32.initialize(shared, SHARED_SYNC_BYTE_LENGTH * 8, 8); using producer = ring.producer(); using consumer = ring.consumer(); producer.push(42); const counter = shared.uint32Array(SHARED_SYNC_BYTE_LENGTH, 1); Atomics.add(counter, 0, 1); if (bits.countOnes() !== 2 || pool.outstandingBlocks !== 0 || consumer.pop() !== 42 || Atomics.load(counter, 0) !== 1 || indexOf(new Uint8Array([1, 2, 3]), 2) !== 1) throw new Error("unexpected SIMD result");`;
   await run("deno", ["eval", denoExpression], temporaryDirectory);
+  const denoQueueExpression =
+    `import { AtomicDenseBitmap, MpmcRingBufferU32, MpmcRingBufferU64, SharedBuffer, SharedSlotMap, ShardedBitmap, StripedHistogram, VersionedBuffer, WorkStealingDequeU32 } from ${
+      JSON.stringify(installedSharedBufferModule)
+    }; using shared = await SharedBuffer.create(); const queue = MpmcRingBufferU32.initialize(shared, 0, 8); queue.push(42); const handles = MpmcRingBufferU64.initialize(shared, 256, 8); const slots = SharedSlotMap.initialize(shared, 576, {capacity: 1, payloadByteLength: 16}); const bitmap = AtomicDenseBitmap.initialize(shared, 832, 65); bitmap.set(64); const sharded = ShardedBitmap.initialize(shared, 960, {capacity: 65, shardCount: 2}); { using shard = sharded.claimShard(0); shard.set(64); } const histogram = StripedHistogram.initialize(shared, 1280, {bucketCount: 5, stripeCount: 2}); { using stripe = histogram.claimStripe(0); stripe.add(2, 7); } const histogramOutput = new Uint32Array(5); histogram.reduceInto(histogramOutput); const versions = VersionedBuffer.initialize(shared, 1600, 16); { using writer = versions.beginWrite(); writer.bytes[0] = 9; writer.publish(); } using snapshot = versions.acquire(); const deque = WorkStealingDequeU32.initialize(shared, 1920, 8); { using owner = deque.owner(); owner.tryPush(44); } { using slot = slots.allocate(); slot.uint32Array(0, 1)[0] = 43; handles.push(slot.handle); if (handles.pop() !== slot.handle || slots.get(slot.handle)?.uint32Array(0, 1)[0] !== 43) throw new Error("unexpected slot result"); } if (queue.pop() !== 42 || slots.outstandingSlots !== 0 || !bitmap.has(64) || !sharded.reduceOr().has(64) || histogramOutput[2] !== 7 || snapshot.bytes[0] !== 9 || deque.trySteal() !== 44) throw new Error("unexpected shared result");`;
+  await run("deno", ["eval", denoQueueExpression], temporaryDirectory);
 
   await Deno.writeTextFile(
     `${temporaryDirectory}/consumer.ts`,
@@ -60,12 +72,74 @@ try {
 import { DenseBitmap } from "${metadata.name}/bitmap";
 import { RankSelectBitVector } from "${metadata.name}/rank-select-bit-vector";
 import { RoaringBitmap } from "${metadata.name}/roaring-bitmap";
+import { AtomicDenseBitmap, MpmcRingBufferU32, MpmcRingBufferU64, SharedBlockPool, SharedBuffer, SharedMutex, SharedSlotMap, ShardedBitmap, SpscRingBufferU32, SpscRingBufferU64, StripedCounter, StripedHistogram, VersionedBuffer, WorkStealingDequeU32 } from "${metadata.name}/shared-buffer";
 import { AdaptiveU32Column, SelectionMask } from "${metadata.name}/columnar";
 import { BlockedVectorArray } from "${metadata.name}/blocked-vector-array";
 import { WaveletMatrixUint16 } from "${metadata.name}/wavelet-matrix-uint16";
 using bits = DenseBitmap.from(128, [1, 10]);
 using ranked = RankSelectBitVector.from(128, [1, 10]);
 using roaring = RoaringBitmap.from([1, 10]);
+using shared = await SharedBuffer.create({ maxWorkers: 2 });
+const sharedMutex = SharedMutex.initialize(shared, 0);
+sharedMutex.lock();
+sharedMutex.unlock();
+const sharedPool = SharedBlockPool.initialize(shared, 128);
+{
+  using block = sharedPool.allocate(256);
+  block.uint8Array()[0] = 1;
+}
+const ring = SpscRingBufferU32.initialize(shared, 512, 8);
+using producer = ring.producer();
+using consumer = ring.consumer();
+producer.push(42);
+const received: number = consumer.pop();
+const mpmc = MpmcRingBufferU32.initialize(shared, 768, 8);
+mpmc.push(43);
+const receivedMpmc: number = mpmc.pop();
+const slots = SharedSlotMap.initialize(shared, 1024, { capacity: 1, payloadByteLength: 16 });
+using slot = slots.allocate();
+slot.uint32Array(0, 1)[0] = 44;
+const slotHandle: bigint = slot.handle;
+const spscU64 = SpscRingBufferU64.initialize(shared, 1280, 8);
+using producerU64 = spscU64.producer();
+using consumerU64 = spscU64.consumer();
+producerU64.push(slotHandle);
+const receivedSpscU64: bigint = consumerU64.pop();
+const mpmcU64 = MpmcRingBufferU64.initialize(shared, 1536, 8);
+mpmcU64.push(slotHandle);
+const receivedMpmcU64: bigint = mpmcU64.pop();
+const atomicBitmap = AtomicDenseBitmap.initialize(shared, 1856, 65);
+atomicBitmap.set(64);
+const atomicBit: boolean = atomicBitmap.has(64);
+const shardedBitmap = ShardedBitmap.initialize(shared, 1984, { capacity: 65, shardCount: 2 });
+{
+  using shard = shardedBitmap.claimShard(0);
+  shard.set(64);
+}
+const reducedBit: boolean = shardedBitmap.reduceOr().has(64);
+const stripedCounter = StripedCounter.initialize(shared, 2304, 2);
+{
+  using stripe = stripedCounter.claimStripe(0);
+  stripe.increment();
+}
+const stripedCount: number = stripedCounter.sum();
+const stripedHistogram = StripedHistogram.initialize(shared, 2624, { bucketCount: 4, stripeCount: 2 });
+const histogramCounts = new Uint32Array(4);
+stripedHistogram.reduceInto(histogramCounts);
+const versionedBuffer = VersionedBuffer.initialize(shared, 2944, 16);
+{
+  using writer = versionedBuffer.beginWrite();
+  writer.bytes[0] = 1;
+  writer.publish();
+}
+using versionedSnapshot = versionedBuffer.acquire();
+const snapshotGeneration: number = versionedSnapshot.generation;
+const workDeque = WorkStealingDequeU32.initialize(shared, 3264, 8);
+{
+  using owner = workDeque.owner();
+  owner.tryPush(1);
+}
+const stolenTask: number | undefined = workDeque.trySteal();
 using column = AdaptiveU32Column.from(new Uint32Array([0xffff_ffff, 1, 2]));
 using selected = new SelectionMask(3);
 using vectors = BlockedVectorArray.from(new Float32Array([0, 1, 1, 0]), 2, 2);
@@ -77,6 +151,7 @@ vectors.topKInto(new Float32Array([0, 0]), nearestIds, nearestDistances);
 const count: number = bits.countOnes();
 const rank: number = ranked.rank1(128);
 const roaringCount: number = roaring.size;
+const sharedWorkers: number = shared.activeWorkers;
 const selectedCount: number = selected.countOnes();
 const vectorCount: number = vectors.length;
 const byteIndex: number = indexOf(new Uint8Array([1, 2, 3]), 2);
@@ -85,11 +160,23 @@ const nearestId: number = nearestIds[0]!;
 void count;
 void rank;
 void roaringCount;
+void sharedWorkers;
 void selectedCount;
 void vectorCount;
 void byteIndex;
 void waveletRank;
 void nearestId;
+void received;
+void receivedMpmc;
+void slotHandle;
+void receivedSpscU64;
+void receivedMpmcU64;
+void atomicBit;
+void reducedBit;
+void stripedCount;
+void histogramCounts;
+void snapshotGeneration;
+void stolenTask;
 `,
   );
   await run(

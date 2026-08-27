@@ -29,6 +29,8 @@ the API look symmetric.
 - [ ] Before the next publish, review the public API diff and select the release version.
 - [ ] Run `just check`, `just memory-profile`, and `pnpm pack --dry-run`; rejected prototypes must
       remain absent from the tarball.
+- [ ] Split the root `mod_test.ts` by entrypoint into colocated `src/<name>/*_test.ts` files. Keep
+      tests excluded from publish and isolated Vite fixture TypeScript builds.
 
 ## v0.2.0: shared-memory and multithreading
 
@@ -53,54 +55,63 @@ and
 
 ### Phase 0: shared-memory ABI and test harness
 
-- [ ] Define `SharedBuffer`, alignment, cache-line padding, headers, versioning, worker IDs, and
+- [x] Define `SharedBuffer`, alignment, cache-line padding, headers, versioning, worker IDs, and
       attach/detach ownership. Shared structures must be views over an explicitly shared backing
       memory, not hidden module-local memories.
-- [ ] Define how independently instantiated worker modules import the same shared
+- [x] Define how independently instantiated worker modules import the same shared
       `WebAssembly.Memory`, including fixed maximum pages and feature detection.
-- [ ] Specify `using` semantics for shared leases, snapshots, and handles separately from ownership
+- [x] Specify `using` semantics for shared leases, snapshots, and handles separately from ownership
       of the backing memory.
-- [ ] Build deterministic Node Worker, Deno Worker, and Vite/browser worker tests. Add contention,
-      linearizability, stale-handle, worker-termination, and allocator-plateau cases.
+- [x] Build deterministic Node Worker, Deno Worker, and cross-origin-isolated Vite/browser worker
+      smoke tests with contended scalar atomic updates and lease-return checks.
+- [ ] Add forced Worker termination recovery, generation/stale-lease detection, and shared allocator
+      plateau cases after the allocator header owns reclamation metadata.
 - [ ] Benchmark 1/2/4/8 workers against `postMessage`, JavaScript `SharedArrayBuffer` + `Atomics`,
       and single-threaded SIMD. Report throughput, tail latency, contention, and false-sharing
       effects.
 
 ### Phase 1: synchronization and allocation
 
-- [ ] Implement worker-blocking `Mutex`, `Barrier`, and `WaitGroup` first; expose asynchronous
+- [x] Implement worker-blocking `Mutex`, `Barrier`, and `WaitGroup` first; expose asynchronous
       main-thread waits through `Atomics.waitAsync` rather than blocking `Atomics.wait`.
 - [ ] Add `RwLock`, `Condvar`, `Semaphore`, and `OnceCell` only when a consumer requires them.
-- [ ] Implement `SharedBlockPool` with fixed 256-byte, 1 KiB, and 4 KiB size classes, a global
+- [x] Implement `SharedBlockPool` with fixed 256-byte, 1 KiB, and 4 KiB size classes, a global
       atomic bump pointer, per-worker caches, and mutex-protected free lists. Defer lock-free free
       lists until ABA-safe reclamation exists.
 
 ### Phase 2: transport and handles
 
-- [ ] Implement fixed-payload `SpscRingBuffer` with cache-line-separated head/tail fields and bulk
-      `pushMany` / `popMany` SIMD copies.
-- [ ] Implement sequence-numbered `MpmcRingBuffer` only after SPSC semantics and benchmarks are
-      stable. Queue fixed-width integer handles rather than JavaScript objects.
-- [ ] Implement `SharedSlotMap` with generation-tagged 64-bit handles, atomic slot state, fixed-size
-      payloads, and stale-handle/ABA detection.
+- [x] Implement fixed-payload `SpscRingBufferU32` with cache-line-separated head/tail fields,
+      exclusive disposable roles, blocking/async backpressure, native-array bulk operations, and
+      SIMD shared-to-shared `pushManyFromShared` / `popManyToShared` copies.
+- [x] Implement sequence-numbered `MpmcRingBufferU32` with cache-line-separated enqueue/dequeue
+      positions, per-slot publish/recycle sequences, blocking/async backpressure, u32 rollover
+      tests, and fixed-width integer handles rather than JavaScript objects.
+- [x] Implement `SharedSlotMap` with generation-tagged 64-bit handles, atomic slot state,
+      SIMD-aligned fixed-size payloads, disposable owning leases, concurrent allocation, and
+      stale-handle/ABA detection.
+- [x] Add an SPSC/MPMC `u64` transport variant before using generation-tagged `SharedSlotMap`
+      handles as queue payloads. Do not split a handle across independently published u32 entries.
 
 ### Phase 3: bitmap and reduction primitives
 
-- [ ] Implement `AtomicDenseBitmap` scalar RMW operations: `set`, `clear`, `toggle`, `testAndSet`,
+- [x] Implement `AtomicDenseBitmap` scalar RMW operations: `set`, `clear`, `toggle`, `testAndSet`,
       and `testAndClear`. Concurrent bulk reads must not claim snapshot consistency.
-- [ ] Implement `ShardedBitmap` with worker-owned mutable `DenseBitmap` or `RoaringBitmap` shards
-      and barrier-delimited SIMD OR/AND snapshot reduction.
-- [ ] Implement `StripedCounter`, `StripedHistogram`, and `StripedDenseBitmap`; reuse the reduction
-      pattern later for Bloom filters, min/max, and approximate sketches.
+- [x] Implement `ShardedBitmap` with worker-owned mutable dense bitmap shards and barrier-delimited
+      SIMD OR/AND snapshot reduction.
+- [x] Implement `StripedCounter` and `StripedHistogram`; reuse the reduction pattern later for Bloom
+      filters, min/max, and approximate sketches. `ShardedBitmap` already provides the same
+      worker-local full-bitmap stripes and SIMD OR/AND reduction that a separate
+      `StripedDenseBitmap` name would duplicate.
 - [ ] Evaluate concurrent Bloom filters as worker-local filters plus SIMD OR first. Atomic OR with
       concurrent queries must either document temporary false negatives or add versioned blocks.
 
 ### Phase 4: immutable publication and scheduling
 
-- [ ] Implement `SnapshotCell` / `VersionedBuffer` with double buffering, atomic publication, reader
-      guards, and safe buffer reuse. Readers must only run SIMD over immutable published regions.
-- [ ] Implement a fixed-capacity or segmented `WorkStealingDeque` of integer task handles, with
-      owner bottom operations and CAS-based stealing.
+- [x] Implement `VersionedBuffer` with double buffering, atomic publication, reader guards, and safe
+      buffer reuse. Readers must only run SIMD over immutable published regions.
+- [x] Implement a fixed-capacity `WorkStealingDequeU32` of integer task handles, with owner bottom
+      operations and CAS-based stealing.
 - [ ] Implement `EpochDomain` only when snapshot reuse or segmented lock-free structures cannot be
       handled by locks or barriers.
 

@@ -20,6 +20,7 @@ build:
     wasm-tools strip -a src/matrix3d/kernels.wat -o src/matrix3d/kernels.wasm
     wasm-tools strip -a src/rank-select-bit-vector/kernels.wat -o src/rank-select-bit-vector/kernels.wasm
     wasm-tools strip -a src/roaring-bitmap/kernels.wat -o src/roaring-bitmap/kernels.wasm
+    wasm-tools strip -a src/shared-buffer/kernels.wat -o src/shared-buffer/kernels.wasm
     wasm-tools strip -a src/static-mphf-u32/kernels.wat -o src/static-mphf-u32/kernels.wasm
     wasm-tools strip -a src/packed-delta-uint32-list/kernels.wat -o src/packed-delta-uint32-list/kernels.wasm
     wasm-tools strip -a src/wavelet-matrix-uint16/kernels.wat -o src/wavelet-matrix-uint16/kernels.wasm
@@ -50,6 +51,7 @@ build:
     wasm-tools validate --features simd src/matrix3d/kernels.wasm
     wasm-tools validate --features simd src/rank-select-bit-vector/kernels.wasm
     wasm-tools validate --features simd src/roaring-bitmap/kernels.wasm
+    wasm-tools validate --features threads,simd src/shared-buffer/kernels.wasm
     wasm-tools validate --features simd src/static-mphf-u32/kernels.wasm
     wasm-tools validate --features simd src/packed-delta-uint32-list/kernels.wasm
     wasm-tools validate --features simd src/wavelet-matrix-uint16/kernels.wasm
@@ -94,6 +96,7 @@ build:
     ! wasm-tools print src/rank-select-bit-vector/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|\(export "dot"|\(export "matmul"'
     wasm-tools print src/roaring-bitmap/kernels.wasm | rg -q 'bitmap_and_count|bitmap_or_into|bitmap_xor_into|bitmap_and_not_into|array_bitmap_and_into'
     ! wasm-tools print src/roaring-bitmap/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|\(export "dot"|\(export "matmul"'
+    wasm-tools print src/shared-buffer/kernels.wasm | rg -q 'copy_bytes|reduce_shards_or|reduce_shards_and|reduce_shards_sum_u32|v128.or|v128.and|i32x4.add|i32x4.splat|v128.load|shared'
     wasm-tools print src/static-mphf-u32/kernels.wasm | rg -q 'lookup_many|i32x4.mul'
     ! wasm-tools print src/static-mphf-u32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/packed-delta-uint32-list/kernels.wasm | rg -q 'init_shuffle_table|decode_range|intersect_into'
@@ -128,6 +131,7 @@ bench: build
     deno bench -A
 
 check: test package-smoke
+    test "$(find dist -name '*_test.js' -o -name '*_test.d.ts' | wc -l | tr -d ' ')" = "0"
     deno fmt --check
     deno lint
     deno eval 'const p = JSON.parse(await Deno.readTextFile("package.json")); const d = JSON.parse(await Deno.readTextFile("deno.json")); if (p.version !== d.version || JSON.stringify(Object.keys(p.exports)) !== JSON.stringify(Object.keys(d.exports))) throw new Error("package.json and deno.json release metadata differ")'
@@ -248,6 +252,13 @@ check: test package-smoke
     test "$(find examples/tree-shake-roaring-bitmap/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-roaring-bitmap/dist/assets/*.wasm | rg -q 'bitmap_and_count|bitmap_or_into|bitmap_xor_into|bitmap_and_not_into|array_bitmap_and_into'
     ! wasm-tools print examples/tree-shake-roaring-bitmap/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|\(export "dot"|\(export "matmul"'
+    pnpm exec tsc -p examples/tree-shake-shared-buffer/tsconfig.json
+    pnpm exec vite build examples/tree-shake-shared-buffer
+    test "$(find examples/tree-shake-shared-buffer/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools validate --features threads,simd examples/tree-shake-shared-buffer/dist/assets/*.wasm
+    wasm-tools print examples/tree-shake-shared-buffer/dist/assets/*.wasm | rg -q 'copy_bytes|reduce_shards_or|reduce_shards_and|reduce_shards_sum_u32|v128.or|v128.and|i32x4.add|i32x4.splat|v128.load|shared'
+    node --no-warnings tools/test-shared-buffer-node-workers.ts
+    deno run -A tools/test-shared-buffer-browser.ts
     pnpm exec tsc -p examples/tree-shake-static-mphf-u32/tsconfig.json
     pnpm exec vite build examples/tree-shake-static-mphf-u32
     test "$(find examples/tree-shake-static-mphf-u32/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"

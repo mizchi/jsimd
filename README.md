@@ -26,10 +26,15 @@ pnpm add @mizchi/jsimd
 - WebAssembly SIMD
 - WebAssembly ESM Integration for direct `.wasm` imports
 
-All supported environments use the same entrypoints and synchronous API. The package assumes that
-the runtime or bundler resolves and instantiates Wasm through ESM Integration; it does not include
-an environment-specific loader. Consumers must also enable explicit resource management (`using` /
-`Symbol.dispose`).
+The optional `shared-buffer` entrypoint additionally requires WebAssembly threads and shared memory.
+Browsers must expose `SharedArrayBuffer` (normally through cross-origin isolation) and run
+operations inside Web Workers. Its `create` and `attach` factories are asynchronous because each
+Worker must instantiate the kernel module against the supplied shared memory.
+
+All supported environments use the same entrypoints. Existing single-threaded entrypoints expose
+synchronous operations after ESM Integration instantiates their Wasm modules. `shared-buffer` is the
+exception: its asynchronous factories compile the same kernel in each Worker against caller-owned
+shared memory. Consumers must also enable explicit resource management (`using` / `Symbol.dispose`).
 
 ## Usage
 
@@ -48,9 +53,8 @@ values.rangeFreq(0, values.length, 1, 5); // 4
 values.quantile(0, values.length, 3); // 4
 ```
 
-The package uses direct Wasm ES module imports supported by current Vite and Deno. Module loading
-performs initialization; exported operations are synchronous. Lazy initialization is intentionally
-deferred.
+The single-threaded entrypoints use direct Wasm ES module imports supported by current Vite and
+Deno. Module loading performs initialization, after which their exported operations are synchronous.
 
 ## Implementation guide
 
@@ -99,6 +103,7 @@ so each structure has one public name.
 | [`packed-delta-uint32-list`](./src/packed-delta-uint32-list/README.md) | Compressed postings and monotone lists       | 0.06–1.4x        | Full decode and lower-bound queries are slower        | 2.91 kB + 0.88 kB        |
 | [`rank-select-bit-vector`](./src/rank-select-bit-vector/README.md)     | Frozen indexed `RankSelectBitVector`         | 1.5–3.0x bulk    | Single-query rank is slower                           | 2.97 kB + 0.77 kB        |
 | [`roaring-bitmap`](./src/roaring-bitmap/README.md)                     | Compressed mutable `u32` bitmap              | 2.2–175x         | Construction and point-heavy cases were not measured  | 4.74 kB + 0.53 kB        |
+| [`shared-buffer`](./src/shared-buffer/README.md)                       | Shared memory, queues, snapshots, reduction  | 1.30–7.96x bulk  | Pool lease was 1.10x slower; scheduling excluded      | 24.63 kB + 0.33 kB       |
 | [`static-mphf-u32`](./src/static-mphf-u32/README.md)                   | Frozen perfect hash for known `u32` keys     | 1.75x bulk       | Individual lookup and construction are slower         | 4.09 kB + 0.39 kB        |
 | [`wavelet-matrix-uint8`](./src/wavelet-matrix-uint8/README.md)         | Rank/range queries over frozen bytes         | 4.8x vs u32      | Direct byte access is slower                          | 4.25 kB + 0.97 kB        |
 | [`wavelet-matrix-uint16`](./src/wavelet-matrix-uint16/README.md)       | Range queries over frozen `u16` sequences    | 2.3–329x         | Direct access and exact rank are slower               | 4.26 kB + 0.97 kB        |
