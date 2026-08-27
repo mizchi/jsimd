@@ -1,43 +1,115 @@
 {
-  "runtime": {
-    "deno": "2.6.4",
-    "v8": "14.2.231.17-rusty",
-    "typescript": "5.9.2",
-    "target": "aarch64-apple-darwin",
-    "logicalCpus": 10
+  "schemaVersion": 1,
+  "name": "parallel-columnar-query/logs-group-by",
+  "recordedAt": "2026-08-27T14:34:32.619Z",
+  "environment": {
+    "runtime": {
+      "name": "deno",
+      "version": "2.6.4",
+      "userAgent": "Deno/2.6.4"
+    },
+    "platform": "darwin-aarch64",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null
   },
-  "workload": {
-    "shape": "page-pruned log time-range/group-by count+sum+min+max",
-    "rows": 8388608,
-    "logicalBytes": 75497472,
-    "pageRows": 65536,
-    "groupCount": 8,
-    "selectivity": 0.10000002384185791,
+  "timing": {
     "warmups": 7,
-    "samples": 11
+    "samples": 11,
+    "operationsPerSample": 1
   },
-  "initializationMs": 194.16,
+  "input": {
+    "shape": {
+      "rows": 8388608,
+      "pageRows": 65536,
+      "groupCount": 8,
+      "selectivity": 0.10000002384185791,
+      "workers": 8,
+      "workload": "logs"
+    },
+    "bytes": 75497472
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 55,
+    "summary": "every group count, sum, minimum, and maximum matched the scalar reference"
+  },
   "measurements": [
     {
-      "mode": "page-aware-javascript",
-      "workers": 1,
-      "medianMs": 2.69,
-      "p95Ms": 3.29
+      "name": "optimized-javascript/workers=1",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 3.0495409999999765,
+      "p95Ms": 4.048749999999998,
+      "minMs": 2.9194999999999993,
+      "maxMs": 4.048749999999998,
+      "samplesMs": [
+        4.048749999999998,
+        3.0087500000000063,
+        3.2768749999999898,
+        3.1331249999999926,
+        2.978499999999997,
+        2.9915420000000097,
+        3.0260000000000105,
+        3.248583999999994,
+        2.9194999999999993,
+        3.0495409999999765,
+        3.1622500000000002
+      ]
     },
     {
-      "mode": "single-thread-wasm-simd",
-      "workers": 1,
-      "medianMs": 1.49,
-      "p95Ms": 1.63,
-      "speedupVsJs": 1.81
+      "name": "single-thread-wasm-simd/workers=1",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 1.9308750000000146,
+      "p95Ms": 2.254250000000013,
+      "minMs": 1.721708000000035,
+      "maxMs": 2.254250000000013,
+      "samplesMs": [
+        1.9412919999999758,
+        1.825290999999993,
+        1.8433749999999804,
+        2.2404169999999795,
+        1.8021249999999895,
+        1.722208999999964,
+        1.721708000000035,
+        2.254250000000013,
+        2.16704100000004,
+        2.0852089999999635,
+        1.9308750000000146
+      ]
     },
     {
-      "mode": "shared-memory-workers",
-      "workers": 8,
-      "medianMs": 2.3,
-      "p95Ms": 2.37,
-      "speedupVsJs": 1.17,
-      "speedupVsSingleWasm": 0.65
+      "name": "shared-memory-workers/workers=8",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 2.321124999999995,
+      "p95Ms": 2.3737090000000194,
+      "minMs": 2.206457999999998,
+      "maxMs": 2.3737090000000194,
+      "samplesMs": [
+        2.3262090000000057,
+        2.206457999999998,
+        2.327874999999949,
+        2.3737090000000194,
+        2.3683750000000146,
+        2.2900830000000383,
+        2.350500000000011,
+        2.316332999999986,
+        2.2982079999999883,
+        2.3053330000000187,
+        2.321124999999995
+      ]
     }
+  ],
+  "metrics": {
+    "initializationMs": 227.78,
+    "speedupSingleWasmVsJs": 1.58,
+    "speedupWorkersVsJs": 1.31,
+    "speedupWorkersVsSingleWasm": 0.83
+  },
+  "notes": [
+    "page-pruned log time-range/group-by count+sum+min+max.",
+    "Each end-to-end boundary is one warm query over resident columns; index construction is excluded and recorded in metrics."
   ]
 }

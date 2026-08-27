@@ -8,6 +8,7 @@ import {
   measureEndToEnd,
   measureMaterializationInclusive,
   measureResident,
+  summarizeBenchmarkSamples,
 } from "./measure.ts";
 
 function assert(condition: boolean, message: string): asserts condition {
@@ -95,6 +96,17 @@ Deno.test("versioned benchmark result records environment, shape, correctness, a
     })
   );
   assertThrows(() => createBenchmarkResult({ ...result, measurements: [] }));
+  assertThrows(() => createBenchmarkResult({ ...result, measurements: [endToEnd, endToEnd] }));
+});
+
+Deno.test("recorded raw samples can be summarized without losing their order", () => {
+  const measurement = summarizeBenchmarkSamples("legacy-run", "end-to-end", [4, 1, 3, 2]);
+  assert(measurement.medianMs === 2, "sample median");
+  assert(measurement.p95Ms === 4, "sample p95");
+  assert(measurement.minMs === 1, "sample minimum");
+  assert(measurement.maxMs === 4, "sample maximum");
+  assert(measurement.samplesMs.join(",") === "4,1,3,2", "raw sample order");
+  assertThrows(() => summarizeBenchmarkSamples("empty", "resident", []));
 });
 
 function assertThrows(operation: () => unknown): void {

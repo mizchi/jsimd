@@ -14,5 +14,4 @@ Recorded with Vitest 4.1.11 / Node 24.12 / Apple M5:
 ```sh
 pnpm bench:fingerprint-group16
 pnpm bench:record:fingerprint-group16
-pnpm bench:compare:fingerprint-group16
 ```

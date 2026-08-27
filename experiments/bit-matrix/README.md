@@ -16,5 +16,4 @@ before allocator size-class rounding. This benchmark does not compare a CSR or R
 ```sh
 pnpm bench:bit-matrix
 pnpm bench:record:bit-matrix
-pnpm bench:compare:bit-matrix
 ```

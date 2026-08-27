@@ -7,8 +7,7 @@ exact rank, copy-and-sort for range quantile, and a scalar typed-array scan for 
 ```sh
 pnpm bench:wavelet-matrix-uint32
 pnpm bench:record:wavelet-matrix-uint32
-pnpm bench:compare:wavelet-matrix-uint32
 ```
 
-Committed Vitest output lives in `benchmarks/baseline.json`. The entrypoint README summarizes the
-recorded numbers and trade-offs.
+The committed shared-schema result lives in `benchmarks/baseline.json`. The entrypoint README
+summarizes the recorded numbers and trade-offs.

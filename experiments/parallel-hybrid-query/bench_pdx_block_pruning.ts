@@ -1,4 +1,9 @@
 import { PdxBlockPruningExperiment } from "./pdx_block_pruning.ts";
+import {
+  type BenchmarkMeasurement,
+  summarizeBenchmarkSamples,
+} from "../../tools/benchmark/measure.ts";
+import { createBenchmarkResult, detectBenchmarkEnvironment } from "../../tools/benchmark/result.ts";
 
 type PhysicalLayout = "clustered-blocks" | "shuffled-clusters";
 
@@ -9,7 +14,9 @@ const SAMPLES = Number(Deno.env.get("JSIMD_PDX_PRUNING_SAMPLES") ?? 15);
 const QUERY_COUNT = 8;
 const K = 10;
 const layouts: PhysicalLayout[] = ["clustered-blocks", "shuffled-clusters"];
-const measurements: Record<string, unknown>[] = [];
+const measurements: BenchmarkMeasurement[] = [];
+const metrics: Record<string, number | string | boolean> = {};
+let correctnessChecks = 0;
 
 for (const layout of layouts) {
   const workload = createWorkload(layout, ROWS, DIMENSIONS, QUERY_COUNT);
@@ -22,41 +29,58 @@ for (const layout of layouts) {
     if (exactResults[query]!.ids.join(",") !== prunedResults[query]!.ids.join(",")) {
       throw new Error(`${layout} query ${query} changed exact IDs`);
     }
+    correctnessChecks++;
   }
   const exactDurations = measureBatch(workload.queries, (query) => index.searchExact(query, K));
   const prunedDurations = measureBatch(workload.queries, (query) => index.searchPruned(query, K));
-  measurements.push({
-    layout,
-    initMs: round(initMs),
-    metadataBytes: index.metadataBytes,
-    metadataOverheadPercent: round(
-      index.metadataBytes / (ROWS * DIMENSIONS * Float32Array.BYTES_PER_ELEMENT) * 100,
-    ),
-    exactMedianMs: round(percentile(exactDurations, 0.5)),
-    prunedMedianMs: round(percentile(prunedDurations, 0.5)),
-    speedup: round(percentile(exactDurations, 0.5) / percentile(prunedDurations, 0.5)),
-    evaluatedBlockPercent: round(
-      mean(prunedResults.map((result) => result.evaluatedBlocks)) /
-        Math.ceil(ROWS / 64) * 100,
-    ),
-    evaluatedRowPercent: round(
-      mean(prunedResults.map((result) => result.evaluatedRows)) / ROWS * 100,
-    ),
-  });
+  measurements.push(
+    summarizeBenchmarkSamples(`${layout}/exact`, "resident", exactDurations),
+    summarizeBenchmarkSamples(`${layout}/block-pruned`, "resident", prunedDurations),
+  );
+  metrics[`${layout}/initMs`] = round(initMs);
+  metrics[`${layout}/metadataBytes`] = index.metadataBytes;
+  metrics[`${layout}/metadataOverheadPercent`] = round(
+    index.metadataBytes / (ROWS * DIMENSIONS * Float32Array.BYTES_PER_ELEMENT) * 100,
+  );
+  metrics[`${layout}/speedup`] = round(
+    percentile(exactDurations, 0.5) / percentile(prunedDurations, 0.5),
+  );
+  metrics[`${layout}/evaluatedBlockPercent`] = round(
+    mean(prunedResults.map((result) => result.evaluatedBlocks)) /
+      Math.ceil(ROWS / 64) * 100,
+  );
+  metrics[`${layout}/evaluatedRowPercent`] = round(
+    mean(prunedResults.map((result) => result.evaluatedRows)) / ROWS * 100,
+  );
 }
 
-const report = {
-  runtime: { ...Deno.version, ...Deno.build },
-  configuration: {
-    rows: ROWS,
-    dimensions: DIMENSIONS,
-    queries: QUERY_COUNT,
-    k: K,
-    warmups: WARMUPS,
-    samples: SAMPLES,
+const report = createBenchmarkResult({
+  name: "parallel-hybrid-query/pdx-block-pruning",
+  recordedAt: new Date().toISOString(),
+  environment: detectBenchmarkEnvironment({ adapter: null }),
+  timing: { warmups: WARMUPS, samples: SAMPLES, operationsPerSample: QUERY_COUNT },
+  input: {
+    shape: {
+      rows: ROWS,
+      dimensions: DIMENSIONS,
+      queries: QUERY_COUNT,
+      k: K,
+      layouts: layouts.join(","),
+    },
+    bytes: ROWS * DIMENSIONS * Float32Array.BYTES_PER_ELEMENT,
+  },
+  correctness: {
+    passed: true,
+    checks: correctnessChecks,
+    summary: "Block-pruned search returned the same IDs as exact search for every query.",
   },
   measurements,
-};
+  metrics,
+  notes: [
+    "Measurements are per-query latency from batches of fixed deterministic queries.",
+    "Index construction is excluded from resident measurements and reported in metrics.",
+  ],
+});
 const json = JSON.stringify(report, null, 2) + "\n";
 const output = Deno.env.get("JSIMD_PDX_PRUNING_OUTPUT");
 if (output !== undefined) await Deno.writeTextFile(output, json);

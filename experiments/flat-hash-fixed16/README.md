@@ -13,5 +13,4 @@ Recorded with Vitest 4.1.11 / Node 24.12 / Apple M5:
 ```sh
 pnpm bench:flat-hash-fixed16
 pnpm bench:record:flat-hash-fixed16
-pnpm bench:compare:flat-hash-fixed16
 ```

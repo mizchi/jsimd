@@ -1,44 +1,160 @@
 {
-  "runtime": {
-    "deno": "2.6.4",
-    "v8": "14.2.231.17-rusty",
-    "typescript": "5.9.2",
-    "target": "aarch64-apple-darwin",
-    "arch": "aarch64",
-    "os": "darwin",
-    "vendor": "apple",
-    "standalone": false
+  "schemaVersion": 1,
+  "name": "parallel-hybrid-query/pdx-block-pruning",
+  "recordedAt": "2026-08-27T15:17:49.529Z",
+  "environment": {
+    "runtime": {
+      "name": "deno",
+      "version": "2.6.4",
+      "userAgent": "Deno/2.6.4"
+    },
+    "platform": "darwin-aarch64",
+    "logicalCpus": 10,
+    "cpu": "unavailable",
+    "adapter": null
   },
-  "configuration": {
-    "rows": 65536,
-    "dimensions": 128,
-    "queries": 8,
-    "k": 10,
+  "timing": {
     "warmups": 5,
-    "samples": 15
+    "samples": 15,
+    "operationsPerSample": 8
+  },
+  "input": {
+    "shape": {
+      "rows": 65536,
+      "dimensions": 128,
+      "queries": 8,
+      "k": 10,
+      "layouts": "clustered-blocks,shuffled-clusters"
+    },
+    "bytes": 33554432
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 16,
+    "summary": "Block-pruned search returned the same IDs as exact search for every query."
   },
   "measurements": [
     {
-      "layout": "clustered-blocks",
-      "initMs": 69.87,
-      "metadataBytes": 1048576,
-      "metadataOverheadPercent": 3.13,
-      "exactMedianMs": 1.31,
-      "prunedMedianMs": 0.6,
-      "speedup": 2.19,
-      "evaluatedBlockPercent": 5.7,
-      "evaluatedRowPercent": 5.7
+      "name": "clustered-blocks/exact",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 1.521828124999999,
+      "p95Ms": 2.1135625000000005,
+      "minMs": 1.4051457500000026,
+      "maxMs": 2.1135625000000005,
+      "samplesMs": [
+        1.627895875,
+        1.521828124999999,
+        1.4923802500000036,
+        1.5575103749999997,
+        1.5322552499999986,
+        1.4506041249999981,
+        1.6692343750000092,
+        2.1135625000000005,
+        1.4772917500000062,
+        1.4813646249999977,
+        1.4051457500000026,
+        1.505979124999996,
+        1.5604167500000017,
+        1.4051666249999926,
+        1.600885500000004
+      ]
     },
     {
-      "layout": "shuffled-clusters",
-      "initMs": 84.49,
-      "metadataBytes": 1048576,
-      "metadataOverheadPercent": 3.13,
-      "exactMedianMs": 1.32,
-      "prunedMedianMs": 1.32,
-      "speedup": 1,
-      "evaluatedBlockPercent": 100,
-      "evaluatedRowPercent": 100
+      "name": "clustered-blocks/block-pruned",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 0.6998801250000071,
+      "p95Ms": 0.8436978750000037,
+      "minMs": 0.6647968750000075,
+      "maxMs": 0.8436978750000037,
+      "samplesMs": [
+        0.7621718749999928,
+        0.6998801250000071,
+        0.6864479999999986,
+        0.6647968750000075,
+        0.6877707499999985,
+        0.6690103749999992,
+        0.8320052500000088,
+        0.7100676249999935,
+        0.7137552499999913,
+        0.6806458749999962,
+        0.6719687499999907,
+        0.7713853749999942,
+        0.8436978750000037,
+        0.699562499999999,
+        0.7515312499999993
+      ]
+    },
+    {
+      "name": "shuffled-clusters/exact",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 1.5302292499999908,
+      "p95Ms": 1.8433124999999961,
+      "minMs": 1.3585261249999974,
+      "maxMs": 1.8433124999999961,
+      "samplesMs": [
+        1.5359271250000006,
+        1.7967551250000042,
+        1.3585261249999974,
+        1.5571353750000014,
+        1.452333374999995,
+        1.4823802500000056,
+        1.4024635000000103,
+        1.4044166250000103,
+        1.5576301250000029,
+        1.4612343750000036,
+        1.5956302499999993,
+        1.5454792499999996,
+        1.4095728749999807,
+        1.5302292499999908,
+        1.8433124999999961
+      ]
+    },
+    {
+      "name": "shuffled-clusters/block-pruned",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 1.6034738750000201,
+      "p95Ms": 2.2070989999999995,
+      "minMs": 1.4160521249999931,
+      "maxMs": 2.2070989999999995,
+      "samplesMs": [
+        1.6774322500000096,
+        1.602713625000007,
+        1.4741614999999797,
+        1.7723072500000114,
+        1.5974011250000046,
+        1.4578021250000006,
+        2.2070989999999995,
+        1.7543124999999975,
+        1.8074374999999918,
+        1.8582812500000045,
+        1.4421666249999987,
+        1.4160521249999931,
+        2.044135374999996,
+        1.490979125000024,
+        1.6034738750000201
+      ]
     }
+  ],
+  "metrics": {
+    "clustered-blocks/initMs": 118.43,
+    "clustered-blocks/metadataBytes": 1048576,
+    "clustered-blocks/metadataOverheadPercent": 3.13,
+    "clustered-blocks/speedup": 2.17,
+    "clustered-blocks/evaluatedBlockPercent": 5.7,
+    "clustered-blocks/evaluatedRowPercent": 5.7,
+    "shuffled-clusters/initMs": 49.48,
+    "shuffled-clusters/metadataBytes": 1048576,
+    "shuffled-clusters/metadataOverheadPercent": 3.13,
+    "shuffled-clusters/speedup": 0.95,
+    "shuffled-clusters/evaluatedBlockPercent": 100,
+    "shuffled-clusters/evaluatedRowPercent": 100
+  },
+  "notes": [
+    "Measurements are per-query latency from batches of fixed deterministic queries.",
+    "Index construction is excluded from resident measurements and reported in metrics."
   ]
 }

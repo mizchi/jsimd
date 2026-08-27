@@ -1,27 +1,39 @@
 import { validateBenchmarkResult } from "./benchmark/result.ts";
 
-const root = new URL("../experiments/", import.meta.url);
+const roots = [
+  new URL("../experiments/", import.meta.url),
+  new URL("../examples/", import.meta.url),
+] as const;
 let versioned = 0;
-let legacy = 0;
-for await (const url of benchmarkJsonFiles(root)) {
-  const value = JSON.parse(await Deno.readTextFile(url)) as unknown;
-  if (
-    typeof value === "object" && value !== null &&
-    "schemaVersion" in value
-  ) {
-    try {
-      validateBenchmarkResult(value);
-    } catch (error) {
-      throw new Error(`${url.pathname}: ${error instanceof Error ? error.message : String(error)}`);
+const unversionedRequired: string[] = [];
+for (const root of roots) {
+  for await (const url of benchmarkJsonFiles(root)) {
+    const value = JSON.parse(await Deno.readTextFile(url)) as unknown;
+    if (
+      typeof value === "object" && value !== null &&
+      "schemaVersion" in value
+    ) {
+      try {
+        validateBenchmarkResult(value);
+      } catch (error) {
+        throw new Error(
+          `${url.pathname}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      versioned++;
+    } else {
+      unversionedRequired.push(url.pathname);
     }
-    versioned++;
-  } else {
-    legacy++;
   }
 }
 if (versioned === 0) throw new Error("no versioned benchmark result was found");
+if (unversionedRequired.length > 0) {
+  throw new Error(
+    `All benchmark results must use the versioned schema:\n${unversionedRequired.join("\n")}`,
+  );
+}
 console.log(
-  `Validated ${versioned} versioned benchmark result(s); ${legacy} legacy file(s) remain`,
+  `Validated ${versioned} versioned benchmark result(s); no legacy results found`,
 );
 
 async function* benchmarkJsonFiles(directory: URL): AsyncGenerator<URL> {

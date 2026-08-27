@@ -43,7 +43,6 @@ work over resident vectors, not tiny or copy-inclusive calls. One-to-many dot wa
 ```sh
 pnpm bench:f32-vector
 pnpm bench:record:f32-vector
-pnpm bench:compare:f32-vector
 ```
 
 The committed baseline is environment-specific. Floating-point reduction order also differs from the

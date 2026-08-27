@@ -1,100 +1,150 @@
 {
+  "schemaVersion": 1,
+  "name": "parallel-columnar-query/duckdb-browser-logs",
+  "recordedAt": "2026-08-27T14:35:44.191Z",
   "environment": {
-    "machine": "Apple Silicon",
-    "browser": "HeadlessChrome 152.0.0.0",
-    "duckdbWasmPackage": "1.32.0",
-    "duckdbVersion": "v1.4.3",
+    "runtime": {
+      "name": "chromium",
+      "version": "152.0.0.0",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36"
+    },
+    "platform": "aarch64-apple-darwin",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null,
     "crossOriginIsolated": true
   },
-  "workload": {
-    "shape": "page-pruned log time-range/group-by count+sum+min+max",
-    "rows": 16777216,
-    "logicalBytes": 150994944,
-    "predicate": "timestamp >= 70% AND timestamp < 80%",
-    "groupCount": 8,
-    "selectivity": 0.1,
+  "timing": {
     "warmups": 5,
-    "samples": 11
+    "samples": 11,
+    "operationsPerSample": 1
   },
-  "results": [
+  "input": {
+    "shape": {
+      "workload": "logs",
+      "rows": 16777216,
+      "selectivity": 0.1,
+      "groupCount": 8
+    },
+    "bytes": 150994944
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 4,
+    "summary": "all eight group count, sum, minimum, and maximum outputs matched"
+  },
+  "measurements": [
     {
-      "mode": "jsimd-single",
-      "workerCount": 1,
-      "initializationMs": 239.09999990463257,
-      "medianMs": 2.190000057220459,
+      "name": "jsimd-single/workers=1",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 2.619999885559082,
+      "p95Ms": 3.6000003814697266,
+      "minMs": 2.484999656677246,
+      "maxMs": 3.6000003814697266,
       "samplesMs": [
-        2.2100000381469727,
-        2.2100000381469727,
-        2.2350001335144043,
-        2.190000057220459,
-        2.184999942779541,
-        2.174999713897705,
-        2.4050002098083496,
-        2.2100000381469727,
-        2.169999599456787,
-        2.1650004386901855,
-        2.1599998474121094
+        2.619999885559082,
+        3.6000003814697266,
+        2.6600003242492676,
+        2.484999656677246,
+        3.1200003623962402,
+        3.5199999809265137,
+        2.8700003623962402,
+        2.554999828338623,
+        2.5199999809265137,
+        2.6050000190734863,
+        2.494999885559082
       ]
     },
     {
-      "mode": "jsimd-workers",
-      "workerCount": 8,
-      "initializationMs": 235.9850001335144,
-      "medianMs": 0.6149997711181641,
+      "name": "jsimd-workers/workers=8",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 0.6750001907348633,
+      "p95Ms": 0.815000057220459,
+      "minMs": 0.5799999237060547,
+      "maxMs": 0.815000057220459,
       "samplesMs": [
-        0.5199999809265137,
-        0.929999828338623,
-        0.625,
-        0.5399999618530273,
+        0.815000057220459,
+        0.6000003814697266,
         0.6449999809265137,
-        0.7000002861022949,
         0.6149997711181641,
-        0.5750002861022949,
-        0.6349997520446777,
-        0.49499988555908203,
-        0.49000024795532227
+        0.809999942779541,
+        0.7100000381469727,
+        0.5850000381469727,
+        0.804999828338623,
+        0.6750001907348633,
+        0.7249999046325684,
+        0.5799999237060547
       ]
     },
     {
-      "mode": "duckdb-eh",
-      "workerCount": 1,
-      "duckdbConfiguredThreads": 1,
-      "initializationMs": 1046.670000076294,
-      "medianMs": 6.185000419616699,
+      "name": "duckdb-eh/workers=1",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 11.019999980926514,
+      "p95Ms": 14.53499984741211,
+      "minMs": 8.734999656677246,
+      "maxMs": 14.53499984741211,
       "samplesMs": [
-        6.409999847412109,
-        6.195000171661377,
-        5.96999979019165,
-        6.055000305175781,
-        5.964999675750732,
-        6.185000419616699,
-        6.625,
-        6.829999923706055,
-        6.739999771118164,
-        6.105000019073486,
-        6.019999980926514
+        9.235000133514404,
+        8.765000343322754,
+        8.734999656677246,
+        13.115000247955322,
+        12.724999904632568,
+        8.795000076293945,
+        11.019999980926514,
+        10.859999656677246,
+        14.53499984741211,
+        14.195000171661377,
+        13.039999961853027
       ]
     },
     {
-      "mode": "duckdb-coi",
-      "workerCount": 8,
-      "duckdbConfiguredThreads": 8,
-      "initializationMs": 1334.340000152588,
-      "medianMs": 4.690000057220459,
+      "name": "duckdb-coi/workers=8",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 5.875,
+      "p95Ms": 8.884999752044678,
+      "minMs": 3.9499998092651367,
+      "maxMs": 8.884999752044678,
       "samplesMs": [
-        11.269999980926514,
-        5.994999885559082,
-        4.140000343322754,
-        4.059999942779541,
-        4.789999961853027,
-        4.690000057220459,
-        4.179999828338623,
-        5.034999847412109,
-        3.575000286102295,
-        3.989999771118164,
-        5.985000133514404
+        5.875,
+        8.884999752044678,
+        4.5,
+        5.005000114440918,
+        3.9499998092651367,
+        7.215000152587891,
+        8.119999885559082,
+        5.804999828338623,
+        5.295000076293945,
+        7.800000190734863,
+        7
       ]
     }
   ],
-  "validated": "all eight group count/sum/min/max outputs matched"
+  "metrics": {
+    "initializationMs_jsimd_single": 282.2749996185303,
+    "workers_jsimd_single": 1,
+    "initializationMs_jsimd_workers": 289.0900001525879,
+    "workers_jsimd_workers": 8,
+    "initializationMs_duckdb_eh": 1855.6600003242493,
+    "workers_duckdb_eh": 1,
+    "version_duckdb_eh": "v1.4.3",
+    "configuredThreads_duckdb_eh": 1,
+    "initializationMs_duckdb_coi": 1909.6449999809265,
+    "workers_duckdb_coi": 8,
+    "version_duckdb_coi": "v1.4.3",
+    "configuredThreads_duckdb_coi": 8,
+    "bundleGzipBytesJsimdWasm": 808,
+    "bundleGzipBytesJsimdWorker": 6493,
+    "bundleGzipBytesDuckdbEhWasm": 7781540,
+    "bundleGzipBytesDuckdbEhWorker": 190366,
+    "bundleGzipBytesDuckdbCoiWasm": 7849250,
+    "bundleGzipBytesDuckdbCoiWorkers": 364881
+  },
+  "notes": [
+    "Each end-to-end boundary is one warm query over a resident table and includes caller-visible result materialization; engine and table construction are excluded.",
+    "Each mode runs in a fresh browser process with explicit DuckDB eh or coi bundle selection."
+  ]
 }

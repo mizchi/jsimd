@@ -62,5 +62,5 @@ pnpm exec vite build experiments/bitmap-grid-astar/tree-shake-fixture
 
 The commands regenerate the ignored Wasm binary from
 [`prototype/kernels.wat`](./prototype/kernels.wat), validate SIMD instructions, and compare complete
-path reconstruction. Raw recorded medians are in
-[`benchmarks/baseline.json`](./benchmarks/baseline.json).
+path reconstruction. The former aggregate-only baseline is no longer committed because it did not
+retain raw samples.

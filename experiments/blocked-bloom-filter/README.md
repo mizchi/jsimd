@@ -18,5 +18,4 @@ false-positive rate, layout, sources, trade-offs, and standalone build size.
 ```sh
 pnpm bench:blocked-bloom-filter
 pnpm bench:record:blocked-bloom-filter
-pnpm bench:compare:blocked-bloom-filter
 ```

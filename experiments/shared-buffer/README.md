@@ -8,7 +8,6 @@ attachment, and point atomics are separate concerns.
 pnpm bench:shared-buffer
 pnpm bench:shared-buffer:workers
 pnpm bench:record:shared-buffer
-pnpm bench:compare:shared-buffer
 ```
 
 Point atomic operations intentionally use JavaScript `Atomics` directly. An exploratory Wasm
@@ -56,7 +55,8 @@ resident shared results or repeated downstream Wasm operations avoid later trans
 
 Median / p99 end-to-end latency for striped publication was 11.48 / 11.94 ms (1 Worker), 5.87 / 6.77
 ms (2), 3.48 / 3.74 ms (4), and 3.19 / 4.06 ms (8). The single-thread striped+SIMD baseline was
-648.42 Mops/s median. The committed machine-readable result is `benchmarks/worker-scaling.json`.
+648.42 Mops/s median. Run `pnpm bench:shared-buffer:workers` to repeat the exploratory scaling test;
+its former aggregate-only JSON is no longer committed because it did not retain raw samples.
 
 The same runner compares one atomic counter per Worker packed into one cache line with 64-byte
 padded counters:

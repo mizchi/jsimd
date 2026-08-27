@@ -53,7 +53,8 @@ kernel. None of this prototype is included when applications import a published 
 
 The SIMD operations follow the
 [WebAssembly SIMD specification](https://github.com/WebAssembly/spec/blob/main/proposals/simd/SIMD.md).
-The committed raw measurements are in [`benchmarks/baseline.json`](./benchmarks/baseline.json).
+Run `pnpm bench:simd-priority-queue` to repeat the experiment. The former aggregate-only baseline is
+no longer committed because it did not retain raw samples.
 
 ## Reproduce
 

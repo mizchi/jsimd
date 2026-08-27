@@ -3,6 +3,9 @@ import {
   groupByBetweenReference,
   ParallelI32GroupByU8Query,
 } from "./group_by.ts";
+import { detectHostCpu } from "../../tools/benchmark/browser_runner.ts";
+import { summarizeBenchmarkSamples } from "../../tools/benchmark/measure.ts";
+import { createBenchmarkResult, detectBenchmarkEnvironment } from "../../tools/benchmark/result.ts";
 
 const LENGTH = Number(Deno.env.get("JSIMD_QUERY_ROWS") ?? 8 * 1024 * 1024);
 const PAGE_ROWS = 65_536;
@@ -33,6 +36,7 @@ const scanEnd = WORKLOAD === "q1"
   ? LENGTH
   : Math.min(LENGTH, Math.ceil(upper / PAGE_ROWS) * PAGE_ROWS);
 const expected = groupByBetweenReference(filter, values, groups, lower, upper, GROUP_COUNT);
+let correctnessChecks = 0;
 validate(
   scanJavaScript(filter, values, groups, lower, upper, GROUP_COUNT, scanStart, scanEnd),
   expected.groups,
@@ -58,32 +62,59 @@ const workerDurations = await measureAsync(async () => {
 });
 const jsMedian = median(jsDurations);
 const singleMedian = median(singleDurations);
-
-console.log(JSON.stringify(
-  {
-    runtime: { ...Deno.version, ...Deno.build, logicalCpus: navigator.hardwareConcurrency },
-    workload: {
-      shape: WORKLOAD === "q1"
-        ? "Q1-like low-cardinality filter/group-by count+sum+min+max"
-        : "page-pruned log time-range/group-by count+sum+min+max",
+const workerMedian = median(workerDurations);
+const workloadName = WORKLOAD === "q1"
+  ? "Q1-like low-cardinality filter/group-by count+sum+min+max"
+  : "page-pruned log time-range/group-by count+sum+min+max";
+const result = createBenchmarkResult({
+  name: `parallel-columnar-query/${WORKLOAD}-group-by`,
+  recordedAt: new Date().toISOString(),
+  environment: detectBenchmarkEnvironment({
+    logicalCpus: navigator.hardwareConcurrency,
+    cpu: await detectHostCpu(),
+    adapter: null,
+  }),
+  timing: { warmups: WARMUPS, samples: SAMPLES, operationsPerSample: 1 },
+  input: {
+    shape: {
       rows: LENGTH,
-      bytes: filter.byteLength + values.byteLength + groups.byteLength,
       pageRows: PAGE_ROWS,
       groupCount: GROUP_COUNT,
       selectivity: expected.groups.reduce((total, group) => total + group.count, 0) / LENGTH,
-      warmups: WARMUPS,
-      samples: SAMPLES,
+      workers: WORKERS,
+      workload: WORKLOAD,
     },
-    initializationMs: round(initializationMs),
-    measurements: [
-      summarize("optimized-javascript", 1, jsDurations, jsMedian, singleMedian),
-      summarize("single-thread-wasm-simd", 1, singleDurations, jsMedian, singleMedian),
-      summarize("shared-memory-workers", WORKERS, workerDurations, jsMedian, singleMedian),
-    ],
+    bytes: filter.byteLength + values.byteLength + groups.byteLength,
   },
-  null,
-  2,
-));
+  correctness: {
+    passed: true,
+    checks: correctnessChecks,
+    summary: "every group count, sum, minimum, and maximum matched the scalar reference",
+  },
+  measurements: [
+    summarizeBenchmarkSamples("optimized-javascript/workers=1", "end-to-end", jsDurations),
+    summarizeBenchmarkSamples("single-thread-wasm-simd/workers=1", "end-to-end", singleDurations),
+    summarizeBenchmarkSamples(
+      `shared-memory-workers/workers=${WORKERS}`,
+      "end-to-end",
+      workerDurations,
+    ),
+  ],
+  metrics: {
+    initializationMs: round(initializationMs),
+    speedupSingleWasmVsJs: round(jsMedian / singleMedian),
+    speedupWorkersVsJs: round(jsMedian / workerMedian),
+    speedupWorkersVsSingleWasm: round(singleMedian / workerMedian),
+  },
+  notes: [
+    `${workloadName}.`,
+    "Each end-to-end boundary is one warm query over resident columns; index construction is excluded and recorded in metrics.",
+  ],
+});
+const json = JSON.stringify(result, null, 2) + "\n";
+const output = Deno.env.get("JSIMD_GROUP_OUTPUT");
+if (output !== undefined) await Deno.writeTextFile(output, json);
+console.log(json);
 
 function measureSync(operation: () => void): number[] {
   const durations: number[] = [];
@@ -145,24 +176,6 @@ async function measureAsync(operation: () => Promise<void>): Promise<number[]> {
   return durations;
 }
 
-function summarize(
-  mode: string,
-  workers: number,
-  durations: number[],
-  jsMedian: number,
-  singleMedian: number,
-): Record<string, number | string> {
-  const medianMs = median(durations);
-  return {
-    mode,
-    workers,
-    medianMs: round(medianMs),
-    p95Ms: round(percentile(durations, 0.95)),
-    speedupVsJs: round(jsMedian / medianMs),
-    speedupVsSingleWasm: round(singleMedian / medianMs),
-  };
-}
-
 function validate(
   actual: readonly GroupByAggregate[],
   expectedGroups: readonly GroupByAggregate[],
@@ -178,6 +191,7 @@ function validate(
       throw new Error(`aggregate mismatch for group ${right.group}`);
     }
   }
+  correctnessChecks++;
 }
 
 function median(values: readonly number[]): number {

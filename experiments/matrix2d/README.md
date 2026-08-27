@@ -18,7 +18,6 @@ At 64×64, SIMD took 32.9 us versus 314.0 us for `Float32Array` and 286.7 us for
 ```sh
 pnpm bench:matrix2d
 pnpm bench:record:matrix2d
-pnpm bench:compare:matrix2d
 ```
 
 The committed baseline is environment-specific. It is a generic JavaScript-loop comparison, not a

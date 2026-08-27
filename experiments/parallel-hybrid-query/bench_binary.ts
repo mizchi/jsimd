@@ -1,5 +1,10 @@
 import { createEmbeddingWorkload, type EmbeddingDistribution } from "./embedding_workloads.ts";
 import { ParallelHybridVectorIndex } from "./parallel_index.ts";
+import {
+  type BenchmarkMeasurement,
+  summarizeBenchmarkSamples,
+} from "../../tools/benchmark/measure.ts";
+import { createBenchmarkResult, detectBenchmarkEnvironment } from "../../tools/benchmark/result.ts";
 
 const ROWS = Number(Deno.env.get("JSIMD_BINARY_ROWS") ?? 65_536);
 const DIMENSIONS = Number(Deno.env.get("JSIMD_BINARY_DIMENSIONS") ?? 128);
@@ -13,8 +18,9 @@ const K = 10;
 const MULTIPLIERS = [2, 4, 8] as const;
 const DISTRIBUTIONS = requestedDistributions();
 
-const measurements: Record<string, unknown>[] = [];
-const workloads: Record<string, unknown>[] = [];
+const measurements: BenchmarkMeasurement[] = [];
+const metrics: Record<string, number | string | boolean> = {};
+let correctnessChecks = 0;
 
 for (const distribution of DISTRIBUTIONS) {
   const workload = createEmbeddingWorkload({
@@ -34,11 +40,10 @@ for (const distribution of DISTRIBUTIONS) {
       maxCandidateMultiplier: Math.max(...MULTIPLIERS),
     },
   );
-  workloads.push({
-    distribution,
-    initMs: round(performance.now() - initialized),
-    diagnostics: roundDiagnostics(workload.diagnostics),
-  });
+  metrics[`${distribution}/initMs`] = round(performance.now() - initialized);
+  for (const [key, value] of Object.entries(roundDiagnostics(workload.diagnostics))) {
+    metrics[`${distribution}/${key}`] = value;
+  }
 
   for (const selectivity of [0.01, 0.1, 1]) {
     const maximum = Math.round(selectivity * 1_000);
@@ -49,14 +54,13 @@ for (const distribution of DISTRIBUTIONS) {
     const exactDurations = await measureBatch(workload.queries, async (query) => {
       await index.searchBetween(query, 0, maximum, { k: K });
     });
-    measurements.push({
-      distribution,
-      selectivity,
-      mode: "exact-pdx64",
-      medianMs: round(percentile(exactDurations, 0.5)),
-      p95Ms: round(percentile(exactDurations, 0.95)),
-      recallAtK: 1,
-    });
+    measurements.push(summarizeBenchmarkSamples(
+      `${distribution}/selectivity=${selectivity}/exact-pdx64`,
+      "resident",
+      exactDurations,
+    ));
+    metrics[`${distribution}/selectivity=${selectivity}/exactRecallAtK`] = 1;
+    correctnessChecks += references.length;
 
     for (const candidateMultiplier of MULTIPLIERS) {
       const actual = [];
@@ -74,37 +78,52 @@ for (const distribution of DISTRIBUTIONS) {
           candidateMultiplier,
         });
       });
-      measurements.push({
-        distribution,
-        selectivity,
-        mode: "binary-rerank",
-        candidateMultiplier,
-        medianMs: round(percentile(durations, 0.5)),
-        p95Ms: round(percentile(durations, 0.95)),
-        speedupVsExact: round(
-          percentile(exactDurations, 0.5) / percentile(durations, 0.5),
-        ),
-        recallAtK: round(meanRecall(references, actual)),
-      });
+      const name =
+        `${distribution}/selectivity=${selectivity}/binary-rerank-${candidateMultiplier}x`;
+      measurements.push(summarizeBenchmarkSamples(name, "resident", durations));
+      metrics[`${name}/speedupVsExact`] = round(
+        percentile(exactDurations, 0.5) / percentile(durations, 0.5),
+      );
+      metrics[`${name}/recallAtK`] = round(meanRecall(references, actual));
+      correctnessChecks += actual.length;
     }
   }
 }
 
-const report = {
-  runtime: { ...Deno.version, ...Deno.build, logicalCpus: navigator.hardwareConcurrency },
-  configuration: {
-    rows: ROWS,
-    dimensions: DIMENSIONS,
-    workers: WORKERS,
-    queries: QUERY_COUNT,
-    k: K,
-    warmups: WARMUPS,
-    samples: SAMPLES,
-    distributions: DISTRIBUTIONS,
+const report = createBenchmarkResult({
+  name: "parallel-hybrid-query/binary-rerank",
+  recordedAt: new Date().toISOString(),
+  environment: detectBenchmarkEnvironment({
+    logicalCpus: navigator.hardwareConcurrency,
+    cpu: "unavailable",
+    adapter: null,
+  }),
+  timing: { warmups: WARMUPS, samples: SAMPLES, operationsPerSample: QUERY_COUNT },
+  input: {
+    shape: {
+      rows: ROWS,
+      dimensions: DIMENSIONS,
+      workers: WORKERS,
+      queries: QUERY_COUNT,
+      k: K,
+      candidateMultipliers: [...MULTIPLIERS],
+      distributions: DISTRIBUTIONS.join(","),
+    },
+    bytes: ROWS * DIMENSIONS * Float32Array.BYTES_PER_ELEMENT * DISTRIBUTIONS.length,
   },
-  workloads,
+  correctness: {
+    passed: true,
+    checks: correctnessChecks,
+    summary:
+      "Exact references completed and every approximate result produced a measured Recall@k.",
+  },
   measurements,
-};
+  metrics,
+  notes: [
+    "Measurements are per-query latency from batches of fixed deterministic queries.",
+    "Index construction is excluded from resident measurements and reported in metrics.",
+  ],
+});
 const reportJson = JSON.stringify(report, null, 2) + "\n";
 const output = Deno.env.get("JSIMD_BINARY_OUTPUT");
 if (output !== undefined) await Deno.writeTextFile(output, reportJson);

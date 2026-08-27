@@ -27,5 +27,4 @@ large static-scan workload, not evidence that point access or short columns beat
 ```sh
 pnpm bench:bit-sliced-column
 pnpm bench:record:bit-sliced-column
-pnpm bench:compare:bit-sliced-column
 ```

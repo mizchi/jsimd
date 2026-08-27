@@ -133,21 +133,23 @@ interface.
 
 ## Performance characteristics
 
-Recorded with Vitest 4.1.11 / Node 24 / Apple M5 over 4,194,304 rows in 64 row groups. One range
-predicate selects a single group and a `u8` equality is composed into the resident mask.
+Recorded with Deno 2.6.4 / V8 14.2 / Apple M5 over 4,194,304 rows in 64 row groups. One range
+predicate selects a single group and a `u8` equality is composed into the resident mask. The fixed
+runner uses five warmups, ten operations per sample, and retains all 15 raw samples in the shared
+benchmark-result schema.
 
 | workload                         | schema engine |     best relevant JS | result       |
 | :------------------------------- | ------------: | -------------------: | :----------- |
-| warm selective count             |     0.0185 ms | 0.0478 ms page-aware | 2.58x faster |
-| warm two-column projection       |     0.0417 ms | 0.0668 ms page-aware | 1.60x faster |
-| cold snapshot Memory restore     |      0.320 ms | 0.0478 ms page-aware | 6.69x slower |
-| cold snapshot FS restore         |      0.577 ms | 0.0478 ms page-aware | 12.1x slower |
-| cold snapshot Memory versus raw  |      0.320 ms |         2.862 ms raw | 8.94x faster |
-| cold snapshot Memory versus scan |      0.320 ms |   3.759 ms full scan | 11.7x faster |
+| warm selective count             |     0.0524 ms | 0.0842 ms page-aware | 1.61x faster |
+| warm two-column projection       |     0.1114 ms | 0.1640 ms page-aware | 1.47x faster |
+| cold snapshot Memory restore     |      0.469 ms | 0.0842 ms page-aware | 5.57x slower |
+| cold snapshot FS restore         |      0.607 ms | 0.0842 ms page-aware | 7.21x slower |
+| cold snapshot Memory versus raw  |      0.469 ms |         3.295 ms raw | 7.02x faster |
+| cold snapshot Memory versus scan |      0.469 ms |   5.552 ms full scan | 11.8x faster |
 
 The useful contract is therefore repeated selective queries over a stable working set, or cold
 queries whose ZoneMap/projection pruning avoids substantially more storage I/O. Direct snapshots
-made the in-memory cold path 8.94x faster than raw reconstruction, but an equivalent page-aware JS
+made the in-memory cold path 7.02x faster than raw reconstruction, but an equivalent page-aware JS
 working set is still faster because it performs no restore. Small tables, one-shot queries, frequent
 replacements, point reads, dense selections, and full result materialization are not target
 workloads. Projection wins here because the mask is sparse: the Wasm gather enumerates set bits with
@@ -185,7 +187,7 @@ pass rather than estimated from source.
 ```sh
 pnpm test:columnar-schema-engine
 pnpm bench:columnar-schema-engine --run
-pnpm bench:record:columnar-schema-engine --run
+pnpm bench:record:columnar-schema-engine
 pnpm bench:columnar-schema-indexeddb-browser
 pnpm bench:record:columnar-schema-indexeddb-browser
 ```

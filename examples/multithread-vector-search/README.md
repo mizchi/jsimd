@@ -74,6 +74,9 @@ Construction includes Worker startup and copying each shard into its Worker's pr
 The multi-Worker path is therefore a loss for 32K vectors and requires repeated queries to amortize
 setup. The committed raw result is in `benchmarks/baseline.json`.
 
+The baseline uses the shared versioned benchmark schema and retains every query sample. Regenerate
+it with `pnpm bench:record:example:multithread-vector-search`.
+
 The isolated Vite 8.2 production build emits about 14.1 kB gzip of JavaScript across the coordinator
 and Worker chunks, plus 0.30 kB gzip shared-memory Wasm and 0.92 kB gzip vector-search Wasm. Both
 kernels are independently emitted; unrelated jsimd Wasm assets are absent.

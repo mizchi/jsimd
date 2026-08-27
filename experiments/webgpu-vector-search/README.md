@@ -15,9 +15,9 @@ the persistent four-Worker SIMD index at 262,144 rows for one query. With four o
 batch, WebGPU won earlier and reached roughly 2.2-2.5x over the Worker index on the largest input.
 
 This is still not a package export. Uploading and transposing a 128 MiB input for each query costs
-roughly 190-220 ms, only one hardware adapter has been recorded, and small workloads remain much
-faster on Wasm SIMD. The viable contract is a long-lived resident GPU index with batched queries and
-only final top-k pairs read back.
+roughly 210-321 ms across the recorded runtimes, only one hardware adapter has been recorded, and
+small workloads remain much faster on Wasm SIMD. The viable contract is a long-lived resident GPU
+index with batched queries and only final top-k pairs read back.
 
 The GPU index transposes row-major input once into a dimension-major resident buffer. One invocation
 computes each row distance, every 256-row workgroup emits local top-k candidates, and further GPU
@@ -104,20 +104,21 @@ largest isolated improvement was 1.26x at 65,536 rows with one query. Queue subm
 the general crossover bottleneck, so this remains an experimental comparison method rather than the
 default path.
 
-## Historical Deno baseline
+## Deno baseline
 
 Apple M5, Deno 2.6.4 `--unstable-webgpu`, 128 dimensions, exact `k=10`, 5 warmups and 15 samples.
 The production resident path submits compute and the final copy before one `mapAsync`. The profiled
 readback column inserts an extra synchronization point to isolate the copy/map fixed cost, so it
-must not be added to the production end-to-end time.
+must not be added to the production end-to-end time. The versioned
+[`benchmarks/baseline.json`](./benchmarks/baseline.json) retains every raw sample.
 
 |    Rows |   Input | Wasm SIMD | WebGPU resident | Profiled readback | Upload each query |
 | ------: | ------: | --------: | --------------: | ----------------: | ----------------: |
-|   1,024 | 0.5 MiB |   0.02 ms |        14.33 ms |          13.13 ms |          15.26 ms |
-|   4,096 |   2 MiB |   0.03 ms |        14.81 ms |          13.38 ms |          17.43 ms |
-|  16,384 |   8 MiB |   0.12 ms |        15.25 ms |          12.59 ms |          26.33 ms |
-|  65,536 |  32 MiB |   0.82 ms |        14.71 ms |          13.07 ms |          62.59 ms |
-| 262,144 | 128 MiB |   2.23 ms |        15.87 ms |          13.42 ms |         217.59 ms |
+|   1,024 | 0.5 MiB |   0.05 ms |        14.92 ms |          13.48 ms |          15.30 ms |
+|   4,096 |   2 MiB |   0.03 ms |        14.91 ms |          12.97 ms |          17.47 ms |
+|  16,384 |   8 MiB |   0.17 ms |        15.79 ms |          13.46 ms |          30.09 ms |
+|  65,536 |  32 MiB |   0.58 ms |        13.83 ms |          13.58 ms |          67.02 ms |
+| 262,144 | 128 MiB |   4.56 ms |        17.69 ms |          13.23 ms |         320.55 ms |
 
 No single-query crossover was observed. Even returning only 80 bytes, Deno/wgpu mapping and
 scheduling imposed roughly 13-15 ms on this machine. Re-uploading and transposing the vectors for
@@ -126,18 +127,18 @@ every query was always substantially slower.
 Batching queries amortizes that fixed boundary. Each cell below is WebGPU speedup over sequential
 Wasm SIMD calls; values above 1 are wins.
 
-| Rows / query batch |     1 |     4 |    16 |        64 |       128 |
-| -----------------: | ----: | ----: | ----: | --------: | --------: |
-|              1,024 | 0.00x | 0.00x | 0.01x |     0.04x |     0.06x |
-|              4,096 | 0.00x | 0.01x | 0.03x |     0.12x |     0.22x |
-|             16,384 | 0.01x | 0.03x | 0.10x |     0.42x |     0.86x |
-|             65,536 | 0.03x | 0.13x | 0.49x |     0.88x | **1.09x** |
-|            262,144 | 0.14x | 0.55x | 0.98x | **1.30x** | **1.29x** |
+| Rows / query batch |     1 |         4 |        16 |        64 |       128 |
+| -----------------: | ----: | --------: | --------: | --------: | --------: |
+|              1,024 | 0.00x |     0.00x |     0.01x |     0.03x |     0.06x |
+|              4,096 | 0.00x |     0.01x |     0.03x |     0.12x |     0.25x |
+|             16,384 | 0.02x |     0.03x |     0.11x |     0.45x |     0.67x |
+|             65,536 | 0.04x |     0.18x |     0.61x | **2.08x** | **2.52x** |
+|            262,144 | 0.25x | **1.06x** | **1.91x** | **2.69x** | **3.08x** |
 
-The useful baseline is therefore approximately one billion `row * dimension * query` distance terms
-per readback on this setup. The clearest measured win was 262,144 rows x 128 dimensions x 64
-queries: WebGPU took 126.95 ms versus 164.69 ms for Wasm SIMD, a 1.30x speedup, while reading back
-only 5 KiB.
+The first crossover was 262,144 rows x 128 dimensions x four queries, but its 1.06x margin is too
+small to use as a robust dispatch threshold. The clearest measured win was 262,144 rows x 128
+dimensions x 128 queries: WebGPU took 224.45 ms versus 691.64 ms for Wasm SIMD, a 3.08x speedup,
+while reading back only 10 KiB.
 
 This threshold is runtime- and adapter-specific, not a portable constant. Browsers may schedule
 mapping differently. WebGPU specifies `mapAsync()` as the synchronization point that makes GPU
@@ -150,6 +151,7 @@ See the [WebGPU buffer mapping specification](https://www.w3.org/TR/webgpu/#buff
 ```sh
 just test-webgpu-vector-search
 just bench-webgpu-vector-search
+just bench-record-webgpu-vector-search
 just bench-webgpu-vector-search-browser
 just bench-record-webgpu-vector-search-browser
 ```

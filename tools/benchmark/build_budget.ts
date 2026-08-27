@@ -66,7 +66,7 @@ export async function checkBuildBudgets(
   return Object.freeze(summaries);
 }
 
-async function gzipSize(bytes: Uint8Array): Promise<number> {
+export async function gzipSize(bytes: Uint8Array): Promise<number> {
   const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new CompressionStream("gzip"));
   return (await new Response(stream).arrayBuffer()).byteLength;
 }

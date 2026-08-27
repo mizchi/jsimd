@@ -1,64 +1,106 @@
 {
-  "files": [
+  "schemaVersion": 1,
+  "name": "louds-topology",
+  "recordedAt": "2026-08-27T15:27:02.360Z",
+  "environment": {
+    "runtime": {
+      "name": "node",
+      "version": "v24.12.0",
+      "userAgent": "Node.js/24"
+    },
+    "platform": "darwin-arm64",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null
+  },
+  "timing": {
+    "warmups": 0,
+    "samples": 20,
+    "operationsPerSample": 1
+  },
+  "input": {
+    "shape": {
+      "benchmarkCount": 2,
+      "runner": "vitest"
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 2,
+    "summary": "Every Vitest benchmark case completed without an uncaught error."
+  },
+  "measurements": [
     {
-      "filepath": "/Users/mz/ghq/github.com/mizchi/jsimd/experiments/louds-topology/louds-topology.bench.ts",
-      "groups": [
-        {
-          "fullName": "experiments/louds-topology/louds-topology.bench.ts > rejected LOUDS parent navigation",
-          "benchmarks": [
-            {
-              "id": "1328042389_0_0",
-              "name": "LOUDS select+rank parentMany x4096",
-              "rank": 2,
-              "rme": 0.14055150580838846,
-              "samples": [],
-              "totalTime": 500.03638299999926,
-              "min": 0.07266700000002402,
-              "max": 0.21262500000000273,
-              "hz": 13197.039704208903,
-              "period": 0.07577456932868605,
-              "mean": 0.07577456932868605,
-              "variance": 0.000019484261276750894,
-              "sd": 0.0044140980139492705,
-              "sem": 0.00005433790725065792,
-              "df": 6598,
-              "critical": 1.96,
-              "moe": 0.00010650229821128952,
-              "p75": 0.07766699999996263,
-              "p99": 0.0897499999999809,
-              "p995": 0.09424999999998818,
-              "p999": 0.1073329999999828,
-              "sampleCount": 6599,
-              "median": 0.07387499999992997
-            },
-            {
-              "id": "1328042389_0_1",
-              "name": "Uint32Array parent x4096",
-              "rank": 1,
-              "rme": 0.07856060266434377,
-              "samples": [],
-              "totalTime": 500.00568499997087,
-              "min": 0.010999999999967258,
-              "max": 0.057332999999971435,
-              "hz": 88444.99438041906,
-              "period": 0.011306462361214093,
-              "mean": 0.011306462361214093,
-              "variance": 9.082369233209651e-7,
-              "sd": 0.0009530146501082578,
-              "sem": 0.000004531849474993359,
-              "df": 44222,
-              "critical": 1.96,
-              "moe": 0.000008882424970986984,
-              "p75": 0.011166999999886684,
-              "p99": 0.01516700000001947,
-              "p995": 0.01691599999992377,
-              "p999": 0.023374999999987267,
-              "sampleCount": 44223,
-              "median": 0.011124999999992724
-            }
-          ]
-        }
+      "name": "rejected LOUDS parent navigation > LOUDS select+rank parentMany x4096",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 0.08220799999992323,
+      "p95Ms": 0.17762500000003456,
+      "minMs": 0.07866699999999582,
+      "maxMs": 0.38520799999997735,
+      "samplesMs": [
+        0.07866699999999582,
+        0.07895899999994072,
+        0.07908400000007987,
+        0.07937500000002728,
+        0.0795840000000112,
+        0.07983300000000781,
+        0.0800830000000019,
+        0.08045900000001893,
+        0.08137499999997999,
+        0.08220799999992323,
+        0.08387500000000614,
+        0.08412500000000023,
+        0.08437500000002274,
+        0.08462500000001683,
+        0.08487500000001091,
+        0.08587499999998727,
+        0.0887920000000122,
+        0.10099999999999909,
+        0.17762500000003456,
+        0.38520799999997735
+      ]
+    },
+    {
+      "name": "rejected LOUDS parent navigation > Uint32Array parent x4096",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 0.012000000000057298,
+      "p95Ms": 0.012375000000020009,
+      "minMs": 0.011833000000024185,
+      "maxMs": 0.0521249999999327,
+      "samplesMs": [
+        0.011833000000024185,
+        0.011957999999935964,
+        0.011958000000049651,
+        0.01195899999993344,
+        0.011959000000160813,
+        0.011999999999943611,
+        0.011999999999943611,
+        0.011999999999943611,
+        0.011999999999943611,
+        0.012000000000057298,
+        0.012000000000170985,
+        0.012040999999953783,
+        0.012041999999951258,
+        0.012042000000064945,
+        0.012042000000064945,
+        0.012083000000075117,
+        0.012083999999958905,
+        0.012124999999969077,
+        0.012375000000020009,
+        0.0521249999999327
       ]
     }
+  ],
+  "metrics": {
+    "retainedSamplesPerMeasurement": 20,
+    "fullSampleCountMin": 5428,
+    "fullSampleCountMax": 40945
+  },
+  "notes": [
+    "Measurements contain actual Tinybench samples selected uniformly from the exposed distribution to keep the committed result bounded.",
+    "Vitest performs time-based warmup; timing.warmups is zero because the runner does not expose a warmup iteration count.",
+    "The resident boundary covers only each benchmark callback; suite setup and module initialization are excluded."
   ]
 }

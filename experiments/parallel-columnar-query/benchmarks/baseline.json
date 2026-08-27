@@ -1,72 +1,194 @@
 {
-  "runtime": {
-    "deno": "2.6.4",
-    "v8": "14.2.231.17-rusty",
-    "typescript": "5.9.2",
-    "target": "aarch64-apple-darwin",
-    "logicalCpus": 10
+  "schemaVersion": 1,
+  "name": "parallel-columnar-query/range-count-sum",
+  "recordedAt": "2026-08-27T14:35:00.165Z",
+  "environment": {
+    "runtime": {
+      "name": "deno",
+      "version": "2.6.4",
+      "userAgent": "Deno/2.6.4"
+    },
+    "platform": "darwin-aarch64",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null
   },
-  "workload": {
-    "rows": 33554432,
-    "bytes": 134217728,
-    "pageRows": 65536,
-    "selectivity": 0.25,
+  "timing": {
     "warmups": 7,
     "samples": 11,
-    "note": "Worker counts were measured in fresh processes; vs JS uses each process-local baseline"
+    "operationsPerSample": 1
+  },
+  "input": {
+    "shape": {
+      "rows": 33554432,
+      "pageRows": 65536,
+      "selectivity": 0.25,
+      "workerCounts": [
+        1,
+        2,
+        4,
+        8
+      ]
+    },
+    "bytes": 134217728
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 108,
+    "summary": "every count and sum matched the optimized JavaScript reference"
   },
   "measurements": [
     {
-      "mode": "optimized-javascript",
-      "workers": 1,
-      "medianMs": 105.09,
-      "p95Ms": 138.37,
-      "speedupVsJs": 1
+      "name": "optimized-javascript/workers=1",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 98.1757090000001,
+      "p95Ms": 111.16387499999996,
+      "minMs": 72.66883299999995,
+      "maxMs": 111.16387499999996,
+      "samplesMs": [
+        106.64537500000006,
+        77.47587499999997,
+        102.69108299999994,
+        83.86945800000012,
+        72.66883299999995,
+        98.1757090000001,
+        111.16387499999996,
+        111.03579200000013,
+        107.67883399999982,
+        97.35062500000004,
+        93.16025000000013
+      ]
     },
     {
-      "mode": "single-thread-wasm-simd",
-      "workers": 1,
-      "initMs": 278.94,
-      "medianMs": 9.51,
-      "p95Ms": 10.18,
-      "speedupVsJs": 11.05,
-      "speedupVsSingleWasm": 1
+      "name": "single-thread-wasm-simd/workers=1",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 5.570208000000093,
+      "p95Ms": 7.021291000000019,
+      "minMs": 5.408124999999927,
+      "maxMs": 7.021291000000019,
+      "samplesMs": [
+        5.96225000000004,
+        5.747165999999879,
+        6.613749999999982,
+        7.021291000000019,
+        5.552582999999913,
+        5.463874999999916,
+        5.436874999999873,
+        5.570208000000093,
+        5.4585000000001855,
+        5.408124999999927,
+        5.744375000000218
+      ]
     },
     {
-      "mode": "shared-memory-workers",
-      "workers": 1,
-      "initMs": 278.94,
-      "medianMs": 11.75,
-      "p95Ms": 14.13,
-      "speedupVsJs": 8.94,
-      "speedupVsSingleWasm": 0.81
+      "name": "shared-memory-workers/workers=1",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 6.980083999999806,
+      "p95Ms": 9.528249999999844,
+      "minMs": 6.875541000000339,
+      "maxMs": 9.528249999999844,
+      "samplesMs": [
+        8.869167000000289,
+        7.017749999999978,
+        6.984291999999641,
+        6.91216600000007,
+        9.528249999999844,
+        6.948791999999685,
+        6.875541000000339,
+        6.940708000000086,
+        6.980083999999806,
+        6.9978329999999005,
+        6.913332999999966
+      ]
     },
     {
-      "mode": "shared-memory-workers",
-      "workers": 2,
-      "initMs": 297.68,
-      "medianMs": 7.06,
-      "p95Ms": 7.3,
-      "speedupVsJs": 16.26,
-      "speedupVsSingleWasm": 1.35
+      "name": "shared-memory-workers/workers=2",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 4.6186250000000655,
+      "p95Ms": 4.662625000000389,
+      "minMs": 3.471875000000182,
+      "maxMs": 4.662625000000389,
+      "samplesMs": [
+        4.6186250000000655,
+        4.633624999999938,
+        4.608249999999771,
+        4.40762500000028,
+        4.646500000000287,
+        4.621999999999844,
+        3.471875000000182,
+        4.585791999999856,
+        4.662625000000389,
+        4.6498750000000655,
+        4.544499999999971
+      ]
     },
     {
-      "mode": "shared-memory-workers",
-      "workers": 4,
-      "initMs": 262.6,
-      "medianMs": 4.73,
-      "p95Ms": 4.91,
-      "speedupVsJs": 24.52,
-      "speedupVsSingleWasm": 2.01
+      "name": "shared-memory-workers/workers=4",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 2.3760419999998703,
+      "p95Ms": 5.448582999999871,
+      "minMs": 2.301958999999897,
+      "maxMs": 5.448582999999871,
+      "samplesMs": [
+        4.751208000000133,
+        2.336917000000085,
+        2.3091669999998885,
+        2.301958999999897,
+        5.183125000000018,
+        5.448582999999871,
+        3.213583000000199,
+        2.3760419999998703,
+        3.7265840000000026,
+        2.33462499999996,
+        2.311290999999983
+      ]
     },
     {
-      "mode": "shared-memory-workers",
-      "workers": 8,
-      "initMs": 361.5,
-      "medianMs": 2.44,
-      "p95Ms": 2.59,
-      "speedupVsJs": 44.86,
-      "speedupVsSingleWasm": 3.9
+      "name": "shared-memory-workers/workers=8",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 2.342250000000149,
+      "p95Ms": 2.547625000000153,
+      "minMs": 2.311749999999847,
+      "maxMs": 2.547625000000153,
+      "samplesMs": [
+        2.311749999999847,
+        2.3491250000001855,
+        2.342250000000149,
+        2.325417000000016,
+        2.355333000000428,
+        2.3282500000000255,
+        2.359375,
+        2.547625000000153,
+        2.342250000000149,
+        2.320791999999983,
+        2.3174589999998716
+      ]
     }
+  ],
+  "metrics": {
+    "predicate": "-8192 <= value < 8192",
+    "selectivity": 0.25,
+    "initializationMsWorkers1": 173.59,
+    "speedupVsJsWorkers1": 14.07,
+    "speedupVsSingleWasmWorkers1": 0.8,
+    "initializationMsWorkers2": 194.3,
+    "speedupVsJsWorkers2": 21.26,
+    "speedupVsSingleWasmWorkers2": 1.21,
+    "initializationMsWorkers4": 206.6,
+    "speedupVsJsWorkers4": 41.32,
+    "speedupVsSingleWasmWorkers4": 2.34,
+    "initializationMsWorkers8": 277.03,
+    "speedupVsJsWorkers8": 41.92,
+    "speedupVsSingleWasmWorkers8": 2.38
+  },
+  "notes": [
+    "Each end-to-end boundary is one warm query over caller-resident input; index construction is excluded and recorded separately in metrics.",
+    "Worker counts are normally recorded in fresh processes to avoid retaining previous double-buffer allocations."
   ]
 }

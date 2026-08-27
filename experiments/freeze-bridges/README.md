@@ -27,5 +27,4 @@ not a performance advantage over direct construction.
 ```sh
 pnpm bench:freeze-bridges
 pnpm bench:record:freeze-bridges
-pnpm bench:compare:freeze-bridges
 ```

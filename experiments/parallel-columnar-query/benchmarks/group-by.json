@@ -1,50 +1,115 @@
 {
-  "runtime": {
-    "deno": "2.6.4",
-    "v8": "14.2.231.17-rusty",
-    "typescript": "5.9.2",
-    "target": "aarch64-apple-darwin",
-    "arch": "aarch64",
-    "os": "darwin",
-    "vendor": "apple",
-    "standalone": false,
-    "logicalCpus": 10
+  "schemaVersion": 1,
+  "name": "parallel-columnar-query/q1-group-by",
+  "recordedAt": "2026-08-27T14:34:27.273Z",
+  "environment": {
+    "runtime": {
+      "name": "deno",
+      "version": "2.6.4",
+      "userAgent": "Deno/2.6.4"
+    },
+    "platform": "darwin-aarch64",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null
   },
-  "workload": {
-    "shape": "Q1-like low-cardinality filter/group-by count+sum+min+max",
-    "rows": 8388608,
-    "bytes": 75497472,
-    "pageRows": 65536,
-    "groupCount": 8,
-    "selectivity": 0.5000851154327393,
+  "timing": {
     "warmups": 7,
-    "samples": 11
+    "samples": 11,
+    "operationsPerSample": 1
   },
-  "initializationMs": 233.05,
+  "input": {
+    "shape": {
+      "rows": 8388608,
+      "pageRows": 65536,
+      "groupCount": 8,
+      "selectivity": 0.5000851154327393,
+      "workers": 8,
+      "workload": "q1"
+    },
+    "bytes": 75497472
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 55,
+    "summary": "every group count, sum, minimum, and maximum matched the scalar reference"
+  },
   "measurements": [
     {
-      "mode": "optimized-javascript",
-      "workers": 1,
-      "medianMs": 41.17,
-      "p95Ms": 43.66,
-      "speedupVsJs": 1,
-      "speedupVsSingleWasm": 0.88
+      "name": "optimized-javascript/workers=1",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 45.82854199999997,
+      "p95Ms": 47.52012500000001,
+      "minMs": 42.285999999999945,
+      "maxMs": 47.52012500000001,
+      "samplesMs": [
+        42.44799999999998,
+        44.016999999999996,
+        46.23162500000001,
+        47.488000000000056,
+        47.52012500000001,
+        46.04283399999997,
+        46.01820799999996,
+        44.06158300000004,
+        44.25025000000005,
+        45.82854199999997,
+        42.285999999999945
+      ]
     },
     {
-      "mode": "single-thread-wasm-simd",
-      "workers": 1,
-      "medianMs": 36.34,
-      "p95Ms": 39.01,
-      "speedupVsJs": 1.13,
-      "speedupVsSingleWasm": 1
+      "name": "single-thread-wasm-simd/workers=1",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 36.49258400000008,
+      "p95Ms": 39.690791999999874,
+      "minMs": 35.285499999999956,
+      "maxMs": 39.690791999999874,
+      "samplesMs": [
+        37.68845800000008,
+        37.062790999999834,
+        37.01749999999993,
+        37.528999999999996,
+        39.690791999999874,
+        36.49258400000008,
+        35.755042,
+        36.15174999999999,
+        35.66108299999996,
+        35.285499999999956,
+        36.074208
+      ]
     },
     {
-      "mode": "shared-memory-workers",
-      "workers": 8,
-      "medianMs": 8.31,
-      "p95Ms": 9.13,
-      "speedupVsJs": 4.95,
-      "speedupVsSingleWasm": 4.37
+      "name": "shared-memory-workers/workers=8",
+      "boundary": "end-to-end",
+      "unit": "ms",
+      "medianMs": 7.889667000000145,
+      "p95Ms": 9.667249999999967,
+      "minMs": 6.607875000000149,
+      "maxMs": 9.667249999999967,
+      "samplesMs": [
+        9.667249999999967,
+        9.287833000000091,
+        7.150541999999859,
+        8.557291999999961,
+        6.607875000000149,
+        8.334083999999848,
+        7.135000000000218,
+        7.194874999999911,
+        7.1551250000002256,
+        8.3103329999999,
+        7.889667000000145
+      ]
     }
+  ],
+  "metrics": {
+    "initializationMs": 218.54,
+    "speedupSingleWasmVsJs": 1.26,
+    "speedupWorkersVsJs": 5.81,
+    "speedupWorkersVsSingleWasm": 4.63
+  },
+  "notes": [
+    "Q1-like low-cardinality filter/group-by count+sum+min+max.",
+    "Each end-to-end boundary is one warm query over resident columns; index construction is excluded and recorded in metrics."
   ]
 }

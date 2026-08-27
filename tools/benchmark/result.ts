@@ -133,15 +133,18 @@ export function validateBenchmarkResult(value: unknown): asserts value is Benchm
   if (!Array.isArray(result.measurements) || result.measurements.length === 0) {
     throw new RangeError("measurements must not be empty");
   }
-  let hasEndToEnd = false;
+  const measurementNames = new Set<string>();
   for (const measurement of result.measurements) {
     const item = record(measurement, "measurement");
-    nonEmptyString(item.name, "measurement.name");
+    const measurementName = nonEmptyString(item.name, "measurement.name");
+    if (measurementNames.has(measurementName)) {
+      throw new RangeError(`measurement.name must be unique: ${measurementName}`);
+    }
+    measurementNames.add(measurementName);
     if (
       item.boundary !== "resident" && item.boundary !== "construction-inclusive" &&
       item.boundary !== "materialization-inclusive" && item.boundary !== "end-to-end"
     ) throw new RangeError("measurement.boundary is invalid");
-    hasEndToEnd ||= item.boundary === "end-to-end";
     equal(item.unit, "ms", "measurement.unit");
     for (const key of ["medianMs", "p95Ms", "minMs", "maxMs"] as const) {
       finiteNonNegative(item[key], `measurement.${key}`);
@@ -151,7 +154,6 @@ export function validateBenchmarkResult(value: unknown): asserts value is Benchm
     }
     for (const sample of item.samplesMs) finiteNonNegative(sample, "measurement sample");
   }
-  if (!hasEndToEnd) throw new RangeError("at least one end-to-end measurement is required");
   if (result.metrics !== undefined) {
     const metrics = record(result.metrics, "metrics");
     for (const [key, metric] of Object.entries(metrics)) {

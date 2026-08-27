@@ -124,11 +124,29 @@ test-parallel-columnar-query: build
 test-parallel-hybrid-query: build
     deno test -A experiments/parallel-hybrid-query
 
+bench-record-vitest suite output:
+    deno run -A tools/benchmark/record_vitest.ts {{suite}} {{output}}
+
+bench-record-all-vitest:
+    deno run -A tools/benchmark/record_all_vitest.ts
+
+bench-record-multithread-vector-search: build
+    JSIMD_EXAMPLE_VECTOR_OUTPUT=examples/multithread-vector-search/benchmarks/baseline.json deno run -A examples/multithread-vector-search/bench.ts
+
 bench-parallel-columnar-query: build
     deno run -A experiments/parallel-columnar-query/bench.ts
 
+bench-record-parallel-columnar-query: build
+    JSIMD_QUERY_OUTPUT=experiments/parallel-columnar-query/benchmarks/baseline.json deno run -A experiments/parallel-columnar-query/bench.ts
+
 bench-parallel-columnar-group-by: build
     deno run -A experiments/parallel-columnar-query/group_bench.ts
+
+bench-record-parallel-columnar-group-by: build
+    JSIMD_GROUP_OUTPUT=experiments/parallel-columnar-query/benchmarks/group-by.json deno run -A experiments/parallel-columnar-query/group_bench.ts
+
+bench-record-parallel-columnar-log-group-by: build
+    JSIMD_GROUP_WORKLOAD=logs JSIMD_GROUP_OUTPUT=experiments/parallel-columnar-query/benchmarks/log-group-by.json deno run -A experiments/parallel-columnar-query/group_bench.ts
 
 bench-parallel-hybrid-query: build
     deno run -A experiments/parallel-hybrid-query/bench.ts
@@ -154,6 +172,9 @@ test-webgpu-vector-search:
 bench-webgpu-vector-search: build
     deno run -A --unstable-webgpu experiments/webgpu-vector-search/bench.ts
 
+bench-record-webgpu-vector-search: build
+    JSIMD_WEBGPU_OUTPUT=experiments/webgpu-vector-search/benchmarks/baseline.json deno run -A --unstable-webgpu experiments/webgpu-vector-search/bench.ts
+
 bench-webgpu-vector-search-browser: build
     deno check --unstable-webgpu experiments/webgpu-vector-search/browser-benchmark/src.ts
     pnpm exec vite build experiments/webgpu-vector-search/browser-benchmark
@@ -169,6 +190,11 @@ bench-parallel-columnar-duckdb-browser: build
     pnpm exec vite build experiments/parallel-columnar-query/duckdb-comparison
     deno run -A tools/bench-parallel-columnar-duckdb-browser.ts
 
+bench-record-parallel-columnar-duckdb-browser: build
+    pnpm exec tsc -p experiments/parallel-columnar-query/duckdb-comparison/tsconfig.json
+    pnpm exec vite build experiments/parallel-columnar-query/duckdb-comparison
+    JSIMD_DUCKDB_OUTPUT_DIR=experiments/parallel-columnar-query/benchmarks deno run -A tools/bench-parallel-columnar-duckdb-browser.ts
+
 bench-columnar-schema-indexeddb-browser: build
     pnpm exec tsc -p experiments/columnar-schema-engine/browser-benchmark/tsconfig.json
     pnpm exec vite build experiments/columnar-schema-engine/browser-benchmark
@@ -178,6 +204,9 @@ bench-record-columnar-schema-indexeddb-browser: build
     pnpm exec tsc -p experiments/columnar-schema-engine/browser-benchmark/tsconfig.json
     pnpm exec vite build experiments/columnar-schema-engine/browser-benchmark
     JSIMD_INDEXEDDB_OUTPUT=experiments/columnar-schema-engine/benchmarks/indexeddb-browser.json deno run -A tools/bench-columnar-schema-indexeddb-browser.ts
+
+bench-record-columnar-schema-engine: build
+    JSIMD_COLUMNAR_SCHEMA_OUTPUT=experiments/columnar-schema-engine/benchmarks/baseline.json deno run -A experiments/columnar-schema-engine/record_benchmark.ts
 
 check-benchmark-results:
     deno run -A tools/check-benchmark-results.ts

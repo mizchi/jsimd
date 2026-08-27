@@ -1,5 +1,10 @@
 import { BlockedVectorArray } from "../../src/blocked-vector-array/mod.ts";
 import { MultithreadVectorSearch } from "./search.ts";
+import {
+  type BenchmarkMeasurement,
+  summarizeBenchmarkSamples,
+} from "../../tools/benchmark/measure.ts";
+import { createBenchmarkResult, detectBenchmarkEnvironment } from "../../tools/benchmark/result.ts";
 
 const COUNTS = [32_768, 131_072, 262_144, 524_288] as const;
 const DIMENSIONS = 128;
@@ -8,20 +13,48 @@ const WORKERS = 4;
 const WARMUPS = 3;
 const SAMPLES = 20;
 
-const results = [];
-for (const count of COUNTS) results.push(await benchmarkCount(count));
-console.log(JSON.stringify(
-  {
-    runtime: { ...Deno.version, ...Deno.build, logicalCpus: navigator.hardwareConcurrency },
-    dimensions: DIMENSIONS,
-    k: K,
-    workers: WORKERS,
-    samples: SAMPLES,
-    results,
+const measurements: BenchmarkMeasurement[] = [];
+const metrics: Record<string, number | string | boolean> = {};
+for (const count of COUNTS) {
+  const result = await benchmarkCount(count);
+  measurements.push(...result.measurements);
+  metrics[`count=${count}/singleBuildMs`] = result.singleBuildMs;
+  metrics[`count=${count}/multiBuildMs`] = result.multiBuildMs;
+  metrics[`count=${count}/querySpeedup`] = result.querySpeedup;
+}
+const report = createBenchmarkResult({
+  name: "examples/multithread-vector-search",
+  recordedAt: new Date().toISOString(),
+  environment: detectBenchmarkEnvironment({
+    logicalCpus: navigator.hardwareConcurrency,
+    adapter: null,
+  }),
+  timing: { warmups: WARMUPS, samples: SAMPLES, operationsPerSample: 1 },
+  input: {
+    shape: {
+      counts: [...COUNTS],
+      dimensions: DIMENSIONS,
+      k: K,
+      workers: WORKERS,
+    },
+    bytes: Math.max(...COUNTS) * DIMENSIONS * Float32Array.BYTES_PER_ELEMENT,
   },
-  null,
-  2,
-));
+  correctness: {
+    passed: true,
+    checks: COUNTS.length * (WARMUPS + SAMPLES),
+    summary: "Single-thread and multi-Worker search returned the query row as nearest neighbor.",
+  },
+  measurements,
+  metrics,
+  notes: [
+    "Resident query measurements exclude index construction and include Worker messaging for the multi-Worker path.",
+    "Construction timings are one-shot metrics and do not have sample distributions.",
+  ],
+});
+const json = `${JSON.stringify(report, null, 2)}\n`;
+const output = Deno.env.get("JSIMD_EXAMPLE_VECTOR_OUTPUT");
+if (output !== undefined) await Deno.writeTextFile(output, json);
+console.log(json);
 
 async function benchmarkCount(count: number) {
   const values = deterministicVectors(count, DIMENSIONS);
@@ -60,14 +93,13 @@ async function benchmarkCount(count: number) {
   const singleMedian = median(singleSamples);
   const multiMedian = median(multiSamples);
   return {
-    count,
+    measurements: [
+      summarizeBenchmarkSamples(`count=${count}/single-thread-query`, "resident", singleSamples),
+      summarizeBenchmarkSamples(`count=${count}/four-worker-query`, "resident", multiSamples),
+    ],
     singleBuildMs: round(singleBuildMs),
     multiBuildMs: round(multiBuildMs),
-    singleQueryMedianMs: round(singleMedian),
-    multiQueryMedianMs: round(multiMedian),
     querySpeedup: round(singleMedian / multiMedian),
-    singleQueryP99Ms: round(percentile(singleSamples, 0.99)),
-    multiQueryP99Ms: round(percentile(multiSamples, 0.99)),
   };
 }
 

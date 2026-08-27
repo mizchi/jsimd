@@ -16,7 +16,6 @@ versus 0.3361 ms for the pre-encoded set.
 ```sh
 pnpm bench:static-mphf-bytes
 pnpm bench:record:static-mphf-bytes
-pnpm bench:compare:static-mphf-bytes
 
 # Optional prototype correctness and allocator checks
 pnpm test:prototype:static-mphf-bytes

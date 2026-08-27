@@ -16,5 +16,4 @@ standalone build size, and sources.
 ```sh
 pnpm bench:adaptive-simd-page-i32
 pnpm bench:record:adaptive-simd-page-i32
-pnpm bench:compare:adaptive-simd-page-i32
 ```

@@ -30,8 +30,7 @@ From the repository root:
 
 ```sh
 pnpm bench:bitmap
-pnpm bench:record:bitset
-pnpm bench:compare:bitset
+pnpm bench:record:bitmap
 ```
 
 The committed `benchmarks/baseline.json` records the designated Node/Vitest environment. Do not

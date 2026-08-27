@@ -35,7 +35,6 @@ parity with indexed JavaScript; the useful SIMD interface is the bulk operation.
 ```sh
 pnpm bench:rank-select-bit-vector
 pnpm bench:record:rank-select-bit-vector
-pnpm bench:compare:rank-select-bit-vector
 ```
 
 The committed baseline is environment-specific. The 512-bit rank index adds 0.78% logical storage

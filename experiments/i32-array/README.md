@@ -17,7 +17,6 @@ respectively. See the package README for the complete table.
 ```sh
 pnpm bench:i32-array
 pnpm bench:record:i32-array
-pnpm bench:compare:i32-array
 ```
 
 The committed baseline is environment-specific. Compare results only on the same designated machine

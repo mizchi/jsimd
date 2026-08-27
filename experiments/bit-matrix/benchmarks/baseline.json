@@ -1,64 +1,106 @@
 {
-  "files": [
+  "schemaVersion": 1,
+  "name": "bit-matrix",
+  "recordedAt": "2026-08-27T15:20:15.592Z",
+  "environment": {
+    "runtime": {
+      "name": "node",
+      "version": "v24.12.0",
+      "userAgent": "Node.js/24"
+    },
+    "platform": "darwin-arm64",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null
+  },
+  "timing": {
+    "warmups": 0,
+    "samples": 20,
+    "operationsPerSample": 1
+  },
+  "input": {
+    "shape": {
+      "benchmarkCount": 2,
+      "runner": "vitest"
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 2,
+    "summary": "Every Vitest benchmark case completed without an uncaught error."
+  },
+  "measurements": [
     {
-      "filepath": "/Users/mz/ghq/github.com/mizchi/jsimd/experiments/bit-matrix/bit-matrix.bench.ts",
-      "groups": [
-        {
-          "fullName": "experiments/bit-matrix/bit-matrix.bench.ts > BitMatrix 512x512 sparse Boolean square",
-          "benchmarks": [
-            {
-              "id": "-1499964331_0_0",
-              "name": "BitMatrix multiply",
-              "rank": 1,
-              "rme": 1.2033775871966566,
-              "samples": [],
-              "totalTime": 500.0716150000001,
-              "min": 0.6980839999999944,
-              "max": 1.678666000000021,
-              "hz": 1255.8201288829398,
-              "period": 0.7962923805732486,
-              "mean": 0.7962923805732486,
-              "variance": 0.01501054491593008,
-              "sd": 0.12251752901495394,
-              "sem": 0.004888981651210805,
-              "df": 627,
-              "critical": 1.96,
-              "moe": 0.009582404036373176,
-              "p75": 0.8004590000000462,
-              "p99": 1.3342499999999973,
-              "p995": 1.4513749999999845,
-              "p999": 1.678666000000021,
-              "sampleCount": 628,
-              "median": 0.7603744999999549
-            },
-            {
-              "id": "-1499964331_0_1",
-              "name": "Uint32Array scalar multiply",
-              "rank": 2,
-              "rme": 14.409502626534207,
-              "samples": [],
-              "totalTime": 501.4860810000001,
-              "min": 2.363542000000052,
-              "max": 24.501500000000078,
-              "hz": 191.4310359493307,
-              "period": 5.223813343750002,
-              "mean": 5.223813343750002,
-              "variance": 13.79763754424229,
-              "sd": 3.7145171347353196,
-              "sem": 0.3791113175386053,
-              "df": 95,
-              "critical": 1.9855,
-              "moe": 0.7527255209729008,
-              "p75": 5.802166999999827,
-              "p99": 24.501500000000078,
-              "p995": 24.501500000000078,
-              "p999": 24.501500000000078,
-              "sampleCount": 96,
-              "median": 4.1661454999999705
-            }
-          ]
-        }
+      "name": "BitMatrix 512x512 sparse Boolean square > BitMatrix multiply",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 0.7042079999999942,
+      "p95Ms": 0.7956249999999727,
+      "minMs": 0.6396250000000236,
+      "maxMs": 1.4250420000000759,
+      "samplesMs": [
+        0.6396250000000236,
+        0.6569170000000213,
+        0.6759170000000267,
+        0.6797500000000127,
+        0.6822500000000673,
+        0.6852089999999862,
+        0.6896250000000066,
+        0.6984170000000631,
+        0.7016250000000355,
+        0.7042079999999942,
+        0.7061659999999961,
+        0.7074999999999818,
+        0.7091250000000286,
+        0.7107500000000186,
+        0.7127079999999637,
+        0.7155410000000302,
+        0.7210000000000036,
+        0.7364999999999782,
+        0.7956249999999727,
+        1.4250420000000759
+      ]
+    },
+    {
+      "name": "BitMatrix 512x512 sparse Boolean square > Uint32Array scalar multiply",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 2.3646250000000464,
+      "p95Ms": 2.6356250000001182,
+      "minMs": 2.230707999999936,
+      "maxMs": 2.8323330000000624,
+      "samplesMs": [
+        2.230707999999936,
+        2.23762499999998,
+        2.245624999999791,
+        2.263916999999992,
+        2.286166000000094,
+        2.3141250000001037,
+        2.3436659999999847,
+        2.358249999999998,
+        2.362875000000031,
+        2.3646250000000464,
+        2.3689999999999145,
+        2.374875000000088,
+        2.3821669999999813,
+        2.400833000000034,
+        2.4362080000000788,
+        2.4612079999999423,
+        2.50420900000006,
+        2.557457999999997,
+        2.6356250000001182,
+        2.8323330000000624
       ]
     }
+  ],
+  "metrics": {
+    "retainedSamplesPerMeasurement": 20,
+    "fullSampleCountMin": 210,
+    "fullSampleCountMax": 701
+  },
+  "notes": [
+    "Measurements contain actual Tinybench samples selected uniformly from the exposed distribution to keep the committed result bounded.",
+    "Vitest performs time-based warmup; timing.warmups is zero because the runner does not expose a warmup iteration count.",
+    "The resident boundary covers only each benchmark callback; suite setup and module initialization are excluded."
   ]
 }

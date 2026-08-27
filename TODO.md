@@ -101,11 +101,12 @@ GPU optimization is intentionally deferred until the higher-priority Wasm SIMD, 
 shared-memory experiments have stable workloads. The existing exact squared-L2 baseline remains as
 evidence under [`experiments/webgpu-vector-search`](./experiments/webgpu-vector-search/README.md).
 On Apple M5 / Deno 2.6.4, single queries and upload-per-query never beat Wasm SIMD. A resident index
-crossed at 65,536 rows x 128 dimensions x 128 batched queries (1.09x) and reached 1.30x at 262,144
-rows x 128 dimensions x 64 queries. Chromium 152 moved the crossover much lower: the resident GPU
-won at 65,536 rows for one query and was 2.30x faster than the persistent four-Worker index at
-262,144 rows x 128 dimensions x 64 queries. The implementation remains private to the experiment
-until another adapter/runtime reproduces the result.
+first crossed narrowly at 262,144 rows x 128 dimensions x four batched queries (1.06x), reached
+2.08x at 65,536 rows x 128 dimensions x 64 queries, and reached 3.08x on the largest batch. Chromium
+152 moved the crossover much lower: the resident GPU won at 65,536 rows for one query and was 2.30x
+faster than the persistent four-Worker index at 262,144 rows x 128 dimensions x 64 queries. The
+implementation remains private to the experiment until another adapter/runtime reproduces the
+result.
 
 - [x] Reproduce the complete size/batch matrix in Chromium and record adapter/runtime identity plus
       raw sample variance.

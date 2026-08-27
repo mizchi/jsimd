@@ -1,144 +1,149 @@
 {
-  "files": [
+  "schemaVersion": 1,
+  "name": "fm-index-bytes",
+  "recordedAt": "2026-08-27T15:26:35.023Z",
+  "environment": {
+    "runtime": {
+      "name": "node",
+      "version": "v24.12.0",
+      "userAgent": "Node.js/24"
+    },
+    "platform": "darwin-arm64",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null
+  },
+  "timing": {
+    "warmups": 0,
+    "samples": 10,
+    "operationsPerSample": 1
+  },
+  "input": {
+    "shape": {
+      "benchmarkCount": 5,
+      "runner": "vitest"
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 5,
+    "summary": "Every Vitest benchmark case completed without an uncaught error."
+  },
+  "measurements": [
     {
-      "filepath": "/Users/mz/ghq/github.com/mizchi/jsimd/experiments/fm-index-bytes/fm-index-bytes.bench.ts",
-      "groups": [
-        {
-          "fullName": "experiments/fm-index-bytes/fm-index-bytes.bench.ts > FmIndexBytes repeated count",
-          "benchmarks": [
-            {
-              "id": "-1096909451_0_0",
-              "name": "FM countMany x512",
-              "rank": 1,
-              "rme": 0.3493970847096085,
-              "samples": [],
-              "totalTime": 500.44895599999984,
-              "min": 0.3997499999999832,
-              "max": 0.7577919999999949,
-              "hz": 2299.93486088919,
-              "period": 0.43479492267593384,
-              "mean": 0.43479492267593384,
-              "variance": 0.0006914657333688286,
-              "sd": 0.026295736030178516,
-              "sem": 0.0007750820328036273,
-              "df": 1150,
-              "critical": 1.96,
-              "moe": 0.0015191607842951094,
-              "p75": 0.43866700000000947,
-              "p99": 0.5465829999999414,
-              "p995": 0.5766670000000431,
-              "p999": 0.7344580000000178,
-              "sampleCount": 1151,
-              "median": 0.42987499999998136
-            },
-            {
-              "id": "-1096909451_0_1",
-              "name": "FM locateMany x512",
-              "rank": 4,
-              "rme": 1.4047959566997763,
-              "samples": [],
-              "totalTime": 3247.9975409999997,
-              "min": 320.76095799999985,
-              "max": 342.70724999999993,
-              "hz": 3.078820064907186,
-              "period": 324.7997541,
-              "mean": 324.7997541,
-              "variance": 40.68859367253816,
-              "sd": 6.378761139323071,
-              "sem": 2.0171413850431548,
-              "df": 9,
-              "critical": 2.262,
-              "moe": 4.562773812967616,
-              "p75": 323.8604999999998,
-              "p99": 342.70724999999993,
-              "p995": 342.70724999999993,
-              "p999": 342.70724999999993,
-              "sampleCount": 10,
-              "median": 323.22649999999976
-            },
-            {
-              "id": "-1096909451_0_2",
-              "name": "String.indexOf overlap count x512",
-              "rank": 2,
-              "rme": 0.23108539270796752,
-              "samples": [],
-              "totalTime": 501.4542490000031,
-              "min": 2.8651669999999285,
-              "max": 3.1517919999996593,
-              "hz": 335.02557877418434,
-              "period": 2.9848467202381137,
-              "mean": 2.9848467202381137,
-              "variance": 0.002080588503841539,
-              "sd": 0.045613468447833906,
-              "sem": 0.0035191554924454763,
-              "df": 167,
-              "critical": 1.96,
-              "moe": 0.006897544765193133,
-              "p75": 3.0030839999999444,
-              "p99": 3.135041999999885,
-              "p995": 3.1517919999996593,
-              "p999": 3.1517919999996593,
-              "sampleCount": 168,
-              "median": 2.9831880000001547
-            },
-            {
-              "id": "-1096909451_0_3",
-              "name": "Uint8Array scalar count x512",
-              "rank": 3,
-              "rme": 0.1571304614360361,
-              "samples": [],
-              "totalTime": 526.9775,
-              "min": 32.81012499999997,
-              "max": 33.14729199999965,
-              "hz": 30.361827592259633,
-              "period": 32.93609375,
-              "mean": 32.93609375,
-              "variance": 0.009436654078888947,
-              "sd": 0.09714244221188258,
-              "sem": 0.024285610552970644,
-              "df": 15,
-              "critical": 2.131,
-              "moe": 0.05175263608838044,
-              "p75": 32.978125000000546,
-              "p99": 33.14729199999965,
-              "p995": 33.14729199999965,
-              "p999": 33.14729199999965,
-              "sampleCount": 16,
-              "median": 32.92000049999979
-            }
-          ]
-        },
-        {
-          "fullName": "experiments/fm-index-bytes/fm-index-bytes.bench.ts > FmIndexBytes construction",
-          "benchmarks": [
-            {
-              "id": "-1096909451_1_0",
-              "name": "FM build 8192",
-              "rank": 1,
-              "rme": 0.2344539448975318,
-              "samples": [],
-              "totalTime": 500.6711319999995,
-              "min": 3.3751669999992373,
-              "max": 3.6137909999997646,
-              "hz": 287.6139461541796,
-              "period": 3.4768828611111076,
-              "mean": 3.4768828611111076,
-              "variance": 0.0024908384255987867,
-              "sd": 0.04990830016739487,
-              "sem": 0.004159025013949573,
-              "df": 143,
-              "critical": 1.96,
-              "moe": 0.008151689027341162,
-              "p75": 3.511916000000383,
-              "p99": 3.6030000000000655,
-              "p995": 3.6137909999997646,
-              "p999": 3.6137909999997646,
-              "sampleCount": 144,
-              "median": 3.480041500000425
-            }
-          ]
-        }
+      "name": "FmIndexBytes repeated count > FM countMany x512",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 0.43512500000002774,
+      "p95Ms": 0.9801669999999376,
+      "minMs": 0.42283300000002555,
+      "maxMs": 0.9801669999999376,
+      "samplesMs": [
+        0.42283300000002555,
+        0.4279170000000079,
+        0.4303340000000162,
+        0.4328330000000733,
+        0.43512500000002774,
+        0.4385000000000048,
+        0.4409170000000131,
+        0.4453330000000051,
+        0.4519999999999982,
+        0.9801669999999376
+      ]
+    },
+    {
+      "name": "FmIndexBytes repeated count > FM locateMany x512",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 334.45975,
+      "p95Ms": 342.35479099999975,
+      "minMs": 332.2365,
+      "maxMs": 342.35479099999975,
+      "samplesMs": [
+        332.2365,
+        332.24883299999965,
+        332.4498749999998,
+        332.816417,
+        334.45975,
+        336.4544169999999,
+        337.21287500000017,
+        339.88516700000037,
+        340.07195799999954,
+        342.35479099999975
+      ]
+    },
+    {
+      "name": "FmIndexBytes repeated count > String.indexOf overlap count x512",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 2.977125000000342,
+      "p95Ms": 4.047875000000204,
+      "minMs": 2.857749999999214,
+      "maxMs": 4.047875000000204,
+      "samplesMs": [
+        2.857749999999214,
+        2.958750000000691,
+        2.9625829999995403,
+        2.968417000000045,
+        2.977125000000342,
+        3.0201670000005834,
+        3.113832999999431,
+        3.266208000000006,
+        3.374416999999994,
+        4.047875000000204
+      ]
+    },
+    {
+      "name": "FmIndexBytes repeated count > Uint8Array scalar count x512",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 34.10016600000017,
+      "p95Ms": 35.48908300000039,
+      "minMs": 33.83045899999979,
+      "maxMs": 35.48908300000039,
+      "samplesMs": [
+        33.83045899999979,
+        33.91429200000039,
+        33.962915999999495,
+        34.090000000000146,
+        34.10016600000017,
+        34.167334000000665,
+        34.213582999999744,
+        34.348417000000154,
+        34.460165999999845,
+        35.48908300000039
+      ]
+    },
+    {
+      "name": "FmIndexBytes construction > FM build 8192",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 3.5901250000006257,
+      "p95Ms": 4.748459000000366,
+      "minMs": 3.4287909999993644,
+      "maxMs": 4.748459000000366,
+      "samplesMs": [
+        3.4287909999993644,
+        3.5083749999994325,
+        3.547499999998763,
+        3.571458999999777,
+        3.5901250000006257,
+        3.623041999999259,
+        3.65520799999922,
+        3.675209000000905,
+        3.7612499999995634,
+        4.748459000000366
       ]
     }
+  ],
+  "metrics": {
+    "retainedSamplesPerMeasurement": 10,
+    "fullSampleCountMin": 10,
+    "fullSampleCountMax": 1133
+  },
+  "notes": [
+    "Measurements contain actual Tinybench samples selected uniformly from the exposed distribution to keep the committed result bounded.",
+    "Vitest performs time-based warmup; timing.warmups is zero because the runner does not expose a warmup iteration count.",
+    "The resident boundary covers only each benchmark callback; suite setup and module initialization are excluded."
   ]
 }

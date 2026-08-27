@@ -30,7 +30,6 @@ raw payload. The benchmark does not include allocator size-class padding.
 ```sh
 pnpm bench:packed-delta-uint32-list
 pnpm bench:record:packed-delta-uint32-list
-pnpm bench:compare:packed-delta-uint32-list
 ```
 
 The committed baseline is runtime-specific. In particular, full decoding pays for both decompression

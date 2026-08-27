@@ -22,6 +22,31 @@ export interface BenchmarkMeasurement {
   readonly samplesMs: readonly number[];
 }
 
+export function summarizeBenchmarkSamples(
+  name: string,
+  boundary: BenchmarkBoundary,
+  samplesMs: readonly number[],
+): BenchmarkMeasurement {
+  if (name.length === 0) throw new RangeError("measurement name must not be empty");
+  if (samplesMs.length === 0) throw new RangeError("measurement samples must not be empty");
+  for (const sample of samplesMs) {
+    if (!Number.isFinite(sample) || sample < 0) {
+      throw new RangeError("measurement samples must be finite and non-negative");
+    }
+  }
+  const sorted = [...samplesMs].sort((left, right) => left - right);
+  return Object.freeze({
+    name,
+    boundary,
+    unit: "ms" as const,
+    medianMs: percentile(sorted, 0.5),
+    p95Ms: percentile(sorted, 0.95),
+    minMs: sorted[0]!,
+    maxMs: sorted.at(-1)!,
+    samplesMs: Object.freeze([...samplesMs]),
+  });
+}
+
 type MaybePromise<T> = T | Promise<T>;
 
 export function measureResident(
@@ -94,17 +119,7 @@ async function measure(
     }
     values.push(elapsed);
   }
-  const sorted = [...values].sort((left, right) => left - right);
-  return Object.freeze({
-    name,
-    boundary,
-    unit: "ms" as const,
-    medianMs: percentile(sorted, 0.5),
-    p95Ms: percentile(sorted, 0.95),
-    minMs: sorted[0]!,
-    maxMs: sorted.at(-1)!,
-    samplesMs: Object.freeze(values),
-  });
+  return summarizeBenchmarkSamples(name, boundary, values);
 }
 
 async function dispose(value: unknown): Promise<void> {

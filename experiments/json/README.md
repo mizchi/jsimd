@@ -25,7 +25,6 @@ Deno 2.6.4 / Apple M5:
 ```sh
 pnpm bench:json
 pnpm bench:record:json
-pnpm bench:compare:json
 ```
 
 The committed baseline is environment-specific and should only be compared on the same designated

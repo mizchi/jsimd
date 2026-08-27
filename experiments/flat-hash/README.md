@@ -36,7 +36,6 @@ collections are also cleared and reused.
 ```sh
 pnpm bench:flat-hash
 pnpm bench:record:flat-hash
-pnpm bench:compare:flat-hash
 ```
 
 The baseline is environment-specific. It demonstrates why the public API includes both familiar

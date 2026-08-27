@@ -26,5 +26,4 @@ size.
 ```sh
 pnpm bench:columnar
 pnpm bench:record:columnar
-pnpm bench:compare:columnar
 ```

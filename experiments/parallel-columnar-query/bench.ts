@@ -1,4 +1,7 @@
 import { ParallelI32Query } from "./mod.ts";
+import { detectHostCpu } from "../../tools/benchmark/browser_runner.ts";
+import { summarizeBenchmarkSamples } from "../../tools/benchmark/measure.ts";
+import { createBenchmarkResult, detectBenchmarkEnvironment } from "../../tools/benchmark/result.ts";
 
 const LENGTH = Number(Deno.env.get("JSIMD_QUERY_ROWS") ?? 8 * 1024 * 1024);
 const PAGE_ROWS = 65_536;
@@ -10,16 +13,6 @@ const WORKER_COUNTS = (requestedWorkers === undefined ? [1, 2, 4, 8] : [Number(r
     (count) => count <= Math.max(1, navigator.hardwareConcurrency),
   );
 
-interface Measurement {
-  readonly mode: string;
-  readonly workers: number;
-  readonly initMs?: number;
-  readonly medianMs: number;
-  readonly p95Ms: number;
-  readonly speedupVsJs: number;
-  readonly speedupVsSingleWasm: number;
-}
-
 const values = new Int32Array(LENGTH);
 let state = 0x1234_5678;
 for (let index = 0; index < values.length; index++) {
@@ -28,6 +21,7 @@ for (let index = 0; index < values.length; index++) {
 }
 const minimum = -8_192;
 const maximum = 8_192;
+let correctnessChecks = 0;
 const expected = scanJavaScript(values, minimum, maximum);
 
 const jsDurations = measureSync(() => {
@@ -37,14 +31,13 @@ const jsDurations = measureSync(() => {
 const jsMedian = median(jsDurations);
 
 let singleWasmMedian = 0;
-const measurements: Measurement[] = [{
-  mode: "optimized-javascript",
-  workers: 1,
-  medianMs: round(jsMedian),
-  p95Ms: round(percentile(jsDurations, 0.95)),
-  speedupVsJs: 1,
-  speedupVsSingleWasm: 0,
-}];
+const measurements = [
+  summarizeBenchmarkSamples("optimized-javascript/workers=1", "end-to-end", jsDurations),
+];
+const metrics: Record<string, number | string | boolean> = {
+  predicate: `${minimum} <= value < ${maximum}`,
+  selectivity: expected.count / LENGTH,
+};
 
 for (const workerCount of WORKER_COUNTS) {
   const initialized = performance.now();
@@ -56,13 +49,10 @@ for (const workerCount of WORKER_COUNTS) {
       validate(result.count, result.sum, expected.count, BigInt(expected.sum));
     });
     singleWasmMedian = median(durations);
-    measurements.push(summarize(
-      "single-thread-wasm-simd",
-      1,
-      initMs,
+    measurements.push(summarizeBenchmarkSamples(
+      "single-thread-wasm-simd/workers=1",
+      "end-to-end",
       durations,
-      jsMedian,
-      singleWasmMedian,
     ));
   }
 
@@ -70,32 +60,52 @@ for (const workerCount of WORKER_COUNTS) {
     const result = await query.scanBetween(minimum, maximum);
     validate(result.count, result.sum, expected.count, BigInt(expected.sum));
   });
-  measurements.push(summarize(
-    "shared-memory-workers",
-    workerCount,
-    initMs,
+  measurements.push(summarizeBenchmarkSamples(
+    `shared-memory-workers/workers=${workerCount}`,
+    "end-to-end",
     durations,
-    jsMedian,
-    singleWasmMedian,
   ));
+  metrics[`initializationMsWorkers${workerCount}`] = round(initMs);
+  metrics[`speedupVsJsWorkers${workerCount}`] = round(jsMedian / median(durations));
+  metrics[`speedupVsSingleWasmWorkers${workerCount}`] = round(
+    singleWasmMedian / median(durations),
+  );
 }
 
-console.log(JSON.stringify(
-  {
-    runtime: { ...Deno.version, ...Deno.build, logicalCpus: navigator.hardwareConcurrency },
-    workload: {
+const result = createBenchmarkResult({
+  name: "parallel-columnar-query/range-count-sum",
+  recordedAt: new Date().toISOString(),
+  environment: detectBenchmarkEnvironment({
+    logicalCpus: navigator.hardwareConcurrency,
+    cpu: await detectHostCpu(),
+    adapter: null,
+  }),
+  timing: { warmups: WARMUPS, samples: SAMPLES, operationsPerSample: 1 },
+  input: {
+    shape: {
       rows: LENGTH,
-      bytes: values.byteLength,
       pageRows: PAGE_ROWS,
       selectivity: expected.count / LENGTH,
-      warmups: WARMUPS,
-      samples: SAMPLES,
+      workerCounts: WORKER_COUNTS,
     },
-    measurements,
+    bytes: values.byteLength,
   },
-  null,
-  2,
-));
+  correctness: {
+    passed: true,
+    checks: correctnessChecks,
+    summary: "every count and sum matched the optimized JavaScript reference",
+  },
+  measurements,
+  metrics,
+  notes: [
+    "Each end-to-end boundary is one warm query over caller-resident input; index construction is excluded and recorded separately in metrics.",
+    "Worker counts construct and dispose separate query instances sequentially in one process.",
+  ],
+});
+const json = JSON.stringify(result, null, 2) + "\n";
+const output = Deno.env.get("JSIMD_QUERY_OUTPUT");
+if (output !== undefined) await Deno.writeTextFile(output, json);
+console.log(json);
 
 function scanJavaScript(
   input: Int32Array,
@@ -136,30 +146,11 @@ async function measureAsync(operation: () => Promise<void>): Promise<number[]> {
   return durations;
 }
 
-function summarize(
-  mode: string,
-  workers: number,
-  initMs: number,
-  durations: number[],
-  jsMedian: number,
-  wasmMedian: number,
-): Measurement {
-  const medianMs = median(durations);
-  return {
-    mode,
-    workers,
-    initMs: round(initMs),
-    medianMs: round(medianMs),
-    p95Ms: round(percentile(durations, 0.95)),
-    speedupVsJs: round(jsMedian / medianMs),
-    speedupVsSingleWasm: round(wasmMedian / medianMs),
-  };
-}
-
 function validate(count: number, sum: bigint, expectedCount: number, expectedSum: bigint): void {
   if (count !== expectedCount || sum !== expectedSum) {
     throw new Error(`aggregate mismatch: count=${count}, sum=${sum}`);
   }
+  correctnessChecks++;
 }
 
 function median(values: readonly number[]): number {

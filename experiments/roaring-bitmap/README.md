@@ -36,7 +36,6 @@ Recorded with Vitest 4.1.11 / Node 24 / Apple M5:
 ```sh
 pnpm bench:roaring-bitmap
 pnpm bench:record:roaring-bitmap
-pnpm bench:compare:roaring-bitmap
 ```
 
 The committed baseline is environment-specific. Resident `*Into` operations reuse the top-level

@@ -1,4 +1,10 @@
 import { BlockedVectorArray } from "../../src/blocked-vector-array/mod.ts";
+import { detectHostCpu } from "../../tools/benchmark/browser_runner.ts";
+import {
+  type BenchmarkMeasurement,
+  summarizeBenchmarkSamples,
+} from "../../tools/benchmark/measure.ts";
+import { createBenchmarkResult, detectBenchmarkEnvironment } from "../../tools/benchmark/result.ts";
 import { WebGpuVectorSearch } from "./gpu_index.ts";
 
 const DIMENSIONS = Number(Deno.env.get("JSIMD_WEBGPU_DIMENSIONS") ?? 128);
@@ -24,7 +30,9 @@ await using search = await WebGpuVectorSearch.create({
 const pipelineInitMs = performance.now() - initialized;
 const maxRows = Math.max(...ROW_COUNTS);
 const allValues = makeValues(maxRows, DIMENSIONS);
-const measurements: Measurement[] = [];
+const measurements: BenchmarkMeasurement[] = [];
+const rowSummaries: Measurement[] = [];
+let correctnessChecks = 0;
 
 for (const rows of ROW_COUNTS) {
   if (!Number.isSafeInteger(rows) || rows < K) throw new RangeError(`invalid row count: ${rows}`);
@@ -45,6 +53,34 @@ for (const rows of ROW_COUNTS) {
     using oneShot = search.upload(values, rows, DIMENSIONS);
     await oneShot.topK(query, K);
   });
+  measurements.push(
+    summarizeBenchmarkSamples(`wasm-resident/rows=${rows}/queries=1`, "resident", wasmDurations),
+    summarizeBenchmarkSamples(
+      `webgpu-resident/rows=${rows}/queries=1`,
+      "resident",
+      residentDurations,
+    ),
+    summarizeBenchmarkSamples(
+      `webgpu-profiled-dispatch/rows=${rows}/queries=1`,
+      "resident",
+      profiles.map((value) => value.dispatchMs),
+    ),
+    summarizeBenchmarkSamples(
+      `webgpu-profiled-readback/rows=${rows}/queries=1`,
+      "resident",
+      profiles.map((value) => value.readbackMs),
+    ),
+    summarizeBenchmarkSamples(
+      `webgpu-profiled-total/rows=${rows}/queries=1`,
+      "resident",
+      profiles.map((value) => value.totalMs),
+    ),
+    summarizeBenchmarkSamples(
+      `webgpu-upload-query/rows=${rows}/queries=1`,
+      "end-to-end",
+      uploadDurations,
+    ),
+  );
   const batches: BatchMeasurement[] = [];
   for (const queryCount of BATCH_SIZES) {
     const queries = makeQueries(values, rows, DIMENSIONS, queryCount);
@@ -74,12 +110,24 @@ for (const rows of ROW_COUNTS) {
       webgpuPerQueryMedianMs: round(gpuBatchMedian / queryCount),
       speedupVsWasm: round(wasmBatchMedian / gpuBatchMedian),
     });
+    measurements.push(
+      summarizeBenchmarkSamples(
+        `wasm-batch-resident/rows=${rows}/queries=${queryCount}`,
+        "resident",
+        wasmBatchDurations,
+      ),
+      summarizeBenchmarkSamples(
+        `webgpu-batch-resident/rows=${rows}/queries=${queryCount}`,
+        "resident",
+        gpuBatchDurations,
+      ),
+    );
   }
 
   const wasmMedian = percentile(wasmDurations, 0.5);
   const residentMedian = percentile(residentDurations, 0.5);
   const uploadMedian = percentile(uploadDurations, 0.5);
-  measurements.push({
+  rowSummaries.push({
     rows,
     inputMiB: round(values.byteLength / 1024 / 1024),
     wasmResidentMiB: round(wasm.residentBytes / 1024 / 1024),
@@ -102,46 +150,65 @@ for (const rows of ROW_COUNTS) {
   });
 }
 
-console.log(JSON.stringify(
-  {
-    runtime: {
-      ...Deno.version,
-      ...Deno.build,
-      logicalCpus: navigator.hardwareConcurrency,
-      webgpuFlag: "--unstable-webgpu",
-    },
+const residentRows = firstWinningRow(rowSummaries, "webgpuResident");
+const uploadEachQueryRows = firstWinningRow(rowSummaries, "webgpuUploadEachQuery");
+const metrics: Record<string, number | string | boolean> = {
+  pipelineInitMs: round(pipelineInitMs),
+  crossoverResidentRows: residentRows ?? "none",
+  crossoverUploadEachQueryRows: uploadEachQueryRows ?? "none",
+};
+for (const queryCount of BATCH_SIZES) {
+  metrics[`crossoverBatchRowsQ${queryCount}`] = rowSummaries.find((measurement) =>
+    measurement.batches.find((batch) =>
+      batch.queryCount === queryCount && batch.webgpuMedianMs < batch.wasmMedianMs
+    )
+  )?.rows ?? "none";
+}
+for (const summary of rowSummaries) {
+  metrics[`wasmResidentMiBRows${summary.rows}`] = summary.wasmResidentMiB;
+  metrics[`gpuResidentMiBRows${summary.rows}`] = summary.gpuResidentMiB;
+}
+const result = createBenchmarkResult({
+  name: "webgpu-vector-search/deno-crossover-matrix",
+  recordedAt: new Date().toISOString(),
+  environment: detectBenchmarkEnvironment({
+    logicalCpus: navigator.hardwareConcurrency,
+    cpu: await detectHostCpu(),
     adapter: {
-      vendor: adapter.info.vendor,
-      architecture: adapter.info.architecture,
-      device: adapter.info.device,
-      description: adapter.info.description,
+      description: adapter.info.description || "WebGPU adapter",
+      ...(adapter.info.vendor ? { vendor: adapter.info.vendor } : {}),
+      ...(adapter.info.architecture ? { architecture: adapter.info.architecture } : {}),
+      ...(adapter.info.device ? { device: adapter.info.device } : {}),
     },
-    workload: {
+  }),
+  timing: { warmups: WARMUPS, samples: SAMPLES, operationsPerSample: 1 },
+  input: {
+    shape: {
+      rows: ROW_COUNTS,
       dimensions: DIMENSIONS,
-      k: K,
-      warmups: WARMUPS,
-      samples: SAMPLES,
-      resultReadbackBytes: K * 8,
       batchSizes: BATCH_SIZES,
+      k: K,
     },
-    pipelineInitMs: round(pipelineInitMs),
-    crossover: {
-      residentRows: firstWinningRow(measurements, "webgpuResident"),
-      uploadEachQueryRows: firstWinningRow(measurements, "webgpuUploadEachQuery"),
-      residentBatchRows: Object.fromEntries(BATCH_SIZES.map((queryCount) => [
-        queryCount,
-        measurements.find((measurement) =>
-          measurement.batches.find((batch) =>
-            batch.queryCount === queryCount && batch.webgpuMedianMs < batch.wasmMedianMs
-          )
-        )?.rows ?? null,
-      ])),
-    },
-    measurements,
+    bytes: allValues.byteLength,
   },
-  null,
-  2,
-));
+  correctness: {
+    passed: true,
+    checks: correctnessChecks,
+    summary: "every WebGPU top-k result matched BlockedVectorArray IDs",
+  },
+  measurements,
+  metrics,
+  notes: [
+    "Resident measurements include query upload, GPU scheduling, exact top-k, final readback, and typed-array materialization.",
+    "Upload-query measurements additionally include row-to-dimension-major conversion and GPU index upload.",
+    "Profiled readback inserts an extra synchronization point and must not be added to production resident latency.",
+    "Deno requires --unstable-webgpu for this recorded path.",
+  ],
+});
+const json = JSON.stringify(result, null, 2) + "\n";
+const output = Deno.env.get("JSIMD_WEBGPU_OUTPUT");
+if (output !== undefined) await Deno.writeTextFile(output, json);
+console.log(json);
 
 interface Summary {
   readonly medianMs: number;
@@ -259,6 +326,7 @@ function assertSameIds(expected: Uint32Array, actual: Uint32Array): void {
       throw new Error(`WebGPU top-k differs from Wasm at rank ${rank}`);
     }
   }
+  correctnessChecks++;
 }
 
 function round(value: number): number {

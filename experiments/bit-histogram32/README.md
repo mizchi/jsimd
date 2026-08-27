@@ -13,5 +13,4 @@ dense words, while the one-word case was 9.03x slower than JavaScript.
 ```sh
 pnpm bench:bit-histogram32
 pnpm bench:record:bit-histogram32
-pnpm bench:compare:bit-histogram32
 ```

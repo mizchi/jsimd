@@ -25,7 +25,6 @@ Recorded with Vitest 4.1.11 / Node 24 / Apple M5:
 ```sh
 pnpm bench:matrix3d
 pnpm bench:record:matrix3d
-pnpm bench:compare:matrix3d
 ```
 
 The committed baseline is environment-specific. It compares generic JavaScript loops, not optimized

@@ -12,5 +12,4 @@ sources, and standalone size.
 ```sh
 pnpm bench:static-mphf-u32
 pnpm bench:record:static-mphf-u32
-pnpm bench:compare:static-mphf-u32
 ```

@@ -17,5 +17,4 @@ Run and record the benchmark with:
 ```sh
 pnpm bench:byte-key-flat-hash
 pnpm bench:record:byte-key-flat-hash
-pnpm bench:compare:byte-key-flat-hash
 ```
