@@ -1,0 +1,109 @@
+{
+  "runtime": {
+    "deno": "2.6.4",
+    "v8": "14.2.231.17-rusty",
+    "typescript": "5.9.2",
+    "target": "aarch64-apple-darwin",
+    "logicalCpus": 10,
+    "webgpuFlag": "--unstable-webgpu"
+  },
+  "adapter": {
+    "description": "Apple M5"
+  },
+  "workload": {
+    "dimensions": 128,
+    "k": 10,
+    "warmups": 5,
+    "samples": 15,
+    "batchSizes": [1, 4, 16, 64, 128]
+  },
+  "pipelineInitMs": 6.16,
+  "crossover": {
+    "residentRows": null,
+    "uploadEachQueryRows": null,
+    "residentBatchRows": {
+      "1": null,
+      "4": null,
+      "16": null,
+      "64": 262144,
+      "128": 65536
+    }
+  },
+  "measurements": [
+    {
+      "rows": 1024,
+      "inputMiB": 0.5,
+      "wasm": { "medianMs": 0.02, "p95Ms": 0.07 },
+      "webgpuResident": { "medianMs": 14.33, "p95Ms": 14.76 },
+      "profiledReadbackMedianMs": 13.13,
+      "webgpuUploadEachQuery": { "medianMs": 15.26, "p95Ms": 16.25 },
+      "batches": [
+        { "queryCount": 1, "wasmMedianMs": 0.01, "webgpuMedianMs": 14.79, "speedup": 0 },
+        { "queryCount": 4, "wasmMedianMs": 0.03, "webgpuMedianMs": 14.45, "speedup": 0 },
+        { "queryCount": 16, "wasmMedianMs": 0.14, "webgpuMedianMs": 14.35, "speedup": 0.01 },
+        { "queryCount": 64, "wasmMedianMs": 0.56, "webgpuMedianMs": 15.9, "speedup": 0.04 },
+        { "queryCount": 128, "wasmMedianMs": 1.01, "webgpuMedianMs": 16.59, "speedup": 0.06 }
+      ]
+    },
+    {
+      "rows": 4096,
+      "inputMiB": 2,
+      "wasm": { "medianMs": 0.03, "p95Ms": 0.04 },
+      "webgpuResident": { "medianMs": 14.81, "p95Ms": 15.17 },
+      "profiledReadbackMedianMs": 13.38,
+      "webgpuUploadEachQuery": { "medianMs": 17.43, "p95Ms": 17.9 },
+      "batches": [
+        { "queryCount": 1, "wasmMedianMs": 0.03, "webgpuMedianMs": 14.6, "speedup": 0 },
+        { "queryCount": 4, "wasmMedianMs": 0.12, "webgpuMedianMs": 14.29, "speedup": 0.01 },
+        { "queryCount": 16, "wasmMedianMs": 0.47, "webgpuMedianMs": 16.04, "speedup": 0.03 },
+        { "queryCount": 64, "wasmMedianMs": 1.96, "webgpuMedianMs": 16.32, "speedup": 0.12 },
+        { "queryCount": 128, "wasmMedianMs": 4.06, "webgpuMedianMs": 18.08, "speedup": 0.22 }
+      ]
+    },
+    {
+      "rows": 16384,
+      "inputMiB": 8,
+      "wasm": { "medianMs": 0.12, "p95Ms": 0.17 },
+      "webgpuResident": { "medianMs": 15.25, "p95Ms": 16.5 },
+      "profiledReadbackMedianMs": 12.59,
+      "webgpuUploadEachQuery": { "medianMs": 26.33, "p95Ms": 27.25 },
+      "batches": [
+        { "queryCount": 1, "wasmMedianMs": 0.12, "webgpuMedianMs": 15.9, "speedup": 0.01 },
+        { "queryCount": 4, "wasmMedianMs": 0.49, "webgpuMedianMs": 16.01, "speedup": 0.03 },
+        { "queryCount": 16, "wasmMedianMs": 1.9, "webgpuMedianMs": 19.8, "speedup": 0.1 },
+        { "queryCount": 64, "wasmMedianMs": 8.24, "webgpuMedianMs": 19.79, "speedup": 0.42 },
+        { "queryCount": 128, "wasmMedianMs": 23.14, "webgpuMedianMs": 27.06, "speedup": 0.86 }
+      ]
+    },
+    {
+      "rows": 65536,
+      "inputMiB": 32,
+      "wasm": { "medianMs": 0.82, "p95Ms": 1.43 },
+      "webgpuResident": { "medianMs": 14.71, "p95Ms": 15.11 },
+      "profiledReadbackMedianMs": 13.07,
+      "webgpuUploadEachQuery": { "medianMs": 62.59, "p95Ms": 118.68 },
+      "batches": [
+        { "queryCount": 1, "wasmMedianMs": 0.52, "webgpuMedianMs": 15.99, "speedup": 0.03 },
+        { "queryCount": 4, "wasmMedianMs": 2.57, "webgpuMedianMs": 19.41, "speedup": 0.13 },
+        { "queryCount": 16, "wasmMedianMs": 9.81, "webgpuMedianMs": 19.99, "speedup": 0.49 },
+        { "queryCount": 64, "wasmMedianMs": 35.35, "webgpuMedianMs": 40.36, "speedup": 0.88 },
+        { "queryCount": 128, "wasmMedianMs": 73.4, "webgpuMedianMs": 67.3, "speedup": 1.09 }
+      ]
+    },
+    {
+      "rows": 262144,
+      "inputMiB": 128,
+      "wasm": { "medianMs": 2.23, "p95Ms": 2.61 },
+      "webgpuResident": { "medianMs": 15.87, "p95Ms": 16.68 },
+      "profiledReadbackMedianMs": 13.42,
+      "webgpuUploadEachQuery": { "medianMs": 217.59, "p95Ms": 343.17 },
+      "batches": [
+        { "queryCount": 1, "wasmMedianMs": 2.75, "webgpuMedianMs": 19.3, "speedup": 0.14 },
+        { "queryCount": 4, "wasmMedianMs": 11.51, "webgpuMedianMs": 20.76, "speedup": 0.55 },
+        { "queryCount": 16, "wasmMedianMs": 40.3, "webgpuMedianMs": 41, "speedup": 0.98 },
+        { "queryCount": 64, "wasmMedianMs": 164.69, "webgpuMedianMs": 126.95, "speedup": 1.3 },
+        { "queryCount": 128, "wasmMedianMs": 311.31, "webgpuMedianMs": 241.37, "speedup": 1.29 }
+      ]
+    }
+  ]
+}

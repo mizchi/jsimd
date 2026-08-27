@@ -1,272 +1,170 @@
 # Implementation TODO
 
-This file is the actionable queue for `@mizchi/jsimd`. Completed APIs, algorithms, sources,
-benchmarks, trade-offs, and standalone build sizes belong in each feature README under
-`src/<name>/`. Rejected prototypes keep their evidence under `experiments/<name>/`; implementation
-history does not belong in this queue.
+This file contains only release work, future experiments, and admission decisions for
+`@mizchi/jsimd`. Completed APIs, algorithms, benchmark results, and implementation history belong in
+the README next to each implementation. Experimental evidence stays under `experiments/<name>/`.
 
-## Next: choose a measured workload
+## Next release: v0.2.1
 
-There is no unconditionally admitted structure left in the queue. Before adding another public
-subpath, define an end-to-end workload and its best JavaScript baseline for one deferred candidate.
-The next implementation should be whichever candidate wins that experiment, not whichever name makes
-the API look symmetric.
+Do not add another public data structure to this patch. The current public additions are
+backwards-compatible column snapshot/gather operations and shared-memory recovery improvements.
 
-## Application composition experiments
+- [x] Commit the current WebGPU experiment without adding it to package exports.
+- [x] Review the public API diff and confirm that the release contains no unintended removals.
+- [x] Bump `package.json` and `deno.json` from `0.2.0` to `0.2.1` together.
+- [ ] Run `just check`.
+- [ ] Run `just memory-profile` and require every owning structure to return live allocations to its
+      baseline.
+- [ ] Run `pnpm pack --dry-run`; confirm rejected prototypes, tests, examples, and `experiments/`
+      are absent from the tarball.
+- [ ] Smoke-test the packed artifact in Node 24.5+, Deno 2.6+, and the existing Vite fixtures.
 
-Keep reusable shared-memory ABIs, SIMD kernels, schedulers, and rejection evidence in this
-repository. A schema DSL, planner, catalog, persistence policy, and product-facing query API may
-move to a separate repository once the low-level boundary is stable and measured.
+## Experiment priority
 
-### A: shared composition ABI
+An experiment does not become a package export merely because its isolated kernel is fast. It must
+win an end-to-end representative workload after construction, data conversion, JS/Wasm or GPU
+boundaries, output materialization, scheduling, and disposal.
 
-- [x] Prototype immutable raw i32 row-group descriptors, long-lived Worker attachment, static page
-      ownership, zone-map pruning, cache-line partial aggregates, and an identical single-thread
-      Wasm reference path under `experiments/parallel-columnar-query/`.
-- [x] Measure 1/2/4/8 Worker warm scaling against optimized typed-array JavaScript and single-thread
-      Wasm. After dynamic page scheduling, a 128 MiB scan reached 3.90x over single-thread Wasm and
-      43.07x over the recorded JavaScript baseline at 8 Workers, while a 32 MiB scan gained
-      essentially nothing from additional Workers. Keep small/page-selective queries on the
-      single-thread path and do not blindly use every logical CPU.
-- [x] Add double-buffered immutable snapshot publication, page-boundary cancellation, orderly Worker
-      pool restart with stale-lease recovery, automatic pool replacement after a reported Worker
-      error, and atomic coarse row-group scheduling. The double buffer costs roughly 2x logical
-      column bytes, so a higher-level engine should eventually version pages rather than whole
-      columns.
+### P1: parallel OLAP and storage
 
-### B: parallel hybrid query
-
-- [x] Define an experimental generation-checked `SharedSelectionMask` ABI and prove that an i32
-      filter can feed PDX64 Float32 and binary Hamming kernels without returning selected row IDs
-      through JavaScript. This is not a public package entrypoint.
-- [x] Connect the same ABI to a persistent Worker-owned PDX64 index and Worker-local top-k outputs;
-      only query data, mask generations, and bounded result pairs cross the Worker boundary.
-- [x] Compare exact filter-first and vector-first plans over the same resident Worker index. On the
-      recorded 65,536 x 64 workload, filter-first won at 1%, 10%, and 100% selectivity. Keep it as
-      the default and do not add an automatic selectivity planner without a measured crossover.
-- [x] Measure a masked Wasm top-k against the Worker-local JavaScript bounded heap. Wasm won or tied
-      eight of nine recorded medians and all `k=10` workloads, so it is now the filter-first
-      default. Keep dense `k=100` as a documented slower case and retain the JavaScript selector for
-      direct comparison and exact vector-first expansion.
-- [x] Add persistent Worker-local sign signatures, masked Hamming top-k, and sparse PDX64 exact
-      reranking. The recorded 1%-selective workload reached 1.41x at 0.95 recall with 4x candidates
-      and full recall at 1.36x with 8x. Dense recall remained inadequate, so keep this explicitly
-      approximate and scoped to selective metadata-filtered search.
-- [ ] Add cancellation and forced Worker restart only if this experiment graduates into a separate
-      query-engine repository.
-
-### C: parallel OLAP operators
-
-The broader physical execution design is recorded in
+The physical execution hypothesis is recorded in
 [`experiments/parallel-columnar-query/OLAP_DESIGN.md`](./experiments/parallel-columnar-query/OLAP_DESIGN.md).
-It remains a non-actionable design hypothesis; only the two measured experiments below belong to
-this queue.
+Keep low-level shared-memory ABIs and kernels here; move a schema DSL, planner, catalog, and
+product-facing query engine to a separate repository once the boundary is stable.
 
-- [ ] Compose page pruning, filter, count/sum/min/max, low-cardinality group-by, and partial-result
-      reduction over immutable row groups.
+- [ ] Compose row-group pruning, filter, count/sum/min/max, low-cardinality group-by, and
+      partial-result reduction over immutable pages.
 - [ ] Benchmark TPC-H Q1/Q6-shaped kernels and log filter/group-by against optimized JavaScript,
-      default DuckDB-Wasm, and its experimental threads build when reproducible.
+      default DuckDB-Wasm, and a reproducible threaded DuckDB-Wasm build.
+- [ ] Add string/null handling, schema evolution, and bounded host+Wasm cache accounting to the
+      columnar schema experiment before considering extraction.
+- [ ] Run real-browser IndexedDB cold/warm restoration benchmarks; do not infer them from the Deno
+      IndexedDB implementation.
+- [ ] Replace whole-column double buffering with page-versioned publication if snapshot memory
+      amplification becomes the limiting cost.
 
-## Queue
+### P2: hybrid and vector search
 
-### P1: adaptive page composition
+The shared selection-mask and binary-rerank work remains under
+[`experiments/parallel-hybrid-query`](./experiments/parallel-hybrid-query/README.md).
 
-- [ ] Keep Delta deferred behind `EliasFanoSequence`, and BitSliced behind `BitSlicedColumn`, until
-      a page-composition workload demonstrates a separate win.
-- [x] Prototype a typed columnar schema/query engine with immutable generations, ZoneMap and
-      projection pushdown, resident page caching, and Memory/IndexedDB/Node FS backends.
-- [x] Replace raw persistent column pages with directly restorable adaptive snapshots. The recorded
-      in-memory cold path is 8.94x faster than rebuilding from raw pages; it remains slower than
-      already-resident page-aware JavaScript and therefore does not yet justify a public schema
-      entrypoint by itself.
+- [ ] Define a representative embedding distribution before testing learned or rotated binary
+      quantization. Dense recall in the current sign-bit experiment is insufficient.
+- [ ] Evaluate PDX block selection or dimension pruning only with a workload that can avoid enough
+      resident reads to repay its metadata and branch cost.
+- [ ] Add cancellation, Worker restart, and index replacement only if the experiment graduates into
+      a reusable query-engine component.
+- [ ] Investigate a GPU hybrid pipeline only after the WebGPU batch crossover is reproduced in a
+      browser; do not add a GPU path for single-query latency.
 
-### P2: vector pruning
+### P3: shared-memory collections
 
-- [ ] Revisit `BlockedVectorArray` block selection and dimension pruning only after a representative
-      pruning workload is defined; exhaustive scans alone do not justify those APIs.
-
-### P3: release readiness
-
-- [ ] Before the next publish, review the public API diff and select the release version.
-- [ ] Run `just check`, `just memory-profile`, and `pnpm pack --dry-run`; rejected prototypes must
-      remain absent from the tarball.
-- [ ] Split the root `mod_test.ts` by entrypoint into colocated `src/<name>/*_test.ts` files. Keep
-      tests excluded from publish and isolated Vite fixture TypeScript builds.
-
-## v0.2.0: shared-memory and multithreading
-
-WebAssembly SIMD has no atomic `v128` load, store, or read-modify-write operation. Atomic mutation
-therefore stays scalar, bulk work stays SIMD, and the two must meet through locks, shard ownership,
-striped reduction, or immutable snapshots. Current Wasm atomic operations are sequentially
-consistent; do not expose weaker memory-ordering options that the target cannot implement.
-
-The public vocabulary should distinguish four contracts rather than using `Concurrent<T>` for
-everything:
+Concurrent design follows four distinct contracts:
 
 - `Atomic<T>`: linearizable scalar point updates
 - `Sharded<T>`: one writer owns each shard
 - `Striped<T>`: worker-local mutation followed by bulk reduction
 - `Snapshot<T>`: immutable versions published atomically
 
-Sources:
-[WebAssembly Threads overview](https://github.com/WebAssembly/threads/blob/main/proposals/threads/Overview.md#atomic-memory-accesses),
-[`Atomics.wait`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics/wait),
-and
-[`Atomics.waitAsync`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics/waitAsync).
+Wasm has no atomic `v128` operations, so point mutation remains scalar and phase-local bulk work
+uses SIMD.
 
-### Phase 0: shared-memory ABI and test harness
+- [ ] Evaluate concurrent Bloom filters as Worker-local filters plus SIMD OR. Atomic OR with
+      concurrent queries must not silently promise snapshot consistency.
+- [ ] Evaluate `ShardedHashMap` with one mutex per shard and the existing fingerprint table.
+- [ ] Evaluate `StripedRoaringBitmap`, `ConcurrentSplitBlockBloomFilter`, `MultiQueuePriorityQueue`,
+      and `ConcurrentAppendLog` only on representative workloads.
+- [ ] Add `RwLock`, `Condvar`, `Semaphore`, or `OnceCell` only when a concrete consumer needs one.
+- [ ] Add `EpochDomain` only when locks, barriers, or bounded snapshot slots cannot safely reclaim
+      storage.
+- [ ] Do not start with a fully lock-free hash map; compare against the best sharded JavaScript or
+      shared-memory baseline first.
 
-- [x] Define `SharedBuffer`, alignment, cache-line padding, headers, versioning, worker IDs, and
-      attach/detach ownership. Shared structures must be views over an explicitly shared backing
-      memory, not hidden module-local memories.
-- [x] Define how independently instantiated worker modules import the same shared
-      `WebAssembly.Memory`, including fixed maximum pages and feature detection.
-- [x] Specify `using` semantics for shared leases, snapshots, and handles separately from ownership
-      of the backing memory.
-- [x] Build deterministic Node Worker, Deno Worker, and cross-origin-isolated Vite/browser worker
-      smoke tests with contended scalar atomic updates and lease-return checks.
-- [x] Add explicit forced Worker termination recovery, generation/stale-lease detection, stale
-      exclusive-owner takeover, and shared block-cache plateau tests. Live transferable handles and
-      anonymous `VersionedBuffer` reader counts are deliberately not force-reclaimed.
-- [x] Benchmark 1/2/4/8 workers against `postMessage`, JavaScript `SharedArrayBuffer` + `Atomics`,
-      and single-threaded SIMD. Report throughput, tail latency, contention, and false-sharing
-      effects.
+### P4: conditional data-structure candidates
 
-### Phase 1: synchronization and allocation
+- [ ] `RangeFilterU32`: test only when ZoneMap false positives cause measurable page reads.
+- [ ] `DijkstraCsrGraph`: extend the recorded 1.16-1.45x grid win to broader weighted graph
+      distributions before admission.
+- [ ] `BitmapGridAStar`: investigate only for barrier-heavy maps; open grids already lost to the
+      JavaScript baseline.
+- [ ] `MortonSpatialIndex`: define an immutable spatial/tile lookup workload and compare with a
+      sorted typed-array index.
+- [ ] `UltraLogLog`: compare merge and estimation against an optimized JavaScript sketch, including
+      hashing cost.
+- [ ] `SimdOrderedIndex` and semiring graph kernels: admit only after a layout-level workload wins.
 
-- [x] Implement worker-blocking `Mutex`, `Barrier`, and `WaitGroup` first; expose asynchronous
-      main-thread waits through `Atomics.waitAsync` rather than blocking `Atomics.wait`.
-- [ ] Add `RwLock`, `Condvar`, `Semaphore`, and `OnceCell` only when a consumer requires them.
-- [x] Implement `SharedBlockPool` with fixed 256-byte, 1 KiB, and 4 KiB size classes, a global
-      atomic bump pointer, per-worker caches, and mutex-protected free lists. Defer lock-free free
-      lists until ABA-safe reclamation exists.
+Do not add names merely for symmetry. `SimdFloat32Array`, `SimdInt32Vector`, and a standalone
+`BitVector` remain reserved until they have a distinct measured workload that existing typed arrays,
+`f32-vector`, `i32-array`, or `rank-select-bit-vector` do not already cover.
 
-### Phase 2: transport and handles
+### P5: experiment infrastructure
 
-- [x] Implement fixed-payload `SpscRingBufferU32` with cache-line-separated head/tail fields,
-      exclusive disposable roles, blocking/async backpressure, native-array bulk operations, and
-      SIMD shared-to-shared `pushManyFromShared` / `popManyToShared` copies.
-- [x] Implement sequence-numbered `MpmcRingBufferU32` with cache-line-separated enqueue/dequeue
-      positions, per-slot publish/recycle sequences, blocking/async backpressure, u32 rollover
-      tests, and fixed-width integer handles rather than JavaScript objects.
-- [x] Implement `SharedSlotMap` with generation-tagged 64-bit handles, atomic slot state,
-      SIMD-aligned fixed-size payloads, disposable owning leases, concurrent allocation, and
-      stale-handle/ABA detection.
-- [x] Add an SPSC/MPMC `u64` transport variant before using generation-tagged `SharedSlotMap`
-      handles as queue payloads. Do not split a handle across independently published u32 entries.
+- [ ] Add a reusable browser benchmark harness that records runtime, adapter/CPU, warmup, sample
+      count, input shape, end-to-end latency, and output correctness in one result format.
+- [ ] Add comparison helpers for resident, construction-inclusive, and materialization-inclusive
+      workloads so new experiments do not accidentally compare different boundaries.
+- [ ] Add a benchmark-result schema check and keep recorded JSON colocated with each experiment.
+- [ ] Automate detection of regressions in gzip bundle size and previously admitted primary
+      workloads without treating noisy microbenchmark changes as release failures.
 
-### Phase 3: bitmap and reduction primitives
+### P6: WebGPU crossover and scheduling
 
-- [x] Implement `AtomicDenseBitmap` scalar RMW operations: `set`, `clear`, `toggle`, `testAndSet`,
-      and `testAndClear`. Concurrent bulk reads must not claim snapshot consistency.
-- [x] Implement `ShardedBitmap` with worker-owned mutable dense bitmap shards and barrier-delimited
-      SIMD OR/AND snapshot reduction.
-- [x] Implement `StripedCounter` and `StripedHistogram`; reuse the reduction pattern later for Bloom
-      filters, min/max, and approximate sketches. `ShardedBitmap` already provides the same
-      worker-local full-bitmap stripes and SIMD OR/AND reduction that a separate
-      `StripedDenseBitmap` name would duplicate.
-- [ ] Evaluate concurrent Bloom filters as worker-local filters plus SIMD OR first. Atomic OR with
-      concurrent queries must either document temporary false negatives or add versioned blocks.
+GPU optimization is intentionally deferred until the higher-priority Wasm SIMD, OLAP, vector, and
+shared-memory experiments have stable workloads. The existing exact squared-L2 baseline remains as
+evidence under [`experiments/webgpu-vector-search`](./experiments/webgpu-vector-search/README.md).
+On Apple M5 / Deno 2.6.4, single queries and upload-per-query never beat Wasm SIMD. A resident index
+crossed at 65,536 rows x 128 dimensions x 128 batched queries (1.09x) and reached 1.30x at 262,144
+rows x 128 dimensions x 64 queries.
 
-### Phase 4: immutable publication and scheduling
+- [ ] Reproduce the complete size/batch matrix in Chromium and record adapter/runtime variance.
+- [ ] Implement a ring of staging/readback buffers and measure multiple in-flight batches.
+- [ ] Compare against the persistent multi-Worker SIMD index, not only single-threaded
+      `BlockedVectorArray`.
+- [ ] Measure whether command reuse, fewer submissions, or a parallel workgroup top-k materially
+      lowers the current boundary.
+- [ ] Export nothing until a browser workload still wins after scheduling and readback.
 
-- [x] Implement `VersionedBuffer` with double buffering, atomic publication, reader guards, and safe
-      buffer reuse. Readers must only run SIMD over immutable published regions.
-- [x] Implement a fixed-capacity `WorkStealingDequeU32` of integer task handles, with owner bottom
-      operations and CAS-based stealing.
-- [ ] Implement `EpochDomain` only when snapshot reuse or segmented lock-free structures cannot be
-      handled by locks or barriers.
+## Maintenance
 
-### Phase 5: derived concurrent collections
-
-- [ ] Evaluate `ShardedHashMap` using a mutex per shard and the existing SIMD fingerprint table.
-- [ ] Evaluate `StripedRoaringBitmap`, `ConcurrentSplitBlockBloomFilter`, `ShardedOrderedMap`,
-      `MultiQueuePriorityQueue`, and `ConcurrentAppendLog` only on representative workloads.
-- [ ] Do not start with a fully lock-free hash map. Admit an upper-level collection only when it
-      beats the best sharded JavaScript or shared-memory baseline end to end.
-
-Do not add symmetric names such as `SimdFloat32Array`, `SimdInt32Vector`, or a standalone
-`BitVector` without a measured workload that wins after boundary costs.
-
-## Public naming
-
-Canonical bitmap entrypoints:
-
-- `bitmap`: mutable `Bitmap` and fixed-universe `DenseBitmap`
-- `rank-select-bit-vector`: frozen indexed `RankSelectBitVector`
-- `roaring-bitmap`: mutable adaptive-container `RoaringBitmap`
-
-`BitVector` and `bit-vector` are reserved for a possible immutable packed boolean sequence without
-rank/select metadata. They are not currently exported.
-
-Removed pre-announcement aliases:
-
-- `bitset`
-- `bit-vector`
-- `rank-select-bitvector`
-- `rank-select-bitmap`
-- `roaring-uint32-set`
-
-Do not add compatibility aliases before a real compatibility obligation exists.
-
-## Admission policy
-
-- A public operation overlapping `Map`, `Set`, typed arrays, strings, or another JavaScript builtin
-  must beat the best equivalent implementation in its primary end-to-end workload.
-- Include construction, key conversion, JS/Wasm copies, output materialization, and disposal unless
-  the documented usage explicitly amortizes them.
-- Storage savings or an isolated Wasm kernel win is insufficient.
-- Bulk-oriented structures may keep slower point conveniences, but documentation must identify those
-  calls as outside the performance contract.
-- If no representative workload wins, remove the package export and keep only the benchmark and
-  minimal prototype needed as rejection evidence.
-- Breaking removals and renames remain allowed until the first public announcement.
+- [ ] Split root `mod_test.ts` coverage into colocated `src/<name>/*_test.ts` files without shipping
+      tests in the npm artifact.
+- [ ] Add a small release manifest test that compares `src` public directories, package exports,
+      generated declarations, README files, WAT sources, and emitted Wasm assets.
+- [ ] Keep isolated Vite fixtures for every public entrypoint and require exactly one expected Wasm
+      asset per imported subpath.
+- [ ] Refresh recorded build sizes and representative benchmarks only when implementation or
+      toolchain changes can affect them.
 
 ## Rejected prototypes
 
-| prototype           | reason for rejection                                            |
-| :------------------ | :-------------------------------------------------------------- |
-| `StaticMphfBytes`   | Lookup 2.26x and construction 94.8x slower than pre-encoded Set |
-| `SuccinctTrie`      | Exact lookup and prefix ranges lost to JavaScript               |
-| `StringInterner`    | Native `Map<string, u32>` owns decoded-string point lookup      |
-| `LoudsTree`         | Batched parent navigation 6.70x slower than `Uint32Array`       |
-| `PackedUint32Array` | Decode and gather lost to typed arrays                          |
-| `PackedDeltaArray`  | FOR+BP128 unpack and queries lost to typed arrays/Stream VByte  |
-| sparse-matrix BFS   | Direct JavaScript adjacency traversal was 1.70x faster          |
-| `SimdPriorityQueue` | Point/batched queue workload was 0.75–0.76x JavaScript          |
-| bitmap A* SIMD heap | Barrier maps were 0.62–0.63x the scalar Wasm heap               |
+Keep these as evidence, not package exports. Revisit one only with a materially different layout or
+workload.
 
-These are not package exports. Revisit one only with a materially different layout or workload.
+| prototype           | rejection evidence                                                  |
+| :------------------ | :------------------------------------------------------------------ |
+| `StaticMphfBytes`   | Lookup 2.26x and construction 94.8x slower than a pre-encoded `Set` |
+| `SuccinctTrie`      | Exact lookup and prefix ranges lost to JavaScript                   |
+| `StringInterner`    | Native `Map<string, u32>` won decoded-string point lookup           |
+| `LoudsTree`         | Batched parent navigation was 6.70x slower than `Uint32Array`       |
+| `PackedUint32Array` | Decode and gather lost to typed arrays                              |
+| `PackedDeltaArray`  | FOR+BP128 unpack and queries lost to typed arrays/Stream VByte      |
+| sparse-matrix BFS   | Direct JavaScript adjacency traversal was 1.70x faster              |
+| `SimdPriorityQueue` | Point/batched queue workload was 0.75-0.76x JavaScript              |
+| bitmap A* SIMD heap | Barrier maps were 0.62-0.63x the scalar Wasm heap                   |
 
-## Deferred candidates
+## Admission and completion policy
 
-- `RangeFilterU32`: only if measured ZoneMap false positives justify it
-- `SemiringGraph`: only when it reuses a winning dense or sparse matrix layout
-- `DijkstraCsrGraph`: fused SIMD heap won 1.16–1.45x on grids; test broader graph distributions
-- `BitmapGridAStar`: fused scalar Wasm won ~2.4x on barrier maps but open grids lost to JavaScript
-- `SimdOrderedIndex`
-- `MortonSpatialIndex`
-- `UltraLogLog`
-
-## Definition of done
-
-- Develop with exploration -> Red -> Green -> refactoring.
-- Separate mutable builders from frozen query representations where their layouts conflict.
-- Design and benchmark bulk operations before point conveniences.
+- Keep mutable builders separate from frozen query representations when their layouts conflict.
+- Design bulk operations before point conveniences and batch queries across the JS/Wasm boundary.
 - Keep data resident for repeated operations and also measure copy-inclusive one-shot use.
+- A slower point convenience is acceptable only when a separate primary bulk workload wins and the
+  README documents the trade-off.
 - Use `using` in every public owning-structure example.
-- Keep each entrypoint under `src/<name>/` with its own WAT source and typed Wasm declaration.
-- Generate and strip with `wasm-tools`, validate SIMD, and keep generated Wasm Git-ignored.
-- Verify an isolated Vite fixture emits exactly one expected Wasm asset.
-- Record benchmark sources, baselines, minified JS/Wasm raw and gzip sizes, and slower JS cases in
-  the feature README.
-- Compare with the best relevant builtin, typed-array implementation, or established library.
-- Test allocator reuse plateaus, exceptional cleanup, and use-after-dispose.
-
-## Experimental generated layout
-
-The non-exported `experiments/columnar-schema-engine` prototype now provides a minimal typed schema
-over the stable i32/u32/u8 column contracts, directly restores adaptive snapshots, and uses sparse
-bulk gather for projections. Keep it experimental until strings/nullability, real-browser IndexedDB
-tests, schema evolution, and bounded host+Wasm cache accounting have measured contracts. Do not grow
-it into a SQL parser before those storage fundamentals settle.
+- Keep each public entrypoint under `src/<name>/` with its README, WAT source, typed Wasm
+  declaration, tests, benchmark, and isolated tree-shake fixture.
+- Generate stripped Wasm with `wasm-tools`, validate the required SIMD/threads features, and keep
+  generated `.wasm` files Git-ignored.
+- Record benchmark sources, exact baselines, gzip bundle sizes, and slower cases in the feature
+  README.
+- Test exceptional cleanup, use-after-dispose, allocator reuse plateaus, and forced Worker
+  termination where ownership crosses Workers.

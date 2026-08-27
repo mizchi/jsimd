@@ -1,6 +1,6 @@
 {
   "name": "@mizchi/jsimd",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Prebuilt WebAssembly SIMD kernels and Wasm-resident data structures for JavaScript",
   "type": "module",
   "exports": {
@@ -51,6 +51,7 @@
     "test:columnar-schema-engine": "deno test -A experiments/columnar-schema-engine/mod_test.ts",
     "test:parallel-columnar-query": "just test-parallel-columnar-query",
     "test:parallel-hybrid-query": "just test-parallel-hybrid-query",
+    "test:webgpu-vector-search": "just test-webgpu-vector-search",
     "test:prototype:static-mphf-bytes": "wasm-tools strip -a experiments/static-mphf-bytes/prototype/kernels.wat -o experiments/static-mphf-bytes/prototype/kernels.wasm && wasm-tools validate --features simd experiments/static-mphf-bytes/prototype/kernels.wasm && deno test -A experiments/static-mphf-bytes/prototype_checks.ts",
     "bench": "deno bench -A",
     "bench:adaptive-simd-page-i32": "vitest bench experiments/adaptive-simd-page-i32",
@@ -93,6 +94,7 @@
     "bench:parallel-hybrid-query": "just bench-parallel-hybrid-query",
     "bench:parallel-hybrid-topk": "just bench-parallel-hybrid-topk",
     "bench:parallel-hybrid-binary": "just bench-parallel-hybrid-binary",
+    "bench:webgpu-vector-search": "just bench-webgpu-vector-search",
     "bench:parallel-columnar-duckdb-browser": "just bench-parallel-columnar-duckdb-browser",
     "bench:freeze-bridges": "vitest bench experiments/freeze-bridges",
     "bench:blocked-bloom-filter": "vitest bench experiments/blocked-bloom-filter",

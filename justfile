@@ -136,6 +136,12 @@ bench-parallel-hybrid-topk: build
 bench-parallel-hybrid-binary: build
     deno run -A experiments/parallel-hybrid-query/bench_binary.ts
 
+test-webgpu-vector-search:
+    deno test -A --unstable-webgpu experiments/webgpu-vector-search/gpu_index_test.ts
+
+bench-webgpu-vector-search: build
+    deno run -A --unstable-webgpu experiments/webgpu-vector-search/bench.ts
+
 bench-parallel-columnar-duckdb-browser: build
     pnpm exec tsc -p experiments/parallel-columnar-query/duckdb-comparison/tsconfig.json
     pnpm exec vite build experiments/parallel-columnar-query/duckdb-comparison
