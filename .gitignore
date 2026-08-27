@@ -29,6 +29,9 @@ experiments/static-mphf-bytes/prototype/kernels.wasm
 experiments/simd-priority-queue/prototype/kernels.wasm
 experiments/simd-priority-queue/tree-shake-fixture/dist/
 experiments/bitmap-grid-astar/prototype/kernels.wasm
+experiments/parallel-columnar-query/kernels.wasm
+experiments/parallel-columnar-query/duckdb-comparison/dist/
+experiments/parallel-hybrid-query/kernels.wasm
 experiments/bitmap-grid-astar/tree-shake-fixture/dist/
 experiments/columnar-schema-engine/tree-shake-fixture/dist/
 experiments/static-mphf-bytes/tree-shake-fixture/dist/

@@ -1,0 +1,72 @@
+{
+  "runtime": {
+    "deno": "2.6.4",
+    "v8": "14.2.231.17-rusty",
+    "typescript": "5.9.2",
+    "target": "aarch64-apple-darwin",
+    "logicalCpus": 10
+  },
+  "workload": {
+    "rows": 33554432,
+    "bytes": 134217728,
+    "pageRows": 65536,
+    "selectivity": 0.25,
+    "warmups": 7,
+    "samples": 11,
+    "note": "Worker counts were measured in fresh processes; vs JS uses each process-local baseline"
+  },
+  "measurements": [
+    {
+      "mode": "optimized-javascript",
+      "workers": 1,
+      "medianMs": 105.09,
+      "p95Ms": 138.37,
+      "speedupVsJs": 1
+    },
+    {
+      "mode": "single-thread-wasm-simd",
+      "workers": 1,
+      "initMs": 278.94,
+      "medianMs": 9.51,
+      "p95Ms": 10.18,
+      "speedupVsJs": 11.05,
+      "speedupVsSingleWasm": 1
+    },
+    {
+      "mode": "shared-memory-workers",
+      "workers": 1,
+      "initMs": 278.94,
+      "medianMs": 11.75,
+      "p95Ms": 14.13,
+      "speedupVsJs": 8.94,
+      "speedupVsSingleWasm": 0.81
+    },
+    {
+      "mode": "shared-memory-workers",
+      "workers": 2,
+      "initMs": 297.68,
+      "medianMs": 7.06,
+      "p95Ms": 7.3,
+      "speedupVsJs": 16.26,
+      "speedupVsSingleWasm": 1.35
+    },
+    {
+      "mode": "shared-memory-workers",
+      "workers": 4,
+      "initMs": 262.6,
+      "medianMs": 4.73,
+      "p95Ms": 4.91,
+      "speedupVsJs": 24.52,
+      "speedupVsSingleWasm": 2.01
+    },
+    {
+      "mode": "shared-memory-workers",
+      "workers": 8,
+      "initMs": 361.5,
+      "medianMs": 2.44,
+      "p95Ms": 2.59,
+      "speedupVsJs": 44.86,
+      "speedupVsSingleWasm": 3.9
+    }
+  ]
+}

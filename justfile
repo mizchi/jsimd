@@ -30,6 +30,8 @@ build:
     wasm-tools strip -a src/compressed-string-table/kernels.wat -o src/compressed-string-table/kernels.wasm
     wasm-tools strip -a src/columnar/kernels.wat -o src/columnar/kernels.wasm
     wasm-tools strip -a src/blocked-bloom-filter/kernels.wat -o src/blocked-bloom-filter/kernels.wasm
+    wasm-tools strip -a experiments/parallel-columnar-query/kernels.wat -o experiments/parallel-columnar-query/kernels.wasm
+    wasm-tools strip -a experiments/parallel-hybrid-query/kernels.wat -o experiments/parallel-hybrid-query/kernels.wasm
     wasm-tools validate --features simd src/adaptive-simd-page-i32/kernels.wasm
     wasm-tools validate --features simd src/bytes/kernels.wasm
     wasm-tools validate --features simd src/bitmap/kernels.wasm
@@ -61,6 +63,8 @@ build:
     wasm-tools validate --features simd src/compressed-string-table/kernels.wasm
     wasm-tools validate --features simd src/columnar/kernels.wasm
     wasm-tools validate --features simd src/blocked-bloom-filter/kernels.wasm
+    wasm-tools validate --features threads,simd experiments/parallel-columnar-query/kernels.wasm
+    wasm-tools validate --features threads,simd experiments/parallel-hybrid-query/kernels.wasm
     wasm-tools print src/adaptive-simd-page-i32/kernels.wasm | rg -q 'scan_between_for|scan_between_raw|scan_between_rle|scan_between_dictionary|scan_between_sparse|gather_sparse|sum_sparse|mask_count'
     ! wasm-tools print src/adaptive-simd-page-i32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/bytes/kernels.wasm | rg -q 'find_byte'
@@ -111,6 +115,25 @@ build:
     wasm-tools print src/columnar/kernels.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into|i8x16.popcnt'
     ! wasm-tools print src/columnar/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print src/blocked-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|merge|i32x4.all_true'
+    wasm-tools print experiments/parallel-columnar-query/kernels.wasm | rg -q 'scan_i32_between_aggregate|i64x2.extend_low_i32x4_s|shared'
+    wasm-tools print experiments/parallel-hybrid-query/kernels.wasm | rg -q 'scan_i32_between_mask|masked_squared_l2_top1_pdx64|masked_hamming_top1|i32x4.bitmask|f32x4.mul|i8x16.popcnt|shared'
+
+test-parallel-columnar-query: build
+    deno test -A experiments/parallel-columnar-query/mod_test.ts
+
+test-parallel-hybrid-query: build
+    deno test -A experiments/parallel-hybrid-query
+
+bench-parallel-columnar-query: build
+    deno run -A experiments/parallel-columnar-query/bench.ts
+
+bench-parallel-hybrid-query: build
+    deno run -A experiments/parallel-hybrid-query/bench.ts
+
+bench-parallel-columnar-duckdb-browser: build
+    pnpm exec tsc -p experiments/parallel-columnar-query/duckdb-comparison/tsconfig.json
+    pnpm exec vite build experiments/parallel-columnar-query/duckdb-comparison
+    deno run -A tools/bench-parallel-columnar-duckdb-browser.ts
 
 build-package: build
     deno run -A tools/build-package.ts
@@ -134,6 +157,8 @@ check: test package-smoke
     test "$(find dist -name '*_test.js' -o -name '*_test.d.ts' | wc -l | tr -d ' ')" = "0"
     deno fmt --check
     deno lint
+    pnpm exec tsc -p experiments/parallel-columnar-query/duckdb-comparison/tsconfig.json
+    pnpm exec vite build experiments/parallel-columnar-query/duckdb-comparison
     deno eval 'const p = JSON.parse(await Deno.readTextFile("package.json")); const d = JSON.parse(await Deno.readTextFile("deno.json")); if (p.version !== d.version || JSON.stringify(Object.keys(p.exports)) !== JSON.stringify(Object.keys(d.exports))) throw new Error("package.json and deno.json release metadata differ")'
     pnpm exec tsc -p examples/tree-shake-blocked-bloom-filter/tsconfig.json
     pnpm exec vite build examples/tree-shake-blocked-bloom-filter

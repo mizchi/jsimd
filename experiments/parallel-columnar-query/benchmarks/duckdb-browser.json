@@ -1,0 +1,107 @@
+{
+  "environment": {
+    "machine": "Apple Silicon",
+    "browser": "HeadlessChrome 152.0.0.0",
+    "duckdbWasmPackage": "1.32.0",
+    "duckdbVersion": "v1.4.3",
+    "crossOriginIsolated": true
+  },
+  "workload": {
+    "rows": 33554432,
+    "logicalBytes": 134217728,
+    "valueExpression": "(rowIndex & 65535) - 32768",
+    "predicate": "value >= -8192 AND value < 8192",
+    "selectivity": 0.25,
+    "aggregation": "count(*), sum(value)",
+    "warmups": 5,
+    "samples": 11
+  },
+  "results": [
+    {
+      "mode": "jsimd-single",
+      "workerCount": 1,
+      "initializationMs": 187.3550000190735,
+      "medianMs": 4.550000190734863,
+      "samplesMs": [
+        4.360000133514404,
+        4.569999694824219,
+        4.670000076293945,
+        4.550000190734863,
+        4.759999752044678,
+        4.454999923706055,
+        4.514999866485596,
+        4.7900004386901855,
+        4.980000019073486,
+        4.494999885559082,
+        4.329999923706055
+      ]
+    },
+    {
+      "mode": "jsimd-workers",
+      "workerCount": 8,
+      "initializationMs": 169.00500011444092,
+      "medianMs": 1.304999828338623,
+      "samplesMs": [
+        1.6649999618530273,
+        1.5450000762939453,
+        1.2899999618530273,
+        1.3600001335144043,
+        1.1649999618530273,
+        1.6500000953674316,
+        1.5949997901916504,
+        1.260000228881836,
+        1.1449999809265137,
+        1.304999828338623,
+        1.2750000953674316
+      ]
+    },
+    {
+      "mode": "duckdb-eh",
+      "workerCount": 1,
+      "duckdbConfiguredThreads": 1,
+      "initializationMs": 1324.869999885559,
+      "medianMs": 34.625,
+      "samplesMs": [
+        36.46999979019165,
+        61.69500017166138,
+        40.30999994277954,
+        47.03499984741211,
+        35.58000040054321,
+        34.355000019073486,
+        33.15000009536743,
+        34.625,
+        34.21999979019165,
+        34.31999969482422,
+        34.480000019073486
+      ]
+    },
+    {
+      "mode": "duckdb-coi",
+      "workerCount": 8,
+      "duckdbConfiguredThreads": 8,
+      "initializationMs": 1584.9500002861023,
+      "medianMs": 63.69999980926514,
+      "samplesMs": [
+        57.519999980926514,
+        61.5,
+        60.980000019073486,
+        65.11500024795532,
+        61.13000011444092,
+        65.73999977111816,
+        64.38000011444092,
+        63.69999980926514,
+        65.7350001335144,
+        66.5499997138977,
+        60.295000076293945
+      ]
+    }
+  ],
+  "bundledAssets": {
+    "jsimdWasmGzipBytes": 634,
+    "jsimdWorkerGzipBytes": 6383,
+    "duckdbEhWasmGzipBytes": 7695349,
+    "duckdbEhWorkerGzipBytes": 188599,
+    "duckdbCoiWasmGzipBytes": 7760115,
+    "duckdbCoiWorkersGzipBytes": 362420
+  }
+}

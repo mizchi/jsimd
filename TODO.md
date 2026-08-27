@@ -12,6 +12,55 @@ subpath, define an end-to-end workload and its best JavaScript baseline for one 
 The next implementation should be whichever candidate wins that experiment, not whichever name makes
 the API look symmetric.
 
+## Application composition experiments
+
+Keep reusable shared-memory ABIs, SIMD kernels, schedulers, and rejection evidence in this
+repository. A schema DSL, planner, catalog, persistence policy, and product-facing query API may
+move to a separate repository once the low-level boundary is stable and measured.
+
+### A: shared composition ABI
+
+- [x] Prototype immutable raw i32 row-group descriptors, long-lived Worker attachment, static page
+      ownership, zone-map pruning, cache-line partial aggregates, and an identical single-thread
+      Wasm reference path under `experiments/parallel-columnar-query/`.
+- [x] Measure 1/2/4/8 Worker warm scaling against optimized typed-array JavaScript and single-thread
+      Wasm. After dynamic page scheduling, a 128 MiB scan reached 3.90x over single-thread Wasm and
+      43.07x over the recorded JavaScript baseline at 8 Workers, while a 32 MiB scan gained
+      essentially nothing from additional Workers. Keep small/page-selective queries on the
+      single-thread path and do not blindly use every logical CPU.
+- [x] Add double-buffered immutable snapshot publication, page-boundary cancellation, orderly Worker
+      pool restart with stale-lease recovery, automatic pool replacement after a reported Worker
+      error, and atomic coarse row-group scheduling. The double buffer costs roughly 2x logical
+      column bytes, so a higher-level engine should eventually version pages rather than whole
+      columns.
+
+### B: parallel hybrid query
+
+- [x] Define an experimental generation-checked `SharedSelectionMask` ABI and prove that an i32
+      filter can feed PDX64 Float32 and binary Hamming kernels without returning selected row IDs
+      through JavaScript. This is not a public package entrypoint.
+- [x] Connect the same ABI to a persistent Worker-owned PDX64 index and Worker-local top-k outputs;
+      only query data, mask generations, and bounded result pairs cross the Worker boundary.
+- [x] Compare exact filter-first and vector-first plans over the same resident Worker index. On the
+      recorded 65,536 x 64 workload, filter-first won at 1%, 10%, and 100% selectivity. Keep it as
+      the default and do not add an automatic selectivity planner without a measured crossover.
+- [ ] Measure a fused masked Wasm top-k against the current Worker-local JavaScript bounded heap
+      before replacing it.
+- [ ] Add cancellation and forced Worker restart only if this experiment graduates into a separate
+      query-engine repository.
+
+### C: parallel OLAP operators
+
+The broader physical execution design is recorded in
+[`experiments/parallel-columnar-query/OLAP_DESIGN.md`](./experiments/parallel-columnar-query/OLAP_DESIGN.md).
+It remains a non-actionable design hypothesis; only the two measured experiments below belong to
+this queue.
+
+- [ ] Compose page pruning, filter, count/sum/min/max, low-cardinality group-by, and partial-result
+      reduction over immutable row groups.
+- [ ] Benchmark TPC-H Q1/Q6-shaped kernels and log filter/group-by against optimized JavaScript,
+      default DuckDB-Wasm, and its experimental threads build when reproducible.
+
 ## Queue
 
 ### P1: adaptive page composition
