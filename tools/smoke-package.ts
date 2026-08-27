@@ -195,8 +195,34 @@ void stolenTask;
     temporaryDirectory,
   );
 
+  await Deno.writeTextFile(
+    `${temporaryDirectory}/index.html`,
+    '<script type="module" src="/vite-consumer.ts"></script>\n',
+  );
+  await Deno.writeTextFile(
+    `${temporaryDirectory}/vite-consumer.ts`,
+    `import { indexOf } from "${metadata.name}/bytes";\n` +
+      `document.body.textContent = String(indexOf(new Uint8Array([1, 2, 3]), 2));\n`,
+  );
+  await Deno.writeTextFile(
+    `${temporaryDirectory}/vite.config.ts`,
+    "export default { build: { assetsInlineLimit: 0 } };\n",
+  );
+  await run(
+    `${Deno.cwd()}/node_modules/.bin/vite`,
+    ["build"],
+    temporaryDirectory,
+  );
+  const viteAssets = Array.from(
+    Deno.readDirSync(`${temporaryDirectory}/dist/assets`),
+  );
+  const wasmAssets = viteAssets.filter((entry) => entry.isFile && entry.name.endsWith(".wasm"));
+  if (wasmAssets.length !== 1) {
+    throw new Error(`expected one Vite Wasm asset, got ${wasmAssets.length}`);
+  }
+
   console.log(
-    `${metadata.name}@${metadata.version} package smoke test passed in Node, Deno, and TypeScript`,
+    `${metadata.name}@${metadata.version} package smoke test passed in Node, Deno, TypeScript, and Vite`,
   );
 } finally {
   await Deno.remove(temporaryDirectory, { recursive: true });

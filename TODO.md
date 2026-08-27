@@ -12,12 +12,12 @@ backwards-compatible column snapshot/gather operations and shared-memory recover
 - [x] Commit the current WebGPU experiment without adding it to package exports.
 - [x] Review the public API diff and confirm that the release contains no unintended removals.
 - [x] Bump `package.json` and `deno.json` from `0.2.0` to `0.2.1` together.
-- [ ] Run `just check`.
-- [ ] Run `just memory-profile` and require every owning structure to return live allocations to its
+- [x] Run `just check`.
+- [x] Run `just memory-profile` and require every owning structure to return live allocations to its
       baseline.
-- [ ] Run `pnpm pack --dry-run`; confirm rejected prototypes, tests, examples, and `experiments/`
+- [x] Run `pnpm pack --dry-run`; confirm rejected prototypes, tests, examples, and `experiments/`
       are absent from the tarball.
-- [ ] Smoke-test the packed artifact in Node 24.5+, Deno 2.6+, and the existing Vite fixtures.
+- [x] Smoke-test the packed artifact in Node 24.5+, Deno 2.6+, and the existing Vite fixtures.
 
 ## Experiment priority
 
