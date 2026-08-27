@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { SimdMatrix2D } from "../../src/matrix2d/mod.ts";
+import { SimdMatrix2D } from "../../packages/jsimd/src/matrix2d/mod.ts";
 
 let sink = 0;
 

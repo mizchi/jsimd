@@ -3,7 +3,7 @@ import {
   SharedWaitGroup,
   SpscRingBufferU32,
   VersionedBuffer,
-} from "../../src/shared-buffer/mod.ts";
+} from "../../packages/jsimd/src/shared-buffer/mod.ts";
 import { instantiateQueryKernels } from "./kernel.ts";
 import { GROUP_STOP_TASK, type GroupQueryWorkerInit } from "./group_protocol.ts";
 import { scanAvailableGroupPages } from "./group_worker_scan.ts";

@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/bitmap/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/bitmap/mod.ts", "src.ts"]
 }

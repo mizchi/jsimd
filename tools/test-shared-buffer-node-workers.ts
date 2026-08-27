@@ -7,7 +7,7 @@ import {
   SharedBuffer,
   SharedMutex,
   SharedWaitGroup,
-} from "../src/shared-buffer/mod.ts";
+} from "../packages/jsimd/src/shared-buffer/mod.ts";
 
 const WORKER_COUNT = 4;
 const ITERATIONS = 10_000;

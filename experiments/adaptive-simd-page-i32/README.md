@@ -10,8 +10,8 @@ scans/aggregates, and Raw SIMD scans/reductions win. FOR sum wins while FOR pred
 JavaScript because unpacking dominates at this page size. Native typed-array copy remains much
 faster than decoding compressed representations.
 
-See the [entrypoint README](../../src/adaptive-simd-page-i32/README.md) for numbers, interpretation,
-standalone build size, and sources.
+See the [entrypoint README](../../packages/jsimd/src/adaptive-simd-page-i32/README.md) for numbers,
+interpretation, standalone build size, and sources.
 
 ```sh
 pnpm bench:adaptive-simd-page-i32

@@ -1,4 +1,4 @@
-import { SharedBuffer, StripedHistogram } from "../../src/shared-buffer/mod.ts";
+import { SharedBuffer, StripedHistogram } from "../../packages/jsimd/src/shared-buffer/mod.ts";
 
 const WORKER_COUNTS = [1, 2, 4, 8] as const;
 const BUCKET_COUNT = 4_096;
@@ -23,7 +23,7 @@ interface Measurement {
   readonly workerTailP99Ms: number;
 }
 
-const moduleUrl = new URL("../../src/shared-buffer/mod.ts", import.meta.url).href;
+const moduleUrl = new URL("../../packages/jsimd/src/shared-buffer/mod.ts", import.meta.url).href;
 const workerUrl = URL.createObjectURL(
   new Blob([
     `import { SharedBuffer, StripedHistogram } from ${JSON.stringify(moduleUrl)};

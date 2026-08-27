@@ -1,4 +1,4 @@
-import { SharedBuffer } from "../../src/shared-buffer/mod.ts";
+import { SharedBuffer } from "../../packages/jsimd/src/shared-buffer/mod.ts";
 import { instantiateHybridKernels } from "./kernel.ts";
 import type {
   HybridWorkerBinaryRerank,

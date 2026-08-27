@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/columnar/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/columnar/mod.ts", "src.ts"]
 }

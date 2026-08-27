@@ -2,7 +2,7 @@ import {
   SHARED_BUFFER_CACHE_LINE_BYTES,
   SharedBuffer,
   type SharedWorkerLease,
-} from "../../src/shared-buffer/mod.ts";
+} from "../../packages/jsimd/src/shared-buffer/mod.ts";
 import { type HybridKernels, instantiateHybridKernels } from "./kernel.ts";
 import type {
   HybridWorkerBinaryRerank,

@@ -12,6 +12,6 @@
     "target": "ESNext",
     "verbatimModuleSyntax": true
   },
-  "include": ["../../src/shared-buffer/**/*.ts", "src.ts", "worker.ts"],
-  "exclude": ["../../src/shared-buffer/*_test.ts"]
+  "include": ["../../packages/jsimd/src/shared-buffer/**/*.ts", "src.ts", "worker.ts"],
+  "exclude": ["../../packages/jsimd/src/shared-buffer/*_test.ts"]
 }

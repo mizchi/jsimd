@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/fingerprint-group16/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/fingerprint-group16/mod.ts", "src.ts"]
 }

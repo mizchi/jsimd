@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { RoaringBitmap } from "../../src/roaring-bitmap/mod.ts";
+import { RoaringBitmap } from "../../packages/jsimd/src/roaring-bitmap/mod.ts";
 
 let sink = 0;
 

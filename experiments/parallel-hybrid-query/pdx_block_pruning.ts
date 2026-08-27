@@ -1,4 +1,7 @@
-import { SHARED_BUFFER_CACHE_LINE_BYTES, SharedBuffer } from "../../src/shared-buffer/mod.ts";
+import {
+  SHARED_BUFFER_CACHE_LINE_BYTES,
+  SharedBuffer,
+} from "../../packages/jsimd/src/shared-buffer/mod.ts";
 import { type HybridKernels, instantiateHybridKernels } from "./kernel.ts";
 import { SharedSelectionMask } from "./shared_selection_mask.ts";
 

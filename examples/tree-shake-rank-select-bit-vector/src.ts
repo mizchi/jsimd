@@ -1,4 +1,4 @@
-import { RankSelectBitVectorBuilder } from "../../src/rank-select-bit-vector/mod.ts";
+import { RankSelectBitVectorBuilder } from "../../packages/jsimd/src/rank-select-bit-vector/mod.ts";
 
 const builder = new RankSelectBitVectorBuilder(1_000);
 builder.insert(1).insert(10).insert(999);

@@ -1,4 +1,4 @@
-import { instantiateSharedModule } from "../../src/shared-buffer/mod.ts";
+import { instantiateSharedModule } from "../../packages/jsimd/src/shared-buffer/mod.ts";
 
 export interface QueryKernels extends WebAssembly.Exports {
   scan_i32_between_aggregate(

@@ -1,13 +1,12 @@
-# Columnar schema engine experiment
+# `@mizchi/jsimd-columnar`
 
-This prototype extends `columnar` from a resident data structure into a small asynchronous page
-engine. A typed schema controls physical column types, immutable row groups are stored behind one
-`PageBackend` contract, ZoneMaps prune row groups before I/O, and an LRU-like cache turns loaded
-pages into the existing Wasm-resident SIMD columns.
+This experimental package extends `@mizchi/jsimd/columnar` from a resident data structure into a
+small asynchronous page engine. A typed schema controls physical column types, immutable row groups
+are stored behind one `PageBackend` contract, ZoneMaps prune row groups before I/O, and an LRU-like
+cache turns loaded pages into the existing Wasm-resident SIMD columns.
 
-It is intentionally under `experiments/`. The measured warm workload wins, but the persistent page
-format, writer coordination, IndexedDB browser tests, and cache policy are not stable enough for a
-package export.
+The package is versioned independently from `@mizchi/jsimd`. Its persistent page format, writer
+coordination, and cache policy are still experimental and may change between `0.x` releases.
 
 ## Browser / IndexedDB
 
@@ -22,7 +21,7 @@ import {
   string,
   u32,
   u8,
-} from "./mod.ts";
+} from "@mizchi/jsimd-columnar";
 
 const analytics = defineSchema({
   events: defineTable({
@@ -67,7 +66,13 @@ sizes are recorded below after every production-fixture build.
 ## Node / filesystem
 
 ```ts
-import { defineSchema, defineTable, NodeFsPageBackend, SchemaEngine, u32 } from "./node.ts";
+import {
+  defineSchema,
+  defineTable,
+  NodeFsPageBackend,
+  SchemaEngine,
+  u32,
+} from "@mizchi/jsimd-columnar/node";
 
 const schema = defineSchema({ values: defineTable({ value: u32() }) });
 using database = new SchemaEngine(schema, new NodeFsPageBackend("./data"));
@@ -185,9 +190,9 @@ used as the engine build-size measurement. These figures are updated by the repo
 pass rather than estimated from source.
 
 ```sh
-pnpm test:columnar-schema-engine
-pnpm bench:columnar-schema-engine --run
-pnpm bench:record:columnar-schema-engine
+pnpm --filter @mizchi/jsimd-columnar test
+just bench-columnar-schema-engine
+just bench-record-columnar-schema-engine
 pnpm bench:columnar-schema-indexeddb-browser
 pnpm bench:record:columnar-schema-indexeddb-browser
 ```

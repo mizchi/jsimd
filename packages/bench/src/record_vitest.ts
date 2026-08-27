@@ -12,7 +12,7 @@ const command = new Deno.Command("pnpm", {
     "bench",
     suite,
     "--config",
-    "tools/benchmark/vitest_record.config.ts",
+    "packages/bench/src/vitest_record.config.ts",
   ],
   env: {
     JSIMD_VITEST_NAME: name,

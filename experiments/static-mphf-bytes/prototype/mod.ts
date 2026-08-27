@@ -8,7 +8,7 @@ import {
   type Allocation,
   type AllocatorStats,
   LinearMemoryAllocator,
-} from "../../../src/internal/allocator.ts";
+} from "../../../packages/jsimd/src/internal/allocator.ts";
 
 const EMPTY_BUCKET = -0x8000_0000;
 const BUCKET_TARGET_SIZE = 4;

@@ -1,7 +1,7 @@
-import { detectHostCpu, runBrowserBenchmark } from "./benchmark/browser_runner.ts";
-import { gzipSize } from "./benchmark/build_budget.ts";
-import { summarizeBenchmarkSamples } from "./benchmark/measure.ts";
-import { createBenchmarkResult, validateBenchmarkResult } from "./benchmark/result.ts";
+import { detectHostCpu, runBrowserBenchmark } from "../packages/bench/src/browser_runner.ts";
+import { gzipSize } from "../packages/bench/src/build_budget.ts";
+import { summarizeBenchmarkSamples } from "../packages/bench/src/measure.ts";
+import { createBenchmarkResult, validateBenchmarkResult } from "../packages/bench/src/result.ts";
 
 const root = new URL(
   "../experiments/parallel-columnar-query/duckdb-comparison/dist/",

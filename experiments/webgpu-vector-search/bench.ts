@@ -1,10 +1,7 @@
-import { BlockedVectorArray } from "../../src/blocked-vector-array/mod.ts";
-import { detectHostCpu } from "../../tools/benchmark/browser_runner.ts";
-import {
-  type BenchmarkMeasurement,
-  summarizeBenchmarkSamples,
-} from "../../tools/benchmark/measure.ts";
-import { createBenchmarkResult, detectBenchmarkEnvironment } from "../../tools/benchmark/result.ts";
+import { BlockedVectorArray } from "../../packages/jsimd/src/blocked-vector-array/mod.ts";
+import { detectHostCpu } from "@mizchi/jsimd-bench/browser-runner";
+import { type BenchmarkMeasurement, summarizeBenchmarkSamples } from "@mizchi/jsimd-bench/measure";
+import { createBenchmarkResult, detectBenchmarkEnvironment } from "@mizchi/jsimd-bench/result";
 import { WebGpuVectorSearch } from "./gpu_index.ts";
 
 const DIMENSIONS = Number(Deno.env.get("JSIMD_WEBGPU_DIMENSIONS") ?? 128);

@@ -4,7 +4,7 @@ import {
   SharedBlockPool,
   SharedBuffer,
   StripedHistogram,
-} from "../../src/shared-buffer/mod.ts";
+} from "../../packages/jsimd/src/shared-buffer/mod.ts";
 
 const LENGTH = 262_144;
 const shared = await SharedBuffer.create({ initialPages: 17, maximumPages: 17, maxWorkers: 1 });

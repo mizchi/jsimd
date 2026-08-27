@@ -1,6 +1,6 @@
 import { afterAll, bench, describe } from "vitest";
-import { BlockedVectorArray } from "../../src/blocked-vector-array/mod.ts";
-import { PdxFloat32Index } from "../../src/binary-vector-index/mod.ts";
+import { BlockedVectorArray } from "../../packages/jsimd/src/blocked-vector-array/mod.ts";
+import { PdxFloat32Index } from "../../packages/jsimd/src/binary-vector-index/mod.ts";
 
 const LENGTH = 16_384;
 const DIMENSIONS = 64;

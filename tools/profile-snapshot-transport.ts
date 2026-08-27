@@ -1,4 +1,4 @@
-import { BinaryVectorIndex } from "../src/binary-vector-index/mod.ts";
+import { BinaryVectorIndex } from "../packages/jsimd/src/binary-vector-index/mod.ts";
 
 const dimensions = 256;
 const count = 8_192;

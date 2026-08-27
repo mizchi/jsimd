@@ -1,4 +1,4 @@
-import { SharedBuffer } from "../../src/shared-buffer/mod.ts";
+import { SharedBuffer } from "../../packages/jsimd/src/shared-buffer/mod.ts";
 import { SharedSelectionMask } from "./shared_selection_mask.ts";
 
 function assert(condition: boolean, message: string): asserts condition {

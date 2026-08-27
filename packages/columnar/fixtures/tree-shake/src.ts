@@ -1,4 +1,10 @@
-import { defineSchema, defineTable, IndexedDbPageBackend, SchemaEngine, u32 } from "../mod.ts";
+import {
+  defineSchema,
+  defineTable,
+  IndexedDbPageBackend,
+  SchemaEngine,
+  u32,
+} from "../../src/mod.ts";
 
 const schema = defineSchema({ values: defineTable({ value: u32() }) });
 

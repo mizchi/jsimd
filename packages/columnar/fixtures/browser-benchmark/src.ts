@@ -6,17 +6,17 @@ import {
   SchemaEngine,
   u32,
   u8,
-} from "../mod.ts";
+} from "../../src/mod.ts";
 import {
   measureConstructionInclusive,
   measureEndToEnd,
   measureResident,
-} from "../../../tools/benchmark/measure.ts";
+} from "@mizchi/jsimd-bench/measure";
 import {
   type BenchmarkResultV1,
   createBenchmarkResult,
   detectBenchmarkEnvironment,
-} from "../../../tools/benchmark/result.ts";
+} from "@mizchi/jsimd-bench/result";
 
 const BENCHMARK_ROW_GROUP_SIZE = 65_536;
 

@@ -1,43 +1,59 @@
 import process from "node:process";
 import { spawnSync } from "node:child_process";
-import { AdaptiveSimdColumnI32, SimdColumnMask } from "../src/adaptive-simd-page-i32/mod.ts";
+import {
+  AdaptiveSimdColumnI32,
+  SimdColumnMask,
+} from "../packages/jsimd/src/adaptive-simd-page-i32/mod.ts";
 import {
   BinaryVectorIndex,
   BinaryVectorIndexWithRerank,
   PdxFloat32Index,
-} from "../src/binary-vector-index/mod.ts";
-import { BitMatrix, SparseBitMatrix } from "../src/bit-matrix/mod.ts";
-import { BitHistogram32 } from "../src/bit-histogram32/mod.ts";
-import { BlockedBloomFilterU32 } from "../src/blocked-bloom-filter/mod.ts";
-import { BlockedVectorArray } from "../src/blocked-vector-array/mod.ts";
-import { BitSlicedColumnU8, BitSliceMask } from "../src/bit-sliced-column/mod.ts";
-import { Bitmap, DenseBitmap } from "../src/bitmap/mod.ts";
-import { memory as bytesMemory } from "../src/bytes/kernels.wasm";
-import { equals } from "../src/bytes/mod.ts";
-import { ByteKeyFlatHashMapU32 } from "../src/byte-key-flat-hash/mod.ts";
-import { CompressedStringTable } from "../src/compressed-string-table/mod.ts";
+} from "../packages/jsimd/src/binary-vector-index/mod.ts";
+import { BitMatrix, SparseBitMatrix } from "../packages/jsimd/src/bit-matrix/mod.ts";
+import { BitHistogram32 } from "../packages/jsimd/src/bit-histogram32/mod.ts";
+import { BlockedBloomFilterU32 } from "../packages/jsimd/src/blocked-bloom-filter/mod.ts";
+import { BlockedVectorArray } from "../packages/jsimd/src/blocked-vector-array/mod.ts";
+import { BitSlicedColumnU8, BitSliceMask } from "../packages/jsimd/src/bit-sliced-column/mod.ts";
+import { Bitmap, DenseBitmap } from "../packages/jsimd/src/bitmap/mod.ts";
+import { memory as bytesMemory } from "../packages/jsimd/src/bytes/kernels.wasm";
+import { equals } from "../packages/jsimd/src/bytes/mod.ts";
+import { ByteKeyFlatHashMapU32 } from "../packages/jsimd/src/byte-key-flat-hash/mod.ts";
+import { CompressedStringTable } from "../packages/jsimd/src/compressed-string-table/mod.ts";
 import {
   AdaptiveI32Column,
   AdaptiveU32Column,
   BitSlicedU8Column,
   SelectionMask,
-} from "../src/columnar/mod.ts";
-import { EliasFanoSequence, PartitionedEliasFanoSequence } from "../src/elias-fano-sequence/mod.ts";
-import { memory as endianMemory } from "../src/endian/kernels.wasm";
-import { decodeUint32BE } from "../src/endian/mod.ts";
-import { SimdFloat32Vector } from "../src/f32-vector/mod.ts";
-import { FlatHashMapFixed16U32, FlatHashSetFixed16 } from "../src/flat-hash-fixed16/mod.ts";
-import { FlatHashMapU32U32, FlatHashMapU64U32, FlatHashSetU32 } from "../src/flat-hash/mod.ts";
-import { FingerprintGroup16, FingerprintTable16 } from "../src/fingerprint-group16/mod.ts";
-import { FmIndexBytes } from "../src/fm-index-bytes/mod.ts";
-import { SimdInt32Array } from "../src/i32-array/mod.ts";
-import { memory as jsonMemory } from "../src/json/kernels.wasm";
-import { jsonTokenStarts } from "../src/json/mod.ts";
-import { SimdMatrix2D } from "../src/matrix2d/mod.ts";
-import { SimdMatrix3D } from "../src/matrix3d/mod.ts";
-import { PackedDeltaUint32List } from "../src/packed-delta-uint32-list/mod.ts";
-import { RankSelectBitVector } from "../src/rank-select-bit-vector/mod.ts";
-import { RoaringBitmap } from "../src/roaring-bitmap/mod.ts";
+} from "../packages/jsimd/src/columnar/mod.ts";
+import {
+  EliasFanoSequence,
+  PartitionedEliasFanoSequence,
+} from "../packages/jsimd/src/elias-fano-sequence/mod.ts";
+import { memory as endianMemory } from "../packages/jsimd/src/endian/kernels.wasm";
+import { decodeUint32BE } from "../packages/jsimd/src/endian/mod.ts";
+import { SimdFloat32Vector } from "../packages/jsimd/src/f32-vector/mod.ts";
+import {
+  FlatHashMapFixed16U32,
+  FlatHashSetFixed16,
+} from "../packages/jsimd/src/flat-hash-fixed16/mod.ts";
+import {
+  FlatHashMapU32U32,
+  FlatHashMapU64U32,
+  FlatHashSetU32,
+} from "../packages/jsimd/src/flat-hash/mod.ts";
+import {
+  FingerprintGroup16,
+  FingerprintTable16,
+} from "../packages/jsimd/src/fingerprint-group16/mod.ts";
+import { FmIndexBytes } from "../packages/jsimd/src/fm-index-bytes/mod.ts";
+import { SimdInt32Array } from "../packages/jsimd/src/i32-array/mod.ts";
+import { memory as jsonMemory } from "../packages/jsimd/src/json/kernels.wasm";
+import { jsonTokenStarts } from "../packages/jsimd/src/json/mod.ts";
+import { SimdMatrix2D } from "../packages/jsimd/src/matrix2d/mod.ts";
+import { SimdMatrix3D } from "../packages/jsimd/src/matrix3d/mod.ts";
+import { PackedDeltaUint32List } from "../packages/jsimd/src/packed-delta-uint32-list/mod.ts";
+import { RankSelectBitVector } from "../packages/jsimd/src/rank-select-bit-vector/mod.ts";
+import { RoaringBitmap } from "../packages/jsimd/src/roaring-bitmap/mod.ts";
 import {
   AtomicDenseBitmap,
   MpmcRingBufferU32,
@@ -51,11 +67,11 @@ import {
   StripedHistogram,
   VersionedBuffer,
   WorkStealingDequeU32,
-} from "../src/shared-buffer/mod.ts";
-import { StaticMphfU32 } from "../src/static-mphf-u32/mod.ts";
-import { WaveletMatrixUint32 } from "../src/wavelet-matrix-uint32/mod.ts";
-import { WaveletMatrixUint8 } from "../src/wavelet-matrix-uint8/mod.ts";
-import { WaveletMatrixUint16 } from "../src/wavelet-matrix-uint16/mod.ts";
+} from "../packages/jsimd/src/shared-buffer/mod.ts";
+import { StaticMphfU32 } from "../packages/jsimd/src/static-mphf-u32/mod.ts";
+import { WaveletMatrixUint32 } from "../packages/jsimd/src/wavelet-matrix-uint32/mod.ts";
+import { WaveletMatrixUint8 } from "../packages/jsimd/src/wavelet-matrix-uint8/mod.ts";
+import { WaveletMatrixUint16 } from "../packages/jsimd/src/wavelet-matrix-uint16/mod.ts";
 
 interface AllocatorStats {
   readonly liveAllocations: number;

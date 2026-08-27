@@ -1,5 +1,11 @@
-import { compare, equals, indexOf, indexOfNonAscii, lastIndexOf } from "../../src/bytes/mod.ts";
-import { jsonTokenStarts } from "../../src/json/mod.ts";
+import {
+  compare,
+  equals,
+  indexOf,
+  indexOfNonAscii,
+  lastIndexOf,
+} from "../../packages/jsimd/src/bytes/mod.ts";
+import { jsonTokenStarts } from "../../packages/jsimd/src/json/mod.ts";
 
 const input = new TextEncoder().encode("MoonBit + Wasm SIMD");
 document.querySelector("#app")!.textContent = JSON.stringify({

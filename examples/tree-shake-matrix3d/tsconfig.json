@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/matrix3d/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/matrix3d/mod.ts", "src.ts"]
 }

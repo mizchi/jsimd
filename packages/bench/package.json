@@ -1,0 +1,14 @@
+{
+  "name": "@mizchi/jsimd-bench",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Versioned benchmark result schema and runners used by the jsimd workspace",
+  "type": "module",
+  "exports": {
+    "./result": "./src/result.ts",
+    "./measure": "./src/measure.ts",
+    "./browser-runner": "./src/browser_runner.ts",
+    "./vitest-reporter": "./src/vitest_result_reporter.ts"
+  },
+  "peerDependencies": { "vitest": "4.1.11" }
+}

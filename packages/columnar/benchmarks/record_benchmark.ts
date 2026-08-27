@@ -1,10 +1,10 @@
-import { detectHostCpu } from "../../tools/benchmark/browser_runner.ts";
+import { detectHostCpu } from "@mizchi/jsimd-bench/browser-runner";
 import {
   measureEndToEnd,
   measureMaterializationInclusive,
   measureResident,
-} from "../../tools/benchmark/measure.ts";
-import { createBenchmarkResult, detectBenchmarkEnvironment } from "../../tools/benchmark/result.ts";
+} from "@mizchi/jsimd-bench/measure";
+import { createBenchmarkResult, detectBenchmarkEnvironment } from "@mizchi/jsimd-bench/result";
 import {
   COLUMNAR_BENCHMARK_GROUP_COUNT,
   COLUMNAR_BENCHMARK_LENGTH,

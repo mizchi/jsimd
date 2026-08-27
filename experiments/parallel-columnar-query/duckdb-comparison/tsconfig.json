@@ -13,9 +13,9 @@
     "types": ["vite/client"],
     "verbatimModuleSyntax": true
   },
-  "include": ["../../../src/shared-buffer/**/*.ts", "../*.ts", "src.ts"],
+  "include": ["../../../packages/jsimd/src/shared-buffer/**/*.ts", "../*.ts", "src.ts"],
   "exclude": [
-    "../../../src/shared-buffer/*_test.ts",
+    "../../../packages/jsimd/src/shared-buffer/*_test.ts",
     "../*_test.ts",
     "../*_bench.ts",
     "../bench.ts"

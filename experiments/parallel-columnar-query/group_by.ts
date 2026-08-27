@@ -6,7 +6,7 @@ import {
   type SpscProducerU32,
   SpscRingBufferU32,
   VersionedBuffer,
-} from "../../src/shared-buffer/mod.ts";
+} from "../../packages/jsimd/src/shared-buffer/mod.ts";
 import { instantiateQueryKernels, type QueryKernels } from "./kernel.ts";
 import {
   GROUP_STOP_TASK,

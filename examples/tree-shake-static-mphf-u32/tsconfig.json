@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/static-mphf-u32/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/static-mphf-u32/mod.ts", "src.ts"]
 }

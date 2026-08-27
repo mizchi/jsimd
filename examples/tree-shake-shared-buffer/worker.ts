@@ -12,7 +12,7 @@ import {
   StripedHistogram,
   VersionedBuffer,
   WorkStealingDequeU32,
-} from "../../src/shared-buffer/mod.ts";
+} from "../../packages/jsimd/src/shared-buffer/mod.ts";
 
 self.onmessage = async (
   event: MessageEvent<{

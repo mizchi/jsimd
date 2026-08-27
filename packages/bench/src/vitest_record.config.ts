@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     benchmark: {
       includeSamples: true,
-      reporters: ["./tools/benchmark/vitest_result_reporter.ts"],
+      reporters: ["./packages/bench/src/vitest_result_reporter.ts"],
     },
   },
 });

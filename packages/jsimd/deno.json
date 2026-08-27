@@ -1,0 +1,46 @@
+{
+  "name": "@mizchi/jsimd",
+  "version": "0.2.2",
+  "exports": {
+    "./bytes": "./src/bytes/mod.ts",
+    "./adaptive-simd-page-i32": "./src/adaptive-simd-page-i32/mod.ts",
+    "./bitmap": "./src/bitmap/mod.ts",
+    "./rank-select-bit-vector": "./src/rank-select-bit-vector/mod.ts",
+    "./bit-matrix": "./src/bit-matrix/mod.ts",
+    "./bit-histogram32": "./src/bit-histogram32/mod.ts",
+    "./byte-key-flat-hash": "./src/byte-key-flat-hash/mod.ts",
+    "./binary-vector-index": "./src/binary-vector-index/mod.ts",
+    "./blocked-vector-array": "./src/blocked-vector-array/mod.ts",
+    "./bit-sliced-column": "./src/bit-sliced-column/mod.ts",
+    "./endian": "./src/endian/mod.ts",
+    "./elias-fano-sequence": "./src/elias-fano-sequence/mod.ts",
+    "./f32-vector": "./src/f32-vector/mod.ts",
+    "./flat-hash": "./src/flat-hash/mod.ts",
+    "./flat-hash-fixed16": "./src/flat-hash-fixed16/mod.ts",
+    "./fingerprint-group16": "./src/fingerprint-group16/mod.ts",
+    "./i32-array": "./src/i32-array/mod.ts",
+    "./json": "./src/json/mod.ts",
+    "./matrix2d": "./src/matrix2d/mod.ts",
+    "./matrix3d": "./src/matrix3d/mod.ts",
+    "./roaring-bitmap": "./src/roaring-bitmap/mod.ts",
+    "./shared-buffer": "./src/shared-buffer/mod.ts",
+    "./static-mphf-u32": "./src/static-mphf-u32/mod.ts",
+    "./packed-delta-uint32-list": "./src/packed-delta-uint32-list/mod.ts",
+    "./wavelet-matrix-uint16": "./src/wavelet-matrix-uint16/mod.ts",
+    "./wavelet-matrix-uint32": "./src/wavelet-matrix-uint32/mod.ts",
+    "./wavelet-matrix-uint8": "./src/wavelet-matrix-uint8/mod.ts",
+    "./fm-index-bytes": "./src/fm-index-bytes/mod.ts",
+    "./compressed-string-table": "./src/compressed-string-table/mod.ts",
+    "./columnar": "./src/columnar/mod.ts",
+    "./blocked-bloom-filter": "./src/blocked-bloom-filter/mod.ts"
+  },
+  "tasks": {
+    "build": "cd ../.. && just build-package",
+    "test": "deno test -A .",
+    "bench": "deno bench -A ."
+  },
+  "fmt": {
+    "exclude": ["pnpm-lock.yaml"],
+    "lineWidth": 100
+  }
+}

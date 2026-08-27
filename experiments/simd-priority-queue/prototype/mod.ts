@@ -10,7 +10,7 @@ import {
   type Allocation,
   type AllocatorStats,
   LinearMemoryAllocator,
-} from "../../../src/internal/allocator.ts";
+} from "../../../packages/jsimd/src/internal/allocator.ts";
 
 const allocator = new LinearMemoryAllocator(memory);
 const BYTES_PER_ELEMENT = 4;

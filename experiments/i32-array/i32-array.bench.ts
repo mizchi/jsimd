@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { SimdInt32Array } from "../../src/i32-array/mod.ts";
+import { SimdInt32Array } from "../../packages/jsimd/src/i32-array/mod.ts";
 
 let sink = 0;
 

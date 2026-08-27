@@ -1,4 +1,4 @@
-import { FlatHashMapFixed16U32 } from "../../src/flat-hash-fixed16/mod.ts";
+import { FlatHashMapFixed16U32 } from "../../packages/jsimd/src/flat-hash-fixed16/mod.ts";
 
 const key = new Uint8Array(16);
 key[0] = 42;

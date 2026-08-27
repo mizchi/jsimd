@@ -20,8 +20,8 @@ removed after taking 5.55 ms versus 2.26 ms for JavaScript; it is not part of th
 
 Construction and final position materialization are excluded because the intended workload freezes
 columns once and executes repeated filters. See
-[`src/columnar/README.md`](../../src/columnar/README.md) for measured results, limits, and build
-size.
+[`src/columnar/README.md`](../../packages/jsimd/src/columnar/README.md) for measured results,
+limits, and build size.
 
 ```sh
 pnpm bench:columnar

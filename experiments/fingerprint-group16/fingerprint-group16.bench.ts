@@ -1,5 +1,8 @@
 import { afterAll, bench, describe } from "vitest";
-import { FingerprintGroup16, FingerprintTable16 } from "../../src/fingerprint-group16/mod.ts";
+import {
+  FingerprintGroup16,
+  FingerprintTable16,
+} from "../../packages/jsimd/src/fingerprint-group16/mod.ts";
 
 let sink = 0;
 const controls = Uint8Array.of(7, 1, 7, 0x80, 0xfe, 7, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);

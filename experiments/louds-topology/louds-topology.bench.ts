@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { RankSelectBitVector } from "../../src/rank-select-bit-vector/mod.ts";
+import { RankSelectBitVector } from "../../packages/jsimd/src/rank-select-bit-vector/mod.ts";
 
 const NODE_COUNT = 87_381;
 const QUERY_COUNT = 4096;

@@ -6,8 +6,8 @@ batched and repeated-single MPHF calls with `FlatHashSetU32` and `Set<number>`. 
 
 The committed result validates a narrow use case: MPHF wins batch throughput and frozen logical
 bytes, but loses badly for repeated JS/Wasm single calls and for construction. See the
-[entrypoint README](../../src/static-mphf-u32/README.md) for numbers, membership semantics, design
-sources, and standalone size.
+[entrypoint README](../../packages/jsimd/src/static-mphf-u32/README.md) for numbers, membership
+semantics, design sources, and standalone size.
 
 ```sh
 pnpm bench:static-mphf-u32

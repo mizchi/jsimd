@@ -12,5 +12,5 @@
     "target": "ESNext",
     "verbatimModuleSyntax": true
   },
-  "include": ["../prototype/**/*.ts", "../../../src/internal/**/*.ts", "src.ts"]
+  "include": ["../prototype/**/*.ts", "../../../packages/jsimd/src/internal/**/*.ts", "src.ts"]
 }

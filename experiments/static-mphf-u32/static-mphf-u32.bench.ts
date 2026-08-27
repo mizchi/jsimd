@@ -1,6 +1,6 @@
 import { afterAll, bench, describe } from "vitest";
-import { FlatHashSetU32 } from "../../src/flat-hash/mod.ts";
-import { StaticMphfU32 } from "../../src/static-mphf-u32/mod.ts";
+import { FlatHashSetU32 } from "../../packages/jsimd/src/flat-hash/mod.ts";
+import { StaticMphfU32 } from "../../packages/jsimd/src/static-mphf-u32/mod.ts";
 
 const LENGTH = 262_144;
 const QUERY_COUNT = 4096;

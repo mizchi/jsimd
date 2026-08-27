@@ -2,8 +2,8 @@ import { afterAll, bench, describe } from "vitest";
 import {
   EliasFanoSequence,
   PartitionedEliasFanoSequence,
-} from "../../src/elias-fano-sequence/mod.ts";
-import { PackedDeltaUint32List } from "../../src/packed-delta-uint32-list/mod.ts";
+} from "../../packages/jsimd/src/elias-fano-sequence/mod.ts";
+import { PackedDeltaUint32List } from "../../packages/jsimd/src/packed-delta-uint32-list/mod.ts";
 
 let sink = 0;
 

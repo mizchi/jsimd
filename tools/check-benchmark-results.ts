@@ -1,8 +1,9 @@
-import { validateBenchmarkResult } from "./benchmark/result.ts";
+import { validateBenchmarkResult } from "../packages/bench/src/result.ts";
 
 const roots = [
   new URL("../experiments/", import.meta.url),
   new URL("../examples/", import.meta.url),
+  new URL("../packages/columnar/", import.meta.url),
 ] as const;
 let versioned = 0;
 const unversionedRequired: string[] = [];

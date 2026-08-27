@@ -1,6 +1,6 @@
 import { afterAll, bench, describe } from "vitest";
-import { WaveletMatrixUint32 } from "../../src/wavelet-matrix-uint32/mod.ts";
-import { WaveletMatrixUint8 } from "../../src/wavelet-matrix-uint8/mod.ts";
+import { WaveletMatrixUint32 } from "../../packages/jsimd/src/wavelet-matrix-uint32/mod.ts";
+import { WaveletMatrixUint8 } from "../../packages/jsimd/src/wavelet-matrix-uint8/mod.ts";
 
 const LENGTH = 262_144;
 const QUERY_COUNT = 4096;

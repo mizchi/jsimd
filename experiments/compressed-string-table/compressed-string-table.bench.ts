@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { CompressedStringTable } from "../../src/compressed-string-table/mod.ts";
+import { CompressedStringTable } from "../../packages/jsimd/src/compressed-string-table/mod.ts";
 
 const LENGTH = 65_536;
 const QUERY_COUNT = 4096;

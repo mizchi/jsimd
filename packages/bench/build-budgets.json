@@ -189,8 +189,8 @@
     }
   ],
   "requiredCorrectnessTests": [
-    "mod_test.ts",
-    "src/columnar/snapshot_test.ts",
-    "src/shared-buffer/buffer_test.ts"
+    "packages/jsimd/mod_test.ts",
+    "packages/jsimd/src/columnar/snapshot_test.ts",
+    "packages/jsimd/src/shared-buffer/buffer_test.ts"
   ]
 }

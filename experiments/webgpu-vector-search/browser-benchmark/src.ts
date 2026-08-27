@@ -1,4 +1,4 @@
-import { BlockedVectorArray } from "../../../src/blocked-vector-array/mod.ts";
+import { BlockedVectorArray } from "../../../packages/jsimd/src/blocked-vector-array/mod.ts";
 import { ParallelHybridVectorIndex } from "../../parallel-hybrid-query/parallel_index.ts";
 import { assertSameTopK, firstBatchCrossover, makeQueries, makeValues } from "../browser_matrix.ts";
 import { WebGpuVectorSearch } from "../gpu_index.ts";
@@ -6,13 +6,13 @@ import {
   type BenchmarkMeasurement,
   measureEndToEnd,
   measureResident,
-} from "../../../tools/benchmark/measure.ts";
+} from "@mizchi/jsimd-bench/measure";
 import {
   type BenchmarkAdapter,
   type BenchmarkResultV1,
   createBenchmarkResult,
   detectBenchmarkEnvironment,
-} from "../../../tools/benchmark/result.ts";
+} from "@mizchi/jsimd-bench/result";
 
 interface MatrixBatchMeasurement {
   readonly queryCount: number;

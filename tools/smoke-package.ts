@@ -1,4 +1,5 @@
-const metadata = JSON.parse(await Deno.readTextFile("package.json")) as {
+const packageDirectory = new URL("../packages/jsimd/", import.meta.url);
+const metadata = JSON.parse(await Deno.readTextFile(new URL("package.json", packageDirectory))) as {
   name: string;
   version: string;
 };
@@ -8,7 +9,7 @@ try {
   const packed = await run(
     "npm",
     ["pack", "--silent", "--ignore-scripts", "--pack-destination", temporaryDirectory],
-    Deno.cwd(),
+    packageDirectory.pathname,
   );
   const archive = packed.trim().split("\n").at(-1);
   if (!archive) throw new Error("npm pack did not report an archive");

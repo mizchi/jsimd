@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/endian/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/endian/mod.ts", "src.ts"]
 }

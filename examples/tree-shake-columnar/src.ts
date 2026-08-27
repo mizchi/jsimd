@@ -3,7 +3,7 @@ import {
   AdaptiveU32Column,
   BitSlicedU8Column,
   SelectionMask,
-} from "../../src/columnar/mod.ts";
+} from "../../packages/jsimd/src/columnar/mod.ts";
 
 using prices = AdaptiveI32Column.from(Int32Array.of(100, 220, 180, 310));
 using kinds = BitSlicedU8Column.from(Uint8Array.of(1, 2, 2, 1), 2);

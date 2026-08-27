@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { FmIndexBytes } from "../../src/fm-index-bytes/mod.ts";
+import { FmIndexBytes } from "../../packages/jsimd/src/fm-index-bytes/mod.ts";
 
 const LENGTH = 32_768;
 const QUERY_COUNT = 512;

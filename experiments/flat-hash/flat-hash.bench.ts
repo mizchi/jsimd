@@ -1,5 +1,9 @@
 import { afterAll, bench, describe } from "vitest";
-import { FlatHashMapU32U32, FlatHashMapU64U32, FlatHashSetU32 } from "../../src/flat-hash/mod.ts";
+import {
+  FlatHashMapU32U32,
+  FlatHashMapU64U32,
+  FlatHashSetU32,
+} from "../../packages/jsimd/src/flat-hash/mod.ts";
 
 const LENGTH = 262_144;
 const QUERY_LENGTH = 131_072;

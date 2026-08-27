@@ -1,0 +1,9 @@
+{
+  "name": "@mizchi/jsimd-bench",
+  "version": "0.1.0",
+  "exports": {
+    "./result": "./src/result.ts",
+    "./measure": "./src/measure.ts",
+    "./browser-runner": "./src/browser_runner.ts"
+  }
+}

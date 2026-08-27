@@ -4,7 +4,7 @@ import {
   AdaptiveSimdPageI32,
   SimdColumnMask,
   SimdPageMask,
-} from "../../src/adaptive-simd-page-i32/mod.ts";
+} from "../../packages/jsimd/src/adaptive-simd-page-i32/mod.ts";
 
 let sink = 0;
 

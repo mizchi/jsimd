@@ -3,7 +3,7 @@ import {
   AdaptiveU32Column,
   BitSlicedU8Column,
   SelectionMask,
-} from "../../src/columnar/mod.ts";
+} from "@mizchi/jsimd/columnar";
 import type { PageBackend } from "./backend.ts";
 import { decodeColumnPage, encodeColumnPage } from "./page_format.ts";
 import {

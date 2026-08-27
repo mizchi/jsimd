@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { BitMatrix } from "../../src/bit-matrix/mod.ts";
+import { BitMatrix } from "../../packages/jsimd/src/bit-matrix/mod.ts";
 
 let sink = 0;
 const size = 512;

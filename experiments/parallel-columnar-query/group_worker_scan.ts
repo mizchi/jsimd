@@ -1,4 +1,4 @@
-import type { SharedBuffer, VersionedBuffer } from "../../src/shared-buffer/mod.ts";
+import type { SharedBuffer, VersionedBuffer } from "../../packages/jsimd/src/shared-buffer/mod.ts";
 import type { QueryKernels } from "./kernel.ts";
 import type { GroupQueryWorkerInit } from "./group_protocol.ts";
 

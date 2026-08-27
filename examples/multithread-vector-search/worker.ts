@@ -1,5 +1,9 @@
-import { BlockedVectorArray } from "../../src/blocked-vector-array/mod.ts";
-import { SharedBuffer, SharedWaitGroup, SpscRingBufferU32 } from "../../src/shared-buffer/mod.ts";
+import { BlockedVectorArray } from "../../packages/jsimd/src/blocked-vector-array/mod.ts";
+import {
+  SharedBuffer,
+  SharedWaitGroup,
+  SpscRingBufferU32,
+} from "../../packages/jsimd/src/shared-buffer/mod.ts";
 import { STOP_TASK, type VectorWorkerInit } from "./protocol.ts";
 
 self.onmessage = async (event: MessageEvent<VectorWorkerInit>) => {

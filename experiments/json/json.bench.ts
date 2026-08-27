@@ -1,5 +1,5 @@
 import { bench, describe } from "vitest";
-import { jsonTokenStarts } from "../../src/json/mod.ts";
+import { jsonTokenStarts } from "../../packages/jsimd/src/json/mod.ts";
 
 function scalarJsonTokenStarts(input: Uint8Array): Uint32Array {
   const starts: number[] = [];

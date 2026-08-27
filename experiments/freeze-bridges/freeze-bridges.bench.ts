@@ -1,10 +1,13 @@
 import { afterAll, bench, describe } from "vitest";
-import { Bitmap } from "../../src/bitmap/mod.ts";
-import { RankSelectBitVector } from "../../src/rank-select-bit-vector/mod.ts";
-import { FlatHashSetU32 } from "../../src/flat-hash/mod.ts";
-import { StaticMphfU32 } from "../../src/static-mphf-u32/mod.ts";
-import { EliasFanoSequence, MonotoneUint32Builder } from "../../src/elias-fano-sequence/mod.ts";
-import { PackedDeltaUint32List } from "../../src/packed-delta-uint32-list/mod.ts";
+import { Bitmap } from "../../packages/jsimd/src/bitmap/mod.ts";
+import { RankSelectBitVector } from "../../packages/jsimd/src/rank-select-bit-vector/mod.ts";
+import { FlatHashSetU32 } from "../../packages/jsimd/src/flat-hash/mod.ts";
+import { StaticMphfU32 } from "../../packages/jsimd/src/static-mphf-u32/mod.ts";
+import {
+  EliasFanoSequence,
+  MonotoneUint32Builder,
+} from "../../packages/jsimd/src/elias-fano-sequence/mod.ts";
+import { PackedDeltaUint32List } from "../../packages/jsimd/src/packed-delta-uint32-list/mod.ts";
 
 let sink = 0;
 

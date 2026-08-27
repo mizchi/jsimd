@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/wavelet-matrix-uint32/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/wavelet-matrix-uint32/mod.ts", "src.ts"]
 }

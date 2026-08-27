@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { BitSlicedColumnU8, BitSliceMask } from "../../src/bit-sliced-column/mod.ts";
+import { BitSlicedColumnU8, BitSliceMask } from "../../packages/jsimd/src/bit-sliced-column/mod.ts";
 
 const LENGTH = 4_194_304;
 let sink = 0;

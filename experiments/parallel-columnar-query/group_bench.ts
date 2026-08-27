@@ -3,9 +3,9 @@ import {
   groupByBetweenReference,
   ParallelI32GroupByU8Query,
 } from "./group_by.ts";
-import { detectHostCpu } from "../../tools/benchmark/browser_runner.ts";
-import { summarizeBenchmarkSamples } from "../../tools/benchmark/measure.ts";
-import { createBenchmarkResult, detectBenchmarkEnvironment } from "../../tools/benchmark/result.ts";
+import { detectHostCpu } from "@mizchi/jsimd-bench/browser-runner";
+import { summarizeBenchmarkSamples } from "@mizchi/jsimd-bench/measure";
+import { createBenchmarkResult, detectBenchmarkEnvironment } from "@mizchi/jsimd-bench/result";
 
 const LENGTH = Number(Deno.env.get("JSIMD_QUERY_ROWS") ?? 8 * 1024 * 1024);
 const PAGE_ROWS = 65_536;

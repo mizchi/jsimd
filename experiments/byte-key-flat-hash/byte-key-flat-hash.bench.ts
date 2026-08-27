@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { ByteKeyFlatHashMapU32 } from "../../src/byte-key-flat-hash/mod.ts";
+import { ByteKeyFlatHashMapU32 } from "../../packages/jsimd/src/byte-key-flat-hash/mod.ts";
 
 const LENGTH = 131_072;
 const QUERY_LENGTH = 65_536;

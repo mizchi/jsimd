@@ -1,8 +1,16 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { defineSchema, defineTable, i32, MemoryPageBackend, SchemaEngine, u32, u8 } from "./mod.ts";
-import { NodeFsPageBackend } from "./node.ts";
+import {
+  defineSchema,
+  defineTable,
+  i32,
+  MemoryPageBackend,
+  SchemaEngine,
+  u32,
+  u8,
+} from "../src/mod.ts";
+import { NodeFsPageBackend } from "../src/node.ts";
 
 export const COLUMNAR_BENCHMARK_LENGTH = 4_194_304;
 export const COLUMNAR_BENCHMARK_ROW_GROUP_SIZE = 65_536;

@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/roaring-bitmap/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/roaring-bitmap/mod.ts", "src.ts"]
 }

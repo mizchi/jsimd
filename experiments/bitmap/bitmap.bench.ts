@@ -1,5 +1,5 @@
 import { bench, describe } from "vitest";
-import { DenseBitmap } from "../../src/bitmap/mod.ts";
+import { DenseBitmap } from "../../packages/jsimd/src/bitmap/mod.ts";
 
 function popcount(word: number): number {
   word -= (word >>> 1) & 0x5555_5555;

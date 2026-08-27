@@ -1,10 +1,7 @@
 import { createEmbeddingWorkload, type EmbeddingDistribution } from "./embedding_workloads.ts";
 import { ParallelHybridVectorIndex } from "./parallel_index.ts";
-import {
-  type BenchmarkMeasurement,
-  summarizeBenchmarkSamples,
-} from "../../tools/benchmark/measure.ts";
-import { createBenchmarkResult, detectBenchmarkEnvironment } from "../../tools/benchmark/result.ts";
+import { type BenchmarkMeasurement, summarizeBenchmarkSamples } from "@mizchi/jsimd-bench/measure";
+import { createBenchmarkResult, detectBenchmarkEnvironment } from "@mizchi/jsimd-bench/result";
 
 const ROWS = Number(Deno.env.get("JSIMD_BINARY_ROWS") ?? 65_536);
 const DIMENSIONS = Number(Deno.env.get("JSIMD_BINARY_DIMENSIONS") ?? 128);

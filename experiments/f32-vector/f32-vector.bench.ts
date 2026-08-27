@@ -1,5 +1,5 @@
 import { bench, describe } from "vitest";
-import { SimdFloat32Vector } from "../../src/f32-vector/mod.ts";
+import { SimdFloat32Vector } from "../../packages/jsimd/src/f32-vector/mod.ts";
 
 function scalarDot(left: Float32Array, right: Float32Array): number {
   let result = 0;

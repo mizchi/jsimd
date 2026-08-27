@@ -1,5 +1,9 @@
-const outputDirectory = "dist";
-const packageMetadata = JSON.parse(await Deno.readTextFile("package.json")) as {
+const packageDirectory = "packages/jsimd";
+const sourceRoot = `${packageDirectory}/src`;
+const outputDirectory = `${packageDirectory}/dist`;
+const packageMetadata = JSON.parse(
+  await Deno.readTextFile(`${packageDirectory}/package.json`),
+) as {
   exports: Record<string, string>;
 };
 const publicDirectories = new Set(
@@ -18,7 +22,14 @@ try {
   if (!(error instanceof Deno.errors.NotFound)) throw error;
 }
 
-await run("pnpm", ["exec", "tsc", "-p", "tsconfig.publish.json", "--pretty", "false"]);
+await run("pnpm", [
+  "exec",
+  "tsc",
+  "-p",
+  `${packageDirectory}/tsconfig.publish.json`,
+  "--pretty",
+  "false",
+]);
 
 for await (const entry of Deno.readDir(outputDirectory)) {
   if (!entry.isDirectory || entry.name === "internal" || publicDirectories.has(entry.name)) {
@@ -27,9 +38,9 @@ for await (const entry of Deno.readDir(outputDirectory)) {
   await Deno.remove(`${outputDirectory}/${entry.name}`, { recursive: true });
 }
 
-for await (const entry of Deno.readDir("src")) {
+for await (const entry of Deno.readDir(sourceRoot)) {
   if (!entry.isDirectory || !publicDirectories.has(entry.name)) continue;
-  const sourceDirectory = `src/${entry.name}`;
+  const sourceDirectory = `${sourceRoot}/${entry.name}`;
   const targetDirectory = `${outputDirectory}/${entry.name}`;
   for (const filename of ["kernels.wasm", "kernels.wat", "README.md"]) {
     try {

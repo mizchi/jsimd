@@ -19,5 +19,5 @@ The repeated-query extension measured L1 at 0.1054 ms versus 0.5101 ms for scala
 and inner product at 0.0990 ms versus 0.8223 ms (8.31x). Fused inner-product top-k took 0.1083 ms
 versus 0.1338 ms for materializing scores and using a bounded JavaScript heap (1.24x).
 
-See the [entrypoint README](../../src/blocked-vector-array/README.md) for API, layout, sources,
-trade-offs, and isolated build size.
+See the [entrypoint README](../../packages/jsimd/src/blocked-vector-array/README.md) for API,
+layout, sources, trade-offs, and isolated build size.

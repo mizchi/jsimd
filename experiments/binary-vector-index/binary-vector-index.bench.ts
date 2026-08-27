@@ -1,5 +1,8 @@
 import { afterAll, bench, describe } from "vitest";
-import { BinaryVectorIndex, PdxFloat32Index } from "../../src/binary-vector-index/mod.ts";
+import {
+  BinaryVectorIndex,
+  PdxFloat32Index,
+} from "../../packages/jsimd/src/binary-vector-index/mod.ts";
 const N = 65_536, BYTES = 32;
 const rows = Array.from(
   { length: N },

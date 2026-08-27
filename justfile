@@ -1,120 +1,120 @@
 build:
-    wasm-tools strip -a src/adaptive-simd-page-i32/kernels.wat -o src/adaptive-simd-page-i32/kernels.wasm
-    wasm-tools strip -a src/bytes/kernels.wat -o src/bytes/kernels.wasm
-    wasm-tools strip -a src/bitmap/kernels.wat -o src/bitmap/kernels.wasm
-    wasm-tools strip -a src/bit-matrix/kernels.wat -o src/bit-matrix/kernels.wasm
-    wasm-tools strip -a src/bit-histogram32/kernels.wat -o src/bit-histogram32/kernels.wasm
-    wasm-tools strip -a src/byte-key-flat-hash/kernels.wat -o src/byte-key-flat-hash/kernels.wasm
-    wasm-tools strip -a src/binary-vector-index/kernels.wat -o src/binary-vector-index/kernels.wasm
-    wasm-tools strip -a src/blocked-vector-array/kernels.wat -o src/blocked-vector-array/kernels.wasm
-    wasm-tools strip -a src/bit-sliced-column/kernels.wat -o src/bit-sliced-column/kernels.wasm
-    wasm-tools strip -a src/endian/kernels.wat -o src/endian/kernels.wasm
-    wasm-tools strip -a src/elias-fano-sequence/kernels.wat -o src/elias-fano-sequence/kernels.wasm
-    wasm-tools strip -a src/flat-hash/kernels.wat -o src/flat-hash/kernels.wasm
-    wasm-tools strip -a src/flat-hash-fixed16/kernels.wat -o src/flat-hash-fixed16/kernels.wasm
-    wasm-tools strip -a src/fingerprint-group16/kernels.wat -o src/fingerprint-group16/kernels.wasm
-    wasm-tools strip -a src/f32-vector/kernels.wat -o src/f32-vector/kernels.wasm
-    wasm-tools strip -a src/i32-array/kernels.wat -o src/i32-array/kernels.wasm
-    wasm-tools strip -a src/json/kernels.wat -o src/json/kernels.wasm
-    wasm-tools strip -a src/matrix2d/kernels.wat -o src/matrix2d/kernels.wasm
-    wasm-tools strip -a src/matrix3d/kernels.wat -o src/matrix3d/kernels.wasm
-    wasm-tools strip -a src/rank-select-bit-vector/kernels.wat -o src/rank-select-bit-vector/kernels.wasm
-    wasm-tools strip -a src/roaring-bitmap/kernels.wat -o src/roaring-bitmap/kernels.wasm
-    wasm-tools strip -a src/shared-buffer/kernels.wat -o src/shared-buffer/kernels.wasm
-    wasm-tools strip -a src/static-mphf-u32/kernels.wat -o src/static-mphf-u32/kernels.wasm
-    wasm-tools strip -a src/packed-delta-uint32-list/kernels.wat -o src/packed-delta-uint32-list/kernels.wasm
-    wasm-tools strip -a src/wavelet-matrix-uint16/kernels.wat -o src/wavelet-matrix-uint16/kernels.wasm
-    wasm-tools strip -a src/wavelet-matrix-uint32/kernels.wat -o src/wavelet-matrix-uint32/kernels.wasm
-    wasm-tools strip -a src/wavelet-matrix-uint8/kernels.wat -o src/wavelet-matrix-uint8/kernels.wasm
-    wasm-tools strip -a src/fm-index-bytes/kernels.wat -o src/fm-index-bytes/kernels.wasm
-    wasm-tools strip -a src/compressed-string-table/kernels.wat -o src/compressed-string-table/kernels.wasm
-    wasm-tools strip -a src/columnar/kernels.wat -o src/columnar/kernels.wasm
-    wasm-tools strip -a src/blocked-bloom-filter/kernels.wat -o src/blocked-bloom-filter/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/adaptive-simd-page-i32/kernels.wat -o packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/bytes/kernels.wat -o packages/jsimd/src/bytes/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/bitmap/kernels.wat -o packages/jsimd/src/bitmap/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/bit-matrix/kernels.wat -o packages/jsimd/src/bit-matrix/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/bit-histogram32/kernels.wat -o packages/jsimd/src/bit-histogram32/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/byte-key-flat-hash/kernels.wat -o packages/jsimd/src/byte-key-flat-hash/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/binary-vector-index/kernels.wat -o packages/jsimd/src/binary-vector-index/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/blocked-vector-array/kernels.wat -o packages/jsimd/src/blocked-vector-array/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/bit-sliced-column/kernels.wat -o packages/jsimd/src/bit-sliced-column/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/endian/kernels.wat -o packages/jsimd/src/endian/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/elias-fano-sequence/kernels.wat -o packages/jsimd/src/elias-fano-sequence/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/flat-hash/kernels.wat -o packages/jsimd/src/flat-hash/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/flat-hash-fixed16/kernels.wat -o packages/jsimd/src/flat-hash-fixed16/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/fingerprint-group16/kernels.wat -o packages/jsimd/src/fingerprint-group16/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/f32-vector/kernels.wat -o packages/jsimd/src/f32-vector/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/i32-array/kernels.wat -o packages/jsimd/src/i32-array/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/json/kernels.wat -o packages/jsimd/src/json/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/matrix2d/kernels.wat -o packages/jsimd/src/matrix2d/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/matrix3d/kernels.wat -o packages/jsimd/src/matrix3d/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/rank-select-bit-vector/kernels.wat -o packages/jsimd/src/rank-select-bit-vector/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/roaring-bitmap/kernels.wat -o packages/jsimd/src/roaring-bitmap/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/shared-buffer/kernels.wat -o packages/jsimd/src/shared-buffer/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/static-mphf-u32/kernels.wat -o packages/jsimd/src/static-mphf-u32/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/packed-delta-uint32-list/kernels.wat -o packages/jsimd/src/packed-delta-uint32-list/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/wavelet-matrix-uint16/kernels.wat -o packages/jsimd/src/wavelet-matrix-uint16/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/wavelet-matrix-uint32/kernels.wat -o packages/jsimd/src/wavelet-matrix-uint32/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/wavelet-matrix-uint8/kernels.wat -o packages/jsimd/src/wavelet-matrix-uint8/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/fm-index-bytes/kernels.wat -o packages/jsimd/src/fm-index-bytes/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/compressed-string-table/kernels.wat -o packages/jsimd/src/compressed-string-table/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/columnar/kernels.wat -o packages/jsimd/src/columnar/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/blocked-bloom-filter/kernels.wat -o packages/jsimd/src/blocked-bloom-filter/kernels.wasm
     wasm-tools strip -a experiments/parallel-columnar-query/kernels.wat -o experiments/parallel-columnar-query/kernels.wasm
     wasm-tools strip -a experiments/parallel-hybrid-query/kernels.wat -o experiments/parallel-hybrid-query/kernels.wasm
-    wasm-tools validate --features simd src/adaptive-simd-page-i32/kernels.wasm
-    wasm-tools validate --features simd src/bytes/kernels.wasm
-    wasm-tools validate --features simd src/bitmap/kernels.wasm
-    wasm-tools validate --features simd src/bit-matrix/kernels.wasm
-    wasm-tools validate --features simd src/bit-histogram32/kernels.wasm
-    wasm-tools validate --features simd src/byte-key-flat-hash/kernels.wasm
-    wasm-tools validate --features simd src/binary-vector-index/kernels.wasm
-    wasm-tools validate --features simd src/blocked-vector-array/kernels.wasm
-    wasm-tools validate --features simd src/bit-sliced-column/kernels.wasm
-    wasm-tools validate --features simd src/endian/kernels.wasm
-    wasm-tools validate --features simd src/elias-fano-sequence/kernels.wasm
-    wasm-tools validate --features simd src/flat-hash/kernels.wasm
-    wasm-tools validate --features simd src/flat-hash-fixed16/kernels.wasm
-    wasm-tools validate --features simd src/fingerprint-group16/kernels.wasm
-    wasm-tools validate --features simd src/f32-vector/kernels.wasm
-    wasm-tools validate --features simd src/i32-array/kernels.wasm
-    wasm-tools validate --features simd src/json/kernels.wasm
-    wasm-tools validate --features simd src/matrix2d/kernels.wasm
-    wasm-tools validate --features simd src/matrix3d/kernels.wasm
-    wasm-tools validate --features simd src/rank-select-bit-vector/kernels.wasm
-    wasm-tools validate --features simd src/roaring-bitmap/kernels.wasm
-    wasm-tools validate --features threads,simd src/shared-buffer/kernels.wasm
-    wasm-tools validate --features simd src/static-mphf-u32/kernels.wasm
-    wasm-tools validate --features simd src/packed-delta-uint32-list/kernels.wasm
-    wasm-tools validate --features simd src/wavelet-matrix-uint16/kernels.wasm
-    wasm-tools validate --features simd src/wavelet-matrix-uint32/kernels.wasm
-    wasm-tools validate --features simd src/wavelet-matrix-uint8/kernels.wasm
-    wasm-tools validate --features simd src/fm-index-bytes/kernels.wasm
-    wasm-tools validate --features simd src/compressed-string-table/kernels.wasm
-    wasm-tools validate --features simd src/columnar/kernels.wasm
-    wasm-tools validate --features simd src/blocked-bloom-filter/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/bytes/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/bitmap/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/bit-matrix/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/bit-histogram32/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/byte-key-flat-hash/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/binary-vector-index/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/blocked-vector-array/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/bit-sliced-column/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/endian/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/elias-fano-sequence/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/flat-hash/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/flat-hash-fixed16/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/fingerprint-group16/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/f32-vector/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/i32-array/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/json/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/matrix2d/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/matrix3d/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/rank-select-bit-vector/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/roaring-bitmap/kernels.wasm
+    wasm-tools validate --features threads,simd packages/jsimd/src/shared-buffer/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/static-mphf-u32/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/packed-delta-uint32-list/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/wavelet-matrix-uint16/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/wavelet-matrix-uint32/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/wavelet-matrix-uint8/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/fm-index-bytes/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/compressed-string-table/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/columnar/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/blocked-bloom-filter/kernels.wasm
     wasm-tools validate --features threads,simd experiments/parallel-columnar-query/kernels.wasm
     wasm-tools validate --features threads,simd experiments/parallel-hybrid-query/kernels.wasm
-    wasm-tools print src/adaptive-simd-page-i32/kernels.wasm | rg -q 'scan_between_for|scan_between_raw|scan_between_rle|scan_between_dictionary|scan_between_sparse|gather_sparse|sum_sparse|mask_count'
-    ! wasm-tools print src/adaptive-simd-page-i32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/bytes/kernels.wasm | rg -q 'find_byte'
-    ! wasm-tools print src/bytes/kernels.wasm | rg -q 'byte_swap32|json_token_starts|intersection_count|\(export "dot"'
-    wasm-tools print src/bitmap/kernels.wasm | rg -q 'intersection_count'
-    ! wasm-tools print src/bitmap/kernels.wasm | rg -q 'find_byte|\(export "dot"'
-    wasm-tools print src/bit-matrix/kernels.wasm | rg -q 'boolean_multiply|transpose|sparse_has|v128.any_true'
-    wasm-tools print src/bit-histogram32/kernels.wasm | rg -q 'i8x16.swizzle|i8x16.shr_u|i32x4.extend_low_i16x8_u'
-    wasm-tools print src/byte-key-flat-hash/kernels.wasm | rg -q 'lookup_many|insert_map_many|i8x16.bitmask'
-    wasm-tools print src/binary-vector-index/kernels.wasm | rg -q 'distance_many|pdx_distance_many|pdx_distance_selected|i8x16.popcnt'
-    wasm-tools print src/blocked-vector-array/kernels.wasm | rg -q 'squared_distance_many|l1_distance_many|inner_product_many|top_k_inner_product|f32x4.abs'
-    wasm-tools print src/bit-sliced-column/kernels.wasm | rg -q 'scan_eq|scan_between|mask_count'
-    ! wasm-tools print src/bit-sliced-column/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/endian/kernels.wasm | rg -q 'byte_swap32'
-    ! wasm-tools print src/endian/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|\(export "dot"'
-    wasm-tools print src/elias-fano-sequence/kernels.wasm | rg -q 'build_rank_index|lower_bound_many|decode_into'
-    ! wasm-tools print src/elias-fano-sequence/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|bitmap_and_count|decode_range|lookup_many|quantile_many|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/flat-hash/kernels.wasm | rg -q 'lookup_many|insert_map_many|map_lookup_many_u64|rehash_map_u64|rehash_set'
-    ! wasm-tools print src/flat-hash/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/flat-hash-fixed16/kernels.wasm | rg -q 'lookup_many|insert_map_many|i8x16.bitmask'
-    wasm-tools print src/fingerprint-group16/kernels.wasm | rg -q 'match_many|i8x16.bitmask'
-    wasm-tools print src/f32-vector/kernels.wasm | rg -q 'squared_distance|norm|cosine_similarity|\(export "dot"'
-    ! wasm-tools print src/f32-vector/kernels.wasm | rg -q 'find_byte|intersection_count'
-    wasm-tools print src/i32-array/kernels.wasm | rg -q '\(export "sum"'
-    ! wasm-tools print src/i32-array/kernels.wasm | rg -q 'find_byte|byte_swap32|intersection_count|\(export "dot"'
-    wasm-tools print src/json/kernels.wasm | rg -q 'json_token_starts'
-    ! wasm-tools print src/json/kernels.wasm | rg -q 'find_byte|intersection_count|\(export "dot"'
-    wasm-tools print src/matrix2d/kernels.wasm | rg -q 'matmul'
-    ! wasm-tools print src/matrix2d/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"'
-    wasm-tools print src/matrix3d/kernels.wasm | rg -q 'batched_matmul'
-    ! wasm-tools print src/matrix3d/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/rank-select-bit-vector/kernels.wasm | rg -q 'build_rank_index|select1|select0|rank0_many|next0|prev0'
-    ! wasm-tools print src/rank-select-bit-vector/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/roaring-bitmap/kernels.wasm | rg -q 'bitmap_and_count|bitmap_or_into|bitmap_xor_into|bitmap_and_not_into|array_bitmap_and_into'
-    ! wasm-tools print src/roaring-bitmap/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/shared-buffer/kernels.wasm | rg -q 'copy_bytes|reduce_shards_or|reduce_shards_and|reduce_shards_sum_u32|v128.or|v128.and|i32x4.add|i32x4.splat|v128.load|shared'
-    wasm-tools print src/static-mphf-u32/kernels.wasm | rg -q 'lookup_many|i32x4.mul'
-    ! wasm-tools print src/static-mphf-u32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/packed-delta-uint32-list/kernels.wasm | rg -q 'init_shuffle_table|decode_range|intersect_into'
-    ! wasm-tools print src/packed-delta-uint32-list/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/wavelet-matrix-uint16/kernels.wasm | rg -q 'access_many|rank_many|quantile_many|count_lt'
-    ! wasm-tools print src/wavelet-matrix-uint16/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/wavelet-matrix-uint32/kernels.wasm | rg -q 'access_many|rank_many|quantile_many|count_lt'
-    ! wasm-tools print src/wavelet-matrix-uint32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/wavelet-matrix-uint8/kernels.wasm | rg -q 'access_many|rank_many|quantile_many|count_lt'
-    wasm-tools print src/fm-index-bytes/kernels.wasm | rg -q 'count_many|i8x16.popcnt'
-    wasm-tools print src/compressed-string-table/kernels.wasm | rg -q 'equals_many|i8x16.bitmask'
-    wasm-tools print src/columnar/kernels.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into|i8x16.popcnt'
-    ! wasm-tools print src/columnar/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
-    wasm-tools print src/blocked-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|merge|i32x4.all_true'
+    wasm-tools print packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm | rg -q 'scan_between_for|scan_between_raw|scan_between_rle|scan_between_dictionary|scan_between_sparse|gather_sparse|sum_sparse|mask_count'
+    ! wasm-tools print packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
+    wasm-tools print packages/jsimd/src/bytes/kernels.wasm | rg -q 'find_byte'
+    ! wasm-tools print packages/jsimd/src/bytes/kernels.wasm | rg -q 'byte_swap32|json_token_starts|intersection_count|\(export "dot"'
+    wasm-tools print packages/jsimd/src/bitmap/kernels.wasm | rg -q 'intersection_count'
+    ! wasm-tools print packages/jsimd/src/bitmap/kernels.wasm | rg -q 'find_byte|\(export "dot"'
+    wasm-tools print packages/jsimd/src/bit-matrix/kernels.wasm | rg -q 'boolean_multiply|transpose|sparse_has|v128.any_true'
+    wasm-tools print packages/jsimd/src/bit-histogram32/kernels.wasm | rg -q 'i8x16.swizzle|i8x16.shr_u|i32x4.extend_low_i16x8_u'
+    wasm-tools print packages/jsimd/src/byte-key-flat-hash/kernels.wasm | rg -q 'lookup_many|insert_map_many|i8x16.bitmask'
+    wasm-tools print packages/jsimd/src/binary-vector-index/kernels.wasm | rg -q 'distance_many|pdx_distance_many|pdx_distance_selected|i8x16.popcnt'
+    wasm-tools print packages/jsimd/src/blocked-vector-array/kernels.wasm | rg -q 'squared_distance_many|l1_distance_many|inner_product_many|top_k_inner_product|f32x4.abs'
+    wasm-tools print packages/jsimd/src/bit-sliced-column/kernels.wasm | rg -q 'scan_eq|scan_between|mask_count'
+    ! wasm-tools print packages/jsimd/src/bit-sliced-column/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
+    wasm-tools print packages/jsimd/src/endian/kernels.wasm | rg -q 'byte_swap32'
+    ! wasm-tools print packages/jsimd/src/endian/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|\(export "dot"'
+    wasm-tools print packages/jsimd/src/elias-fano-sequence/kernels.wasm | rg -q 'build_rank_index|lower_bound_many|decode_into'
+    ! wasm-tools print packages/jsimd/src/elias-fano-sequence/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|bitmap_and_count|decode_range|lookup_many|quantile_many|\(export "dot"|\(export "matmul"'
+    wasm-tools print packages/jsimd/src/flat-hash/kernels.wasm | rg -q 'lookup_many|insert_map_many|map_lookup_many_u64|rehash_map_u64|rehash_set'
+    ! wasm-tools print packages/jsimd/src/flat-hash/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|\(export "dot"|\(export "matmul"'
+    wasm-tools print packages/jsimd/src/flat-hash-fixed16/kernels.wasm | rg -q 'lookup_many|insert_map_many|i8x16.bitmask'
+    wasm-tools print packages/jsimd/src/fingerprint-group16/kernels.wasm | rg -q 'match_many|i8x16.bitmask'
+    wasm-tools print packages/jsimd/src/f32-vector/kernels.wasm | rg -q 'squared_distance|norm|cosine_similarity|\(export "dot"'
+    ! wasm-tools print packages/jsimd/src/f32-vector/kernels.wasm | rg -q 'find_byte|intersection_count'
+    wasm-tools print packages/jsimd/src/i32-array/kernels.wasm | rg -q '\(export "sum"'
+    ! wasm-tools print packages/jsimd/src/i32-array/kernels.wasm | rg -q 'find_byte|byte_swap32|intersection_count|\(export "dot"'
+    wasm-tools print packages/jsimd/src/json/kernels.wasm | rg -q 'json_token_starts'
+    ! wasm-tools print packages/jsimd/src/json/kernels.wasm | rg -q 'find_byte|intersection_count|\(export "dot"'
+    wasm-tools print packages/jsimd/src/matrix2d/kernels.wasm | rg -q 'matmul'
+    ! wasm-tools print packages/jsimd/src/matrix2d/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"'
+    wasm-tools print packages/jsimd/src/matrix3d/kernels.wasm | rg -q 'batched_matmul'
+    ! wasm-tools print packages/jsimd/src/matrix3d/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|\(export "dot"|\(export "matmul"'
+    wasm-tools print packages/jsimd/src/rank-select-bit-vector/kernels.wasm | rg -q 'build_rank_index|select1|select0|rank0_many|next0|prev0'
+    ! wasm-tools print packages/jsimd/src/rank-select-bit-vector/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|\(export "dot"|\(export "matmul"'
+    wasm-tools print packages/jsimd/src/roaring-bitmap/kernels.wasm | rg -q 'bitmap_and_count|bitmap_or_into|bitmap_xor_into|bitmap_and_not_into|array_bitmap_and_into'
+    ! wasm-tools print packages/jsimd/src/roaring-bitmap/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|\(export "dot"|\(export "matmul"'
+    wasm-tools print packages/jsimd/src/shared-buffer/kernels.wasm | rg -q 'copy_bytes|reduce_shards_or|reduce_shards_and|reduce_shards_sum_u32|v128.or|v128.and|i32x4.add|i32x4.splat|v128.load|shared'
+    wasm-tools print packages/jsimd/src/static-mphf-u32/kernels.wasm | rg -q 'lookup_many|i32x4.mul'
+    ! wasm-tools print packages/jsimd/src/static-mphf-u32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
+    wasm-tools print packages/jsimd/src/packed-delta-uint32-list/kernels.wasm | rg -q 'init_shuffle_table|decode_range|intersect_into'
+    ! wasm-tools print packages/jsimd/src/packed-delta-uint32-list/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|\(export "dot"|\(export "matmul"'
+    wasm-tools print packages/jsimd/src/wavelet-matrix-uint16/kernels.wasm | rg -q 'access_many|rank_many|quantile_many|count_lt'
+    ! wasm-tools print packages/jsimd/src/wavelet-matrix-uint16/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
+    wasm-tools print packages/jsimd/src/wavelet-matrix-uint32/kernels.wasm | rg -q 'access_many|rank_many|quantile_many|count_lt'
+    ! wasm-tools print packages/jsimd/src/wavelet-matrix-uint32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|bitmap_and_count|decode_range|lookup_many|\(export "dot"|\(export "matmul"'
+    wasm-tools print packages/jsimd/src/wavelet-matrix-uint8/kernels.wasm | rg -q 'access_many|rank_many|quantile_many|count_lt'
+    wasm-tools print packages/jsimd/src/fm-index-bytes/kernels.wasm | rg -q 'count_many|i8x16.popcnt'
+    wasm-tools print packages/jsimd/src/compressed-string-table/kernels.wasm | rg -q 'equals_many|i8x16.bitmask'
+    wasm-tools print packages/jsimd/src/columnar/kernels.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into|i8x16.popcnt'
+    ! wasm-tools print packages/jsimd/src/columnar/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
+    wasm-tools print packages/jsimd/src/blocked-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|merge|i32x4.all_true'
     wasm-tools print experiments/parallel-columnar-query/kernels.wasm | rg -q 'scan_i32_between_aggregate|scan_i32_between_group_by_u8|i64x2.extend_low_i32x4_s|i32x4.bitmask|shared'
     wasm-tools print experiments/parallel-hybrid-query/kernels.wasm | rg -q 'scan_i32_between_mask|masked_squared_l2_top1_pdx64|masked_squared_l2_topk_pdx64|masked_squared_l2_topk_pdx64_pruned|masked_hamming_top1|masked_hamming_topk|pdx64_squared_l2_selected|i32x4.bitmask|f32x4.mul|i8x16.popcnt|shared'
 
@@ -125,10 +125,10 @@ test-parallel-hybrid-query: build
     deno test -A experiments/parallel-hybrid-query
 
 bench-record-vitest suite output:
-    deno run -A tools/benchmark/record_vitest.ts {{suite}} {{output}}
+    deno run -A packages/bench/src/record_vitest.ts {{suite}} {{output}}
 
 bench-record-all-vitest:
-    deno run -A tools/benchmark/record_all_vitest.ts
+    deno run -A packages/bench/src/record_all_vitest.ts
 
 bench-record-multithread-vector-search: build
     JSIMD_EXAMPLE_VECTOR_OUTPUT=examples/multithread-vector-search/benchmarks/baseline.json deno run -A examples/multithread-vector-search/bench.ts
@@ -196,17 +196,20 @@ bench-record-parallel-columnar-duckdb-browser: build
     JSIMD_DUCKDB_OUTPUT_DIR=experiments/parallel-columnar-query/benchmarks deno run -A tools/bench-parallel-columnar-duckdb-browser.ts
 
 bench-columnar-schema-indexeddb-browser: build
-    pnpm exec tsc -p experiments/columnar-schema-engine/browser-benchmark/tsconfig.json
-    pnpm exec vite build experiments/columnar-schema-engine/browser-benchmark
+    pnpm exec tsc -p packages/columnar/fixtures/browser-benchmark/tsconfig.json
+    pnpm exec vite build packages/columnar/fixtures/browser-benchmark
     deno run -A tools/bench-columnar-schema-indexeddb-browser.ts
 
 bench-record-columnar-schema-indexeddb-browser: build
-    pnpm exec tsc -p experiments/columnar-schema-engine/browser-benchmark/tsconfig.json
-    pnpm exec vite build experiments/columnar-schema-engine/browser-benchmark
-    JSIMD_INDEXEDDB_OUTPUT=experiments/columnar-schema-engine/benchmarks/indexeddb-browser.json deno run -A tools/bench-columnar-schema-indexeddb-browser.ts
+    pnpm exec tsc -p packages/columnar/fixtures/browser-benchmark/tsconfig.json
+    pnpm exec vite build packages/columnar/fixtures/browser-benchmark
+    JSIMD_INDEXEDDB_OUTPUT=packages/columnar/benchmarks/indexeddb-browser.json deno run -A tools/bench-columnar-schema-indexeddb-browser.ts
 
 bench-record-columnar-schema-engine: build
-    JSIMD_COLUMNAR_SCHEMA_OUTPUT=experiments/columnar-schema-engine/benchmarks/baseline.json deno run -A experiments/columnar-schema-engine/record_benchmark.ts
+    JSIMD_COLUMNAR_SCHEMA_OUTPUT=packages/columnar/benchmarks/baseline.json deno run -A packages/columnar/benchmarks/record_benchmark.ts
+
+bench-columnar-schema-engine: build
+    pnpm exec vitest bench packages/columnar/benchmarks
 
 check-benchmark-results:
     deno run -A tools/check-benchmark-results.ts
@@ -216,6 +219,8 @@ check-build-budgets:
 
 build-package: build
     deno run -A tools/build-package.ts
+    pnpm --filter @mizchi/jsimd-shared build
+    pnpm --filter @mizchi/jsimd-columnar build
 
 memory-profile: build
     node --no-warnings --expose-gc tools/profile-memory.ts
@@ -233,13 +238,13 @@ bench: build
     deno bench -A
 
 check: test package-smoke
-    test "$(find dist -name '*_test.js' -o -name '*_test.d.ts' | wc -l | tr -d ' ')" = "0"
+    test "$(find packages/jsimd/dist -name '*_test.js' -o -name '*_test.d.ts' | wc -l | tr -d ' ')" = "0"
     deno fmt --check
     deno lint
     deno run -A tools/check-benchmark-results.ts
     pnpm exec tsc -p experiments/parallel-columnar-query/duckdb-comparison/tsconfig.json
     pnpm exec vite build experiments/parallel-columnar-query/duckdb-comparison
-    deno eval 'const p = JSON.parse(await Deno.readTextFile("package.json")); const d = JSON.parse(await Deno.readTextFile("deno.json")); if (p.version !== d.version || JSON.stringify(Object.keys(p.exports)) !== JSON.stringify(Object.keys(d.exports))) throw new Error("package.json and deno.json release metadata differ")'
+    deno eval 'const p = JSON.parse(await Deno.readTextFile("packages/jsimd/package.json")); const d = JSON.parse(await Deno.readTextFile("packages/jsimd/deno.json")); if (p.version !== d.version || JSON.stringify(Object.keys(p.exports)) !== JSON.stringify(Object.keys(d.exports))) throw new Error("package.json and deno.json release metadata differ")'
     pnpm exec tsc -p examples/tree-shake-blocked-bloom-filter/tsconfig.json
     pnpm exec vite build examples/tree-shake-blocked-bloom-filter
     test "$(find examples/tree-shake-blocked-bloom-filter/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
@@ -255,13 +260,13 @@ check: test package-smoke
     test "$(find examples/tree-shake-columnar/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-columnar/dist/assets/*.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into|i8x16.popcnt'
     ! wasm-tools print examples/tree-shake-columnar/dist/assets/*.wasm | rg -q 'find_byte|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
-    pnpm exec tsc -p experiments/columnar-schema-engine/tree-shake-fixture/tsconfig.json
-    pnpm exec vite build experiments/columnar-schema-engine/tree-shake-fixture
-    test "$(find experiments/columnar-schema-engine/tree-shake-fixture/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
-    wasm-tools print experiments/columnar-schema-engine/tree-shake-fixture/dist/assets/*.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into'
-    ! rg -q 'node:fs|node:path' experiments/columnar-schema-engine/tree-shake-fixture/dist/assets/*.js
-    pnpm exec tsc -p experiments/columnar-schema-engine/browser-benchmark/tsconfig.json
-    pnpm exec vite build experiments/columnar-schema-engine/browser-benchmark
+    pnpm exec tsc -p packages/columnar/fixtures/tree-shake/tsconfig.json
+    pnpm exec vite build packages/columnar/fixtures/tree-shake
+    test "$(find packages/columnar/fixtures/tree-shake/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    wasm-tools print packages/columnar/fixtures/tree-shake/dist/assets/*.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into'
+    ! rg -q 'node:fs|node:path' packages/columnar/fixtures/tree-shake/dist/assets/*.js
+    pnpm exec tsc -p packages/columnar/fixtures/browser-benchmark/tsconfig.json
+    pnpm exec vite build packages/columnar/fixtures/browser-benchmark
     pnpm exec tsc -p examples/tree-shake-binary-vector-index/tsconfig.json
     pnpm exec vite build examples/tree-shake-binary-vector-index
     test "$(find examples/tree-shake-binary-vector-index/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"

@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { WaveletMatrixUint32 } from "../../src/wavelet-matrix-uint32/mod.ts";
+import { WaveletMatrixUint32 } from "../../packages/jsimd/src/wavelet-matrix-uint32/mod.ts";
 
 function lowerBound(values: Uint32Array, target: number): number {
   let low = 0;

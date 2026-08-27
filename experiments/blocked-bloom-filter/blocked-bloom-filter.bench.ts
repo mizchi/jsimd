@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { BlockedBloomFilterU32 } from "../../src/blocked-bloom-filter/mod.ts";
+import { BlockedBloomFilterU32 } from "../../packages/jsimd/src/blocked-bloom-filter/mod.ts";
 
 const KEY_COUNT = 262_144;
 const QUERY_COUNT = 1_048_576;

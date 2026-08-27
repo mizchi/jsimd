@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/bit-sliced-column/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/bit-sliced-column/mod.ts", "src.ts"]
 }

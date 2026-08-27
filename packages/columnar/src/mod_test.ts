@@ -11,7 +11,7 @@ import {
   u8,
 } from "./mod.ts";
 import { NodeFsPageBackend } from "./node.ts";
-import { SelectionMask } from "../../src/columnar/mod.ts";
+import { SelectionMask } from "@mizchi/jsimd/columnar";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);

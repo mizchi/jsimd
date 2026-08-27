@@ -1,9 +1,6 @@
 import { PdxBlockPruningExperiment } from "./pdx_block_pruning.ts";
-import {
-  type BenchmarkMeasurement,
-  summarizeBenchmarkSamples,
-} from "../../tools/benchmark/measure.ts";
-import { createBenchmarkResult, detectBenchmarkEnvironment } from "../../tools/benchmark/result.ts";
+import { type BenchmarkMeasurement, summarizeBenchmarkSamples } from "@mizchi/jsimd-bench/measure";
+import { createBenchmarkResult, detectBenchmarkEnvironment } from "@mizchi/jsimd-bench/result";
 
 type PhysicalLayout = "clustered-blocks" | "shuffled-clusters";
 

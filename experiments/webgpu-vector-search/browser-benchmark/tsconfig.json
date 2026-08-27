@@ -11,8 +11,8 @@
   },
   "include": [
     "../../parallel-hybrid-query/*.ts",
-    "../../../src/shared-buffer/**/*.ts",
-    "../../../src/blocked-vector-array/mod.ts",
+    "../../../packages/jsimd/src/shared-buffer/**/*.ts",
+    "../../../packages/jsimd/src/blocked-vector-array/mod.ts",
     "../browser_matrix.ts",
     "../gpu_index.ts",
     "../kernels.wgsl.ts",

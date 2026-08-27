@@ -1,4 +1,4 @@
-import { FmIndexBytes } from "../../src/fm-index-bytes/mod.ts";
+import { FmIndexBytes } from "../../packages/jsimd/src/fm-index-bytes/mod.ts";
 
 const encoder = new TextEncoder();
 using index = FmIndexBytes.from(encoder.encode("banana"));

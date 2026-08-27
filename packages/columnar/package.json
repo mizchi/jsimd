@@ -1,0 +1,21 @@
+{
+  "name": "@mizchi/jsimd-columnar",
+  "version": "0.1.0",
+  "description": "Experimental typed page storage and columnar query engine built on jsimd",
+  "type": "module",
+  "exports": {
+    ".": "./dist/mod.js",
+    "./node": "./dist/node.js"
+  },
+  "types": "./dist/mod.d.ts",
+  "sideEffects": false,
+  "files": ["dist/", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "deno test -A src"
+  },
+  "dependencies": { "@mizchi/jsimd": "workspace:^" },
+  "devDependencies": { "@mizchi/jsimd-bench": "workspace:*" },
+  "license": "MIT",
+  "publishConfig": { "access": "public" }
+}

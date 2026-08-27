@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/elias-fano-sequence/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/elias-fano-sequence/mod.ts", "src.ts"]
 }

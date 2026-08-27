@@ -120,8 +120,8 @@ result.
 
 ## Maintenance
 
-- [ ] Split root `mod_test.ts` coverage into colocated `src/<name>/*_test.ts` files without shipping
-      tests in the npm artifact.
+- [ ] Split `packages/jsimd/mod_test.ts` coverage into colocated
+      `packages/jsimd/src/<name>/*_test.ts` files without shipping tests in the npm artifact.
 - [ ] Add a small release manifest test that compares `src` public directories, package exports,
       generated declarations, README files, WAT sources, and emitted Wasm assets.
 - [ ] Keep isolated Vite fixtures for every public entrypoint and require exactly one expected Wasm
@@ -154,8 +154,8 @@ workload.
 - A slower point convenience is acceptable only when a separate primary bulk workload wins and the
   README documents the trade-off.
 - Use `using` in every public owning-structure example.
-- Keep each public entrypoint under `src/<name>/` with its README, WAT source, typed Wasm
-  declaration, tests, benchmark, and isolated tree-shake fixture.
+- Keep each public entrypoint under `packages/jsimd/src/<name>/` with its README, WAT source, typed
+  Wasm declaration, tests, benchmark, and isolated tree-shake fixture.
 - Generate stripped Wasm with `wasm-tools`, validate the required SIMD/threads features, and keep
   generated `.wasm` files Git-ignored.
 - Record benchmark sources, exact baselines, gzip bundle sizes, and slower cases in the feature

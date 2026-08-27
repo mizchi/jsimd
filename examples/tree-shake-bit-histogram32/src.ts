@@ -1,4 +1,4 @@
-import { BitHistogram32 } from "../../src/bit-histogram32/mod.ts";
+import { BitHistogram32 } from "../../packages/jsimd/src/bit-histogram32/mod.ts";
 
 using histogram = new BitHistogram32();
 histogram.add(new Uint32Array([1, 3, 0xffff_ffff]));

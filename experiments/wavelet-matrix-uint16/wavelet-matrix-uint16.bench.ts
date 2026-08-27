@@ -1,6 +1,6 @@
 import { afterAll, bench, describe } from "vitest";
-import { WaveletMatrixUint16 } from "../../src/wavelet-matrix-uint16/mod.ts";
-import { WaveletMatrixUint32 } from "../../src/wavelet-matrix-uint32/mod.ts";
+import { WaveletMatrixUint16 } from "../../packages/jsimd/src/wavelet-matrix-uint16/mod.ts";
+import { WaveletMatrixUint32 } from "../../packages/jsimd/src/wavelet-matrix-uint32/mod.ts";
 
 const LENGTH = 262_144;
 const BATCH_QUERIES = 4_096;

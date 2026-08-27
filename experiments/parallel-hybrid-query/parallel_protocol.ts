@@ -1,4 +1,4 @@
-import type { SharedWorkerLease } from "../../src/shared-buffer/mod.ts";
+import type { SharedWorkerLease } from "../../packages/jsimd/src/shared-buffer/mod.ts";
 
 export interface HybridWorkerInit {
   readonly type: "init";

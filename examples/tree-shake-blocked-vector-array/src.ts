@@ -1,4 +1,4 @@
-import { BlockedVectorArray } from "../../src/blocked-vector-array/mod.ts";
+import { BlockedVectorArray } from "../../packages/jsimd/src/blocked-vector-array/mod.ts";
 
 using vectors = BlockedVectorArray.from(
   new Float32Array([0, 1, 1, 0, 2, 2]),

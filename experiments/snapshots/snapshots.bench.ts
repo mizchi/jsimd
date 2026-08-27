@@ -1,11 +1,11 @@
 import { bench, describe } from "vitest";
-import { BinaryVectorIndex } from "../../src/binary-vector-index/mod.ts";
-import { CompressedStringTable } from "../../src/compressed-string-table/mod.ts";
-import { EliasFanoSequence } from "../../src/elias-fano-sequence/mod.ts";
-import { FmIndexBytes } from "../../src/fm-index-bytes/mod.ts";
-import { StaticMphfU32 } from "../../src/static-mphf-u32/mod.ts";
-import { WaveletMatrixUint32 } from "../../src/wavelet-matrix-uint32/mod.ts";
-import { WaveletMatrixUint8 } from "../../src/wavelet-matrix-uint8/mod.ts";
+import { BinaryVectorIndex } from "../../packages/jsimd/src/binary-vector-index/mod.ts";
+import { CompressedStringTable } from "../../packages/jsimd/src/compressed-string-table/mod.ts";
+import { EliasFanoSequence } from "../../packages/jsimd/src/elias-fano-sequence/mod.ts";
+import { FmIndexBytes } from "../../packages/jsimd/src/fm-index-bytes/mod.ts";
+import { StaticMphfU32 } from "../../packages/jsimd/src/static-mphf-u32/mod.ts";
+import { WaveletMatrixUint32 } from "../../packages/jsimd/src/wavelet-matrix-uint32/mod.ts";
+import { WaveletMatrixUint8 } from "../../packages/jsimd/src/wavelet-matrix-uint8/mod.ts";
 
 const fmText = Uint8Array.from(
   { length: 8_192 },

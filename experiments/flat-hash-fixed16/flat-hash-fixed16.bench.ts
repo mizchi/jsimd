@@ -1,5 +1,8 @@
 import { afterAll, bench, describe } from "vitest";
-import { FlatHashMapFixed16U32, FlatHashSetFixed16 } from "../../src/flat-hash-fixed16/mod.ts";
+import {
+  FlatHashMapFixed16U32,
+  FlatHashSetFixed16,
+} from "../../packages/jsimd/src/flat-hash-fixed16/mod.ts";
 
 const LENGTH = 131_072;
 const QUERY_LENGTH = 65_536;

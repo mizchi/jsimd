@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/i32-array/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/i32-array/mod.ts", "src.ts"]
 }

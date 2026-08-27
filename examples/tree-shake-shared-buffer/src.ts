@@ -13,7 +13,7 @@ import {
   StripedHistogram,
   VersionedBuffer,
   WorkStealingDequeU32,
-} from "../../src/shared-buffer/mod.ts";
+} from "../../packages/jsimd/src/shared-buffer/mod.ts";
 
 async function main(): Promise<void> {
   using shared = await SharedBuffer.create({ maxWorkers: 2 });

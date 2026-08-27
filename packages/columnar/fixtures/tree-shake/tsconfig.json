@@ -10,7 +10,7 @@
     "target": "ESNext"
   },
   "include": [
-    "../../../src/columnar/mod.ts",
+    "../../src/**/*.ts",
     "../backend.ts",
     "../engine.ts",
     "../indexeddb_backend.ts",
@@ -19,5 +19,6 @@
     "../schema.ts",
     "../stored_page.ts",
     "src.ts"
-  ]
+  ],
+  "exclude": ["../../src/**/*_test.ts"]
 }

@@ -1,8 +1,8 @@
-import { detectHostCpu, runBrowserBenchmark } from "./benchmark/browser_runner.ts";
-import { type BenchmarkResultV1, validateBenchmarkResult } from "./benchmark/result.ts";
+import { detectHostCpu, runBrowserBenchmark } from "../packages/bench/src/browser_runner.ts";
+import { type BenchmarkResultV1, validateBenchmarkResult } from "../packages/bench/src/result.ts";
 
 const root = new URL(
-  "../experiments/columnar-schema-engine/browser-benchmark/dist/",
+  "../packages/columnar/fixtures/browser-benchmark/dist/",
   import.meta.url,
 );
 const rows = positiveInteger(Deno.env.get("JSIMD_INDEXEDDB_ROWS") ?? "4194304", "rows");

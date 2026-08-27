@@ -6,7 +6,7 @@ import {
   type SharedWorkerLease,
   type SpscProducerU32,
   SpscRingBufferU32,
-} from "../../src/shared-buffer/mod.ts";
+} from "../../packages/jsimd/src/shared-buffer/mod.ts";
 import { STOP_TASK, type VectorWorkerInit, type VectorWorkerMessage } from "./protocol.ts";
 
 const WASM_PAGE_BYTES = 65_536;

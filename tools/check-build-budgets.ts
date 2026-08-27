@@ -1,10 +1,12 @@
-import { type BuildBudgetManifest, checkBuildBudgets } from "./benchmark/build_budget.ts";
+import { type BuildBudgetManifest, checkBuildBudgets } from "../packages/bench/src/build_budget.ts";
 
 const root = new URL("../", import.meta.url);
 const manifest = JSON.parse(
-  await Deno.readTextFile(new URL("benchmark/build-budgets.json", import.meta.url)),
+  await Deno.readTextFile(new URL("../packages/bench/build-budgets.json", import.meta.url)),
 ) as BuildBudgetManifest;
-const packageJson = JSON.parse(await Deno.readTextFile(new URL("package.json", root))) as {
+const packageJson = JSON.parse(
+  await Deno.readTextFile(new URL("packages/jsimd/package.json", root)),
+) as {
   exports: Record<string, unknown>;
 };
 const summaries = await checkBuildBudgets(root, manifest, Object.keys(packageJson.exports));

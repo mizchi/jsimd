@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/f32-vector/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/f32-vector/mod.ts", "src.ts"]
 }

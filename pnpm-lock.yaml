@@ -11,6 +11,18 @@ importers:
       '@duckdb/duckdb-wasm':
         specifier: 1.32.0
         version: 1.32.0
+      '@mizchi/jsimd':
+        specifier: workspace:*
+        version: link:packages/jsimd
+      '@mizchi/jsimd-bench':
+        specifier: workspace:*
+        version: link:packages/bench
+      '@mizchi/jsimd-columnar':
+        specifier: workspace:*
+        version: link:packages/columnar
+      '@mizchi/jsimd-shared':
+        specifier: workspace:*
+        version: link:packages/shared
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
@@ -23,6 +35,30 @@ importers:
       vitest:
         specifier: 4.1.11
         version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2))
+
+  packages/bench:
+    dependencies:
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2))
+
+  packages/columnar:
+    dependencies:
+      '@mizchi/jsimd':
+        specifier: workspace:^
+        version: link:../jsimd
+    devDependencies:
+      '@mizchi/jsimd-bench':
+        specifier: workspace:*
+        version: link:../bench
+
+  packages/jsimd: {}
+
+  packages/shared:
+    dependencies:
+      '@mizchi/jsimd':
+        specifier: workspace:^
+        version: link:../jsimd
 
 packages:
 

@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/packed-delta-uint32-list/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/packed-delta-uint32-list/mod.ts", "src.ts"]
 }

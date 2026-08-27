@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/fm-index-bytes/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/fm-index-bytes/mod.ts", "src.ts"]
 }

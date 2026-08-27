@@ -13,13 +13,13 @@
     "verbatimModuleSyntax": true
   },
   "include": [
-    "../../src/blocked-vector-array/**/*.ts",
-    "../../src/internal/**/*.ts",
-    "../../src/shared-buffer/**/*.ts",
+    "../../packages/jsimd/src/blocked-vector-array/**/*.ts",
+    "../../packages/jsimd/src/internal/**/*.ts",
+    "../../packages/jsimd/src/shared-buffer/**/*.ts",
     "protocol.ts",
     "search.ts",
     "src.ts",
     "worker.ts"
   ],
-  "exclude": ["../../src/**/*_test.ts", "search_test.ts"]
+  "exclude": ["../../packages/jsimd/src/**/*_test.ts", "search_test.ts"]
 }

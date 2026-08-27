@@ -9,5 +9,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["../../src/compressed-string-table/mod.ts", "src.ts"]
+  "include": ["../../packages/jsimd/src/compressed-string-table/mod.ts", "src.ts"]
 }

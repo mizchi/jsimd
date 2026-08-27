@@ -1,4 +1,4 @@
-import { BitMatrix, SparseBitMatrix } from "../../src/bit-matrix/mod.ts";
+import { BitMatrix, SparseBitMatrix } from "../../packages/jsimd/src/bit-matrix/mod.ts";
 
 using graph = BitMatrix.fromEdges(3, 3, [[0, 1], [1, 2]]);
 using twoSteps = graph.multiply(graph);

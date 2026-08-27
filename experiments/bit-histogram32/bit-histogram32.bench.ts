@@ -1,5 +1,5 @@
 import { afterAll, bench, describe } from "vitest";
-import { BitHistogram32, bitHistogram32 } from "../../src/bit-histogram32/mod.ts";
+import { BitHistogram32, bitHistogram32 } from "../../packages/jsimd/src/bit-histogram32/mod.ts";
 
 const LENGTH = 262_144;
 const dense = Uint32Array.from(

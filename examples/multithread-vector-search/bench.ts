@@ -1,10 +1,7 @@
-import { BlockedVectorArray } from "../../src/blocked-vector-array/mod.ts";
+import { BlockedVectorArray } from "../../packages/jsimd/src/blocked-vector-array/mod.ts";
 import { MultithreadVectorSearch } from "./search.ts";
-import {
-  type BenchmarkMeasurement,
-  summarizeBenchmarkSamples,
-} from "../../tools/benchmark/measure.ts";
-import { createBenchmarkResult, detectBenchmarkEnvironment } from "../../tools/benchmark/result.ts";
+import { type BenchmarkMeasurement, summarizeBenchmarkSamples } from "@mizchi/jsimd-bench/measure";
+import { createBenchmarkResult, detectBenchmarkEnvironment } from "@mizchi/jsimd-bench/result";
 
 const COUNTS = [32_768, 131_072, 262_144, 524_288] as const;
 const DIMENSIONS = 128;

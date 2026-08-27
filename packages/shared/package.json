@@ -1,0 +1,14 @@
+{
+  "name": "@mizchi/jsimd-shared",
+  "version": "0.1.0",
+  "description": "SharedArrayBuffer and Web Worker primitives for jsimd",
+  "type": "module",
+  "exports": { ".": "./dist/mod.js" },
+  "types": "./dist/mod.d.ts",
+  "sideEffects": false,
+  "files": ["dist/", "README.md"],
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "dependencies": { "@mizchi/jsimd": "workspace:^" },
+  "license": "MIT",
+  "publishConfig": { "access": "public" }
+}

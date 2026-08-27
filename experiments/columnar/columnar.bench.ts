@@ -4,7 +4,7 @@ import {
   AdaptiveU32Column,
   BitSlicedU8Column,
   SelectionMask,
-} from "../../src/columnar/mod.ts";
+} from "../../packages/jsimd/src/columnar/mod.ts";
 
 const LENGTH = 4_194_304;
 const MINIMUM = 4_000_000;
