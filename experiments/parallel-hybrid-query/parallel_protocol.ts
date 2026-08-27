@@ -9,6 +9,8 @@ export interface HybridWorkerInit {
   readonly allMaskOffset: number;
   readonly scratchOffset: number;
   readonly resultOffset: number;
+  readonly outputIdsOffset: number;
+  readonly outputDistancesOffset: number;
   readonly rowStart: number;
   readonly rowCount: number;
   readonly dimensions: number;
@@ -19,6 +21,7 @@ export interface HybridWorkerSearch {
   readonly epoch: number;
   readonly generation: number;
   readonly mask: "predicate" | "all";
+  readonly selector: "javascript" | "wasm";
   readonly k: number;
 }
 

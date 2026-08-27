@@ -53,6 +53,7 @@ Deno.test("vector-first remains exact while filter-first stays the default", asy
 
   const defaultPlan = await index.searchBetween(query, 0, 5, { k: 2 });
   assert(defaultPlan.plan === "filter-first", "the measured winner remains the default");
+  assert(defaultPlan.selector === "wasm", "the measured selector remains the default");
   assert(defaultPlan.ids.join(",") === "200,199", "default result remains exact");
 });
 
@@ -67,6 +68,28 @@ Deno.test("parallel hybrid index validates top-k and releases Worker leases", as
   await index[Symbol.asyncDispose]();
   assert(index.disposed, "disposed state");
   await assertRejects(() => index.searchBetween(query, 0, 5, { k: 1 }));
+});
+
+Deno.test("fused Wasm and JavaScript Worker-local selectors agree", async () => {
+  const count = 193;
+  const dimensions = 7;
+  const { filters, vectors } = fixture(count, dimensions);
+  await using index = await ParallelHybridVectorIndex.create(filters, vectors, dimensions, {
+    workerCount: 3,
+    maxK: 8,
+  });
+  const query = vectors.slice(111 * dimensions, 112 * dimensions);
+
+  for (const k of [1, 3, 8]) {
+    const javascript = await index.searchBetween(query, 1, 4, {
+      k,
+      selector: "javascript",
+    });
+    const wasm = await index.searchBetween(query, 1, 4, { k, selector: "wasm" });
+    assert(wasm.selector === "wasm", "reported selector");
+    assert(wasm.ids.join(",") === javascript.ids.join(","), `k=${k}: ids`);
+    assert(wasm.distances.join(",") === javascript.distances.join(","), `k=${k}: distances`);
+  }
 });
 
 async function assertRejects(operation: () => Promise<unknown>): Promise<void> {

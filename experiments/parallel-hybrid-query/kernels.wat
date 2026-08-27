@@ -40,7 +40,7 @@
 
   ;; Computes PDX64 squared-L2 blocks only when their selection words are
   ;; non-empty, then finds top-1 by iterating set bits with ctz.
-  (func (export "masked_squared_l2_top1_pdx64")
+  (func $masked_squared_l2_top1_pdx64 (export "masked_squared_l2_top1_pdx64")
     (param $vectors i32) (param $query i32) (param $count i32)
     (param $dimensions i32) (param $mask i32) (param $scratch i32) (param $result i32)
     (local $block i32) (local $blocks i32) (local $dimension i32) (local $group i32)
@@ -123,6 +123,150 @@
     local.get $result local.get $best_id i32.store
     local.get $result local.get $best_distance f32.store offset=4
     local.get $result local.get $selected i32.store offset=8)
+
+  (func $pair_greater
+    (param $left_distance f32) (param $left_id i32)
+    (param $right_distance f32) (param $right_id i32) (result i32)
+    local.get $left_distance local.get $right_distance f32.gt
+    if (result i32)
+      i32.const 1
+    else
+      local.get $left_distance local.get $right_distance f32.eq
+      if (result i32)
+        local.get $left_id local.get $right_id i32.gt_u
+      else
+        i32.const 0
+      end
+    end)
+
+  (func $swap_pair
+    (param $ids i32) (param $distances i32) (param $left i32) (param $right i32)
+    (local $left_id i32) (local $left_distance f32)
+    local.get $ids local.get $left i32.const 2 i32.shl i32.add i32.load local.set $left_id
+    local.get $distances local.get $left i32.const 2 i32.shl i32.add
+    f32.load local.set $left_distance
+    local.get $ids local.get $left i32.const 2 i32.shl i32.add
+    local.get $ids local.get $right i32.const 2 i32.shl i32.add i32.load i32.store
+    local.get $distances local.get $left i32.const 2 i32.shl i32.add
+    local.get $distances local.get $right i32.const 2 i32.shl i32.add f32.load f32.store
+    local.get $ids local.get $right i32.const 2 i32.shl i32.add local.get $left_id i32.store
+    local.get $distances local.get $right i32.const 2 i32.shl i32.add
+    local.get $left_distance f32.store)
+
+  (func $sift_up
+    (param $ids i32) (param $distances i32) (param $start i32)
+    (local $child i32) (local $parent i32)
+    local.get $start local.set $child
+    block $done loop $loop
+      local.get $child i32.eqz br_if $done
+      local.get $child i32.const 1 i32.sub i32.const 1 i32.shr_u local.set $parent
+      local.get $distances local.get $parent i32.const 2 i32.shl i32.add f32.load
+      local.get $ids local.get $parent i32.const 2 i32.shl i32.add i32.load
+      local.get $distances local.get $child i32.const 2 i32.shl i32.add f32.load
+      local.get $ids local.get $child i32.const 2 i32.shl i32.add i32.load
+      call $pair_greater br_if $done
+      local.get $ids local.get $distances local.get $parent local.get $child call $swap_pair
+      local.get $parent local.set $child
+      br $loop
+    end end)
+
+  (func $sift_down
+    (param $ids i32) (param $distances i32) (param $start i32) (param $size i32)
+    (local $parent i32) (local $left i32) (local $right i32) (local $child i32)
+    local.get $start local.set $parent
+    block $done loop $loop
+      local.get $parent i32.const 1 i32.shl i32.const 1 i32.add local.set $left
+      local.get $left local.get $size i32.ge_u br_if $done
+      local.get $left i32.const 1 i32.add local.set $right
+      local.get $left local.set $child
+      local.get $right local.get $size i32.lt_u
+      if
+        local.get $distances local.get $right i32.const 2 i32.shl i32.add f32.load
+        local.get $ids local.get $right i32.const 2 i32.shl i32.add i32.load
+        local.get $distances local.get $left i32.const 2 i32.shl i32.add f32.load
+        local.get $ids local.get $left i32.const 2 i32.shl i32.add i32.load
+        call $pair_greater
+        if local.get $right local.set $child end
+      end
+      local.get $distances local.get $child i32.const 2 i32.shl i32.add f32.load
+      local.get $ids local.get $child i32.const 2 i32.shl i32.add i32.load
+      local.get $distances local.get $parent i32.const 2 i32.shl i32.add f32.load
+      local.get $ids local.get $parent i32.const 2 i32.shl i32.add i32.load
+      call $pair_greater i32.eqz br_if $done
+      local.get $ids local.get $distances local.get $parent local.get $child call $swap_pair
+      local.get $child local.set $parent
+      br $loop
+    end end)
+
+  (func $select_masked_top_k (param $scratch i32) (param $count i32) (param $mask i32)
+    (param $output_ids i32) (param $output_distances i32) (param $k i32) (result i32)
+    (local $word_index i32) (local $word_count i32) (local $word i32)
+    (local $bit i32) (local $candidate i32) (local $candidate_distance f32)
+    (local $filled i32) (local $heap_size i32)
+
+    local.get $k i32.eqz if i32.const 0 return end
+    local.get $count i32.const 31 i32.add i32.const 5 i32.shr_u local.set $word_count
+    block $words_done loop $word_loop
+      local.get $word_index local.get $word_count i32.ge_u br_if $words_done
+      local.get $mask local.get $word_index i32.const 2 i32.shl i32.add i32.load local.set $word
+      block $bits_done loop $bit_loop
+        local.get $word i32.eqz br_if $bits_done
+        local.get $word i32.ctz local.set $bit
+        local.get $word_index i32.const 5 i32.shl local.get $bit i32.add local.set $candidate
+        local.get $candidate local.get $count i32.lt_u
+        if
+          local.get $scratch local.get $candidate i32.const 2 i32.shl i32.add
+          f32.load local.set $candidate_distance
+          local.get $filled local.get $k i32.lt_u
+          if
+            local.get $output_ids local.get $filled i32.const 2 i32.shl i32.add
+            local.get $candidate i32.store
+            local.get $output_distances local.get $filled i32.const 2 i32.shl i32.add
+            local.get $candidate_distance f32.store
+            local.get $output_ids local.get $output_distances local.get $filled call $sift_up
+            local.get $filled i32.const 1 i32.add local.set $filled
+          else
+            local.get $output_distances f32.load
+            local.get $output_ids i32.load
+            local.get $candidate_distance local.get $candidate call $pair_greater
+            if
+              local.get $output_ids local.get $candidate i32.store
+              local.get $output_distances local.get $candidate_distance f32.store
+              local.get $output_ids local.get $output_distances i32.const 0 local.get $k call $sift_down
+            end
+          end
+        end
+        local.get $word local.get $word i32.const 1 i32.sub i32.and local.set $word
+        br $bit_loop
+      end end
+      local.get $word_index i32.const 1 i32.add local.set $word_index
+      br $word_loop
+    end end
+
+    local.get $filled local.set $heap_size
+    block $sort_done loop $sort_loop
+      local.get $heap_size i32.const 1 i32.le_u br_if $sort_done
+      local.get $heap_size i32.const 1 i32.sub local.set $heap_size
+      local.get $output_ids local.get $output_distances i32.const 0 local.get $heap_size
+      call $swap_pair
+      local.get $output_ids local.get $output_distances i32.const 0 local.get $heap_size
+      call $sift_down
+      br $sort_loop
+    end end
+    local.get $filled)
+
+  ;; Uses the top-1 path to produce the selected SIMD score buffer, then keeps
+  ;; the bounded heap and sorted output entirely inside Wasm.
+  (func (export "masked_squared_l2_topk_pdx64")
+    (param $vectors i32) (param $query i32) (param $count i32)
+    (param $dimensions i32) (param $mask i32) (param $scratch i32)
+    (param $result i32) (param $output_ids i32) (param $output_distances i32)
+    (param $k i32) (result i32)
+    local.get $vectors local.get $query local.get $count local.get $dimensions
+    local.get $mask local.get $scratch local.get $result
+    call $masked_squared_l2_top1_pdx64
+    local.get $scratch local.get $count local.get $mask local.get $output_ids
+    local.get $output_distances local.get $k call $select_masked_top_k)
 
   ;; Finds the nearest selected fixed-width binary signature. Signature stride
   ;; is padded to 16 bytes so XOR + popcnt never requires a scalar tail.

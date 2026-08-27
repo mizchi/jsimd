@@ -14,6 +14,7 @@ import { SharedSelectionMask } from "./shared_selection_mask.ts";
 const WASM_PAGE_BYTES = 65_536;
 
 export type HybridPlan = "filter-first" | "vector-first";
+export type TopKSelector = "javascript" | "wasm";
 
 export interface ParallelHybridVectorIndexOptions {
   readonly workerCount?: number;
@@ -23,6 +24,7 @@ export interface ParallelHybridVectorIndexOptions {
 export interface HybridSearchOptions {
   readonly k: number;
   readonly plan?: HybridPlan;
+  readonly selector?: TopKSelector;
 }
 
 export interface HybridSearchResult {
@@ -30,6 +32,7 @@ export interface HybridSearchResult {
   readonly distances: Float32Array;
   readonly selectedCount: number;
   readonly plan: HybridPlan;
+  readonly selector: TopKSelector;
   readonly rounds: number;
 }
 
@@ -38,6 +41,8 @@ interface Shard {
   readonly rowCount: number;
   readonly scratchOffset: number;
   readonly resultOffset: number;
+  readonly outputIdsOffset: number;
+  readonly outputDistancesOffset: number;
 }
 
 interface Layout {
@@ -125,7 +130,7 @@ export class ParallelHybridVectorIndex implements AsyncDisposable {
     );
     const maxK = positiveInteger(options.maxK ?? 100, "maxK");
     const workerCount = Math.min(requestedWorkers, Math.ceil(filters.length / 64));
-    const layout = createLayout(filters.length, width, workerCount);
+    const layout = createLayout(filters.length, width, workerCount, maxK);
     const maxWorkers = workerCount + 1;
     const headerBytes = SHARED_BUFFER_CACHE_LINE_BYTES * (1 + maxWorkers);
     const pages = Math.max(1, Math.ceil((headerBytes + layout.byteLength) / WASM_PAGE_BYTES));
@@ -165,6 +170,8 @@ export class ParallelHybridVectorIndex implements AsyncDisposable {
           allMaskOffset: layout.allMaskOffset,
           scratchOffset: shard.scratchOffset,
           resultOffset: shard.resultOffset,
+          outputIdsOffset: shard.outputIdsOffset,
+          outputDistancesOffset: shard.outputDistancesOffset,
           rowStart: shard.rowStart,
           rowCount: shard.rowCount,
           dimensions: width,
@@ -216,6 +223,11 @@ export class ParallelHybridVectorIndex implements AsyncDisposable {
     if (requestedPlan !== "filter-first" && requestedPlan !== "vector-first") {
       throw new RangeError("unknown hybrid search plan");
     }
+    const requestedSelector = options.selector ?? "wasm";
+    if (requestedSelector !== "javascript" && requestedSelector !== "wasm") {
+      throw new RangeError("unknown top-k selector");
+    }
+    const selector = requestedPlan === "vector-first" ? "javascript" : requestedSelector;
     this.#busy = true;
     try {
       float32View(this.#shared, this.#layout.queryOffset, this.dimensions).set(query);
@@ -234,10 +246,10 @@ export class ParallelHybridVectorIndex implements AsyncDisposable {
       }
       const selectedCount = this.#predicateMask.read(generation).countOnes();
       const result = requestedPlan === "filter-first"
-        ? await this.#filterFirst(generation, selectedCount, k)
+        ? await this.#filterFirst(generation, selectedCount, k, selector)
         : await this.#vectorFirst(minimum, maximum, selectedCount, k);
       this.#queryCount++;
-      return { ...result, selectedCount, plan: requestedPlan };
+      return { ...result, selectedCount, plan: requestedPlan, selector };
     } finally {
       this.#busy = false;
     }
@@ -267,8 +279,13 @@ export class ParallelHybridVectorIndex implements AsyncDisposable {
     this.#shared[Symbol.dispose]();
   }
 
-  async #filterFirst(generation: number, selectedCount: number, k: number) {
-    const results = await this.#dispatch("predicate", generation, k);
+  async #filterFirst(
+    generation: number,
+    selectedCount: number,
+    k: number,
+    selector: TopKSelector,
+  ) {
+    const results = await this.#dispatch("predicate", generation, k, selector);
     const merged = mergeWorkerResults(results, k);
     return { ids: merged.ids, distances: merged.distances, rounds: 1, selectedCount };
   }
@@ -279,7 +296,7 @@ export class ParallelHybridVectorIndex implements AsyncDisposable {
     const filters = this.#shared.int32Array(this.#layout.filtersOffset, this.length);
     for (;;) {
       rounds++;
-      const results = await this.#dispatch("all", this.#allGeneration, candidateK);
+      const results = await this.#dispatch("all", this.#allGeneration, candidateK, "javascript");
       const candidates = mergeWorkerResults(results, this.length).pairs.filter((pair) => {
         const value = filters[pair.id]!;
         return value >= minimum && value < maximum;
@@ -307,6 +324,7 @@ export class ParallelHybridVectorIndex implements AsyncDisposable {
     mask: "predicate" | "all",
     generation: number,
     k: number,
+    selector: TopKSelector,
   ): Promise<WorkerResult[]> {
     this.#epoch = nextEpoch(this.#epoch);
     const epoch = this.#epoch;
@@ -314,7 +332,7 @@ export class ParallelHybridVectorIndex implements AsyncDisposable {
       const promise = new Promise<WorkerResult>((resolve, reject) => {
         control.pending.set(epoch, { resolve, reject });
       });
-      const task: HybridWorkerSearch = { type: "search", epoch, generation, mask, k };
+      const task: HybridWorkerSearch = { type: "search", epoch, generation, mask, selector, k };
       control.worker.postMessage(task);
       return promise;
     }));
@@ -393,7 +411,12 @@ function startWorker(init: HybridWorkerInit): WorkerControl {
   return control;
 }
 
-function createLayout(count: number, dimensions: number, workerCount: number): Layout {
+function createLayout(
+  count: number,
+  dimensions: number,
+  workerCount: number,
+  maxK: number,
+): Layout {
   const paddedCount = Math.ceil(count / 64) * 64;
   const predicateMaskOffset = 0;
   const allMaskOffset = alignTo(
@@ -413,8 +436,17 @@ function createLayout(count: number, dimensions: number, workerCount: number): L
     const rowCount = Math.min(count, endBlock * 64) - rowStart;
     const scratchOffset = nextOffset;
     const resultOffset = alignTo(scratchOffset + alignTo(rowCount, 64) * 4, 16);
-    nextOffset = alignTo(resultOffset + 16, 64);
-    shards.push({ rowStart, rowCount, scratchOffset, resultOffset });
+    const outputIdsOffset = resultOffset + 16;
+    const outputDistancesOffset = outputIdsOffset + maxK * 4;
+    nextOffset = alignTo(outputDistancesOffset + maxK * 4, 64);
+    shards.push({
+      rowStart,
+      rowCount,
+      scratchOffset,
+      resultOffset,
+      outputIdsOffset,
+      outputDistancesOffset,
+    });
   }
   return {
     byteLength: nextOffset,

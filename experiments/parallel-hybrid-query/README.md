@@ -39,7 +39,7 @@ selection, PDX64 search, binary Hamming search, and repeated fixed-storage reuse
 
 `ParallelHybridVectorIndex` copies a row-major `Float32Array` once into a shared PDX64 layout. Each
 long-lived Worker owns a disjoint range of 64-row blocks, computes SIMD distances, keeps only its
-local top-k, and sends that small result to the coordinator. The coordinator merges at most
+local top-k in Wasm, and sends that small result to the coordinator. The coordinator merges at most
 `workerCount * k` pairs for the default filter-first plan.
 
 ```ts
@@ -75,9 +75,34 @@ Run the comparison with:
 just bench-parallel-hybrid-query
 ```
 
+## Worker-local top-k
+
+The default filter-first path keeps mask iteration, a bounded max-heap, and final heap sort inside
+Wasm. The retained `selector: "javascript"` option is a benchmark reference, not the default.
+
+65,536 rows x 64 dimensions, four Workers, 31 samples:
+
+| Selectivity |   k | JavaScript heap | Wasm heap | Speedup |
+| ----------: | --: | --------------: | --------: | ------: |
+|          1% |   1 |         0.13 ms |   0.13 ms |   1.00x |
+|          1% |  10 |         0.25 ms |   0.16 ms |   1.56x |
+|          1% | 100 |         0.27 ms |   0.20 ms |   1.35x |
+|         10% |   1 |         0.22 ms |   0.22 ms |   1.00x |
+|         10% |  10 |         0.19 ms |   0.18 ms |   1.06x |
+|         10% | 100 |         0.24 ms |   0.19 ms |   1.26x |
+|        100% |   1 |         0.65 ms |   0.43 ms |   1.51x |
+|        100% |  10 |         0.49 ms |   0.43 ms |   1.14x |
+|        100% | 100 |         0.53 ms |   0.58 ms |   0.91x |
+
+The Wasm selector wins or ties eight of nine recorded medians and wins every `k=10` workload. A
+dense `k=100` query remains a documented slower case; callers experimenting with that workload can
+select the JavaScript reference explicitly. Run `just bench-parallel-hybrid-topk` to reproduce the
+matrix. Tail latency was noisier than the medians, including a slower recorded p95 for the 1%,
+`k=10` Wasm case. The complete experimental kernel module is 0.97 kB gzip; it is not part of the
+published package.
+
 ## Current limits
 
-The SIMD kernel currently computes scores and top-1; Worker-local top-k selection uses a bounded
-JavaScript heap over the packed mask and Wasm score buffer. A fused masked Wasm top-k kernel should
-only replace it after direct measurement. The pool does not yet support index replacement,
-cancellation, Worker restart, binary-index sharding, or browser-specific scheduling measurements.
+The pool does not yet support index replacement, cancellation, Worker restart, binary-index
+sharding, or browser-specific scheduling measurements. Exact vector-first expansion still uses the
+JavaScript selector because its candidate count can grow beyond the configured result `maxK`.

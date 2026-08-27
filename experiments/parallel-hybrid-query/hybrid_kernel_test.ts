@@ -209,6 +209,61 @@ Deno.test("shared mask generations reuse fixed storage across repeated hybrid qu
   }
 });
 
+Deno.test("masked PDX fused top-k matches stable distance and row-id ordering", async () => {
+  const count = 130;
+  const dimensions = 5;
+  const k = 5;
+  using shared = await SharedBuffer.create({ initialPages: 2, maximumPages: 2 });
+  const layout = createLayout(count, dimensions);
+  const mask = SharedSelectionMask.initialize(shared, layout.maskOffset, count);
+  const filters = shared.int32Array(layout.filterOffset, count);
+  const vectors = float32View(shared, layout.vectorsOffset, layout.paddedCount * dimensions);
+  const query = float32View(shared, layout.queryOffset, dimensions);
+  for (let row = 0; row < count; row++) {
+    filters[row] = row % 3;
+    for (let dimension = 0; dimension < dimensions; dimension++) {
+      vectors[pdxOffset(row, dimension, dimensions)] = row;
+    }
+  }
+  query.fill(70);
+  const kernels = await instantiateHybridKernels(shared.memory);
+  let generation = 0;
+  {
+    using writer = mask.claimWriter();
+    writer.clearAll();
+    kernels.scan_i32_between_mask(
+      absolute(shared, layout.filterOffset),
+      count,
+      1,
+      2,
+      absolute(shared, writer.dataByteOffset),
+    );
+    generation = writer.publish();
+  }
+  const published = mask.read(generation);
+  const idsOffset = layout.resultOffset + 16;
+  const distancesOffset = idsOffset + k * 4;
+  const filled = kernels.masked_squared_l2_topk_pdx64(
+    absolute(shared, layout.vectorsOffset),
+    absolute(shared, layout.queryOffset),
+    count,
+    dimensions,
+    absolute(shared, published.dataByteOffset),
+    absolute(shared, layout.scratchOffset),
+    absolute(shared, layout.resultOffset),
+    absolute(shared, idsOffset),
+    absolute(shared, distancesOffset),
+    k,
+  );
+
+  assert(filled === k, `filled: ${filled}`);
+  assert(shared.uint32Array(idsOffset, k).join(",") === "70,67,73,64,76", "stable top-k ids");
+  assert(
+    float32View(shared, distancesOffset, k).join(",") === "0,45,45,180,180",
+    "top-k squared distances",
+  );
+});
+
 interface Layout {
   readonly maskOffset: number;
   readonly filterOffset: number;

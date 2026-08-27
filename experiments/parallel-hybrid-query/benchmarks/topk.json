@@ -1,0 +1,36 @@
+{
+  "runtime": {
+    "deno": "2.6.4",
+    "v8": "14.2.231.17-rusty",
+    "target": "aarch64-apple-darwin",
+    "logicalCpus": 10
+  },
+  "workload": {
+    "rows": 65536,
+    "dimensions": 64,
+    "workers": 4,
+    "warmups": 10,
+    "samples": 31
+  },
+  "initMs": 48.21,
+  "measurements": [
+    { "selectivity": 0.01, "k": 1, "selector": "javascript", "medianMs": 0.13, "p95Ms": 0.19 },
+    { "selectivity": 0.01, "k": 1, "selector": "wasm", "medianMs": 0.13, "p95Ms": 0.15 },
+    { "selectivity": 0.01, "k": 10, "selector": "javascript", "medianMs": 0.25, "p95Ms": 0.61 },
+    { "selectivity": 0.01, "k": 10, "selector": "wasm", "medianMs": 0.16, "p95Ms": 0.9 },
+    { "selectivity": 0.01, "k": 100, "selector": "javascript", "medianMs": 0.27, "p95Ms": 0.49 },
+    { "selectivity": 0.01, "k": 100, "selector": "wasm", "medianMs": 0.2, "p95Ms": 0.31 },
+    { "selectivity": 0.1, "k": 1, "selector": "javascript", "medianMs": 0.22, "p95Ms": 0.62 },
+    { "selectivity": 0.1, "k": 1, "selector": "wasm", "medianMs": 0.22, "p95Ms": 0.39 },
+    { "selectivity": 0.1, "k": 10, "selector": "javascript", "medianMs": 0.19, "p95Ms": 0.42 },
+    { "selectivity": 0.1, "k": 10, "selector": "wasm", "medianMs": 0.18, "p95Ms": 0.41 },
+    { "selectivity": 0.1, "k": 100, "selector": "javascript", "medianMs": 0.24, "p95Ms": 0.33 },
+    { "selectivity": 0.1, "k": 100, "selector": "wasm", "medianMs": 0.19, "p95Ms": 0.31 },
+    { "selectivity": 1, "k": 1, "selector": "javascript", "medianMs": 0.65, "p95Ms": 0.99 },
+    { "selectivity": 1, "k": 1, "selector": "wasm", "medianMs": 0.43, "p95Ms": 0.57 },
+    { "selectivity": 1, "k": 10, "selector": "javascript", "medianMs": 0.49, "p95Ms": 0.7 },
+    { "selectivity": 1, "k": 10, "selector": "wasm", "medianMs": 0.43, "p95Ms": 0.58 },
+    { "selectivity": 1, "k": 100, "selector": "javascript", "medianMs": 0.53, "p95Ms": 0.73 },
+    { "selectivity": 1, "k": 100, "selector": "wasm", "medianMs": 0.58, "p95Ms": 0.7 }
+  ]
+}

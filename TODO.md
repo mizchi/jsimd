@@ -44,8 +44,10 @@ move to a separate repository once the low-level boundary is stable and measured
 - [x] Compare exact filter-first and vector-first plans over the same resident Worker index. On the
       recorded 65,536 x 64 workload, filter-first won at 1%, 10%, and 100% selectivity. Keep it as
       the default and do not add an automatic selectivity planner without a measured crossover.
-- [ ] Measure a fused masked Wasm top-k against the current Worker-local JavaScript bounded heap
-      before replacing it.
+- [x] Measure a masked Wasm top-k against the Worker-local JavaScript bounded heap. Wasm won or tied
+      eight of nine recorded medians and all `k=10` workloads, so it is now the filter-first
+      default. Keep dense `k=100` as a documented slower case and retain the JavaScript selector for
+      direct comparison and exact vector-first expansion.
 - [ ] Add cancellation and forced Worker restart only if this experiment graduates into a separate
       query-engine repository.
 

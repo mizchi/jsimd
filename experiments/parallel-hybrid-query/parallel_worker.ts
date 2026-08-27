@@ -70,6 +70,31 @@ class WorkerState implements Disposable {
     const maskOffset = view.dataByteOffset + (this.#init.rowStart >>> 5) * 4;
     const vectorOffset = this.#init.vectorsOffset +
       this.#init.rowStart * this.#init.dimensions * 4;
+    if (task.selector === "wasm") {
+      const filled = this.#kernels.masked_squared_l2_topk_pdx64(
+        absolute(this.shared, vectorOffset),
+        absolute(this.shared, this.#init.queryOffset),
+        this.#init.rowCount,
+        this.#init.dimensions,
+        absolute(this.shared, maskOffset),
+        absolute(this.shared, this.#init.scratchOffset),
+        absolute(this.shared, this.#init.resultOffset),
+        absolute(this.shared, this.#init.outputIdsOffset),
+        absolute(this.shared, this.#init.outputDistancesOffset),
+        task.k,
+      );
+      const selectedCount = this.shared.uint32Array(this.#init.resultOffset, 3)[2]!;
+      const localIds = this.shared.uint32Array(this.#init.outputIdsOffset, filled);
+      const distances = float32View(this.shared, this.#init.outputDistancesOffset, filled);
+      return {
+        type: "result",
+        epoch: task.epoch,
+        ids: Array.from(localIds, (id) => id + this.#init.rowStart),
+        distances: Array.from(distances),
+        selectedCount,
+        exhausted: task.k >= selectedCount,
+      };
+    }
     this.#kernels.masked_squared_l2_top1_pdx64(
       absolute(this.shared, vectorOffset),
       absolute(this.shared, this.#init.queryOffset),
