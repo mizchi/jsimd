@@ -1,7 +1,9 @@
 # `@mizchi/jsimd-olap`
 
-Experimental SIMD and Web Worker execution engine for resident typed columns. It provides focused
-analytical kernels rather than a SQL parser or a general database.
+Small, specialized OLAP kernels for browsers: the recorded `range-aggregate` Vite fixture is 19.78
+KiB gzip in total (17.26 KiB JavaScript + 2.52 KiB Wasm). The package combines WebAssembly SIMD with
+persistent Web Workers over resident typed columns, and stays small by providing focused analytical
+operators rather than a SQL parser or a general database.
 
 ## Requirements
 
