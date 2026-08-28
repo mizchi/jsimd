@@ -53,6 +53,8 @@ examples/tree-shake-compressed-string-table/dist/
 examples/tree-shake-columnar/dist/
 examples/tree-shake-blocked-bloom-filter/dist/
 examples/tree-shake-blocked-vector-array/dist/
+examples/tree-shake-ultra-log-log/dist/
+examples/tree-shake-ultra-log-log-parallel/dist/
 packages/jsimd/src/**/*.wasm
 packages/olap/src/kernels.wasm
 packages/olap/src/radix_order_u32.wasm

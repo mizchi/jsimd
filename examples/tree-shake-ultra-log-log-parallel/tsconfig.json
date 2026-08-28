@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "allowArbitraryExtensions": true,
+    "allowImportingTsExtensions": true,
+    "lib": ["DOM", "ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "strict": true,
+    "target": "ESNext"
+  },
+  "include": [
+    "../../packages/jsimd/src/ultra-log-log/**/*.ts",
+    "../../packages/jsimd/src/ultra-log-log-parallel/**/*.ts",
+    "src.ts"
+  ],
+  "exclude": [
+    "../../packages/jsimd/src/ultra-log-log/*_test.ts",
+    "../../packages/jsimd/src/ultra-log-log-parallel/*_test.ts"
+  ]
+}

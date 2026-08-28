@@ -30,6 +30,7 @@ build:
     wasm-tools strip -a packages/jsimd/src/compressed-string-table/kernels.wat -o packages/jsimd/src/compressed-string-table/kernels.wasm
     wasm-tools strip -a packages/jsimd/src/columnar/kernels.wat -o packages/jsimd/src/columnar/kernels.wasm
     wasm-tools strip -a packages/jsimd/src/blocked-bloom-filter/kernels.wat -o packages/jsimd/src/blocked-bloom-filter/kernels.wasm
+    wasm-tools strip -a packages/jsimd/src/ultra-log-log/kernels.wat -o packages/jsimd/src/ultra-log-log/kernels.wasm
     wasm-tools strip -a packages/olap/src/kernels.wat -o packages/olap/src/kernels.wasm
     wasm-tools strip -a packages/olap/src/radix_order_u32.wat -o packages/olap/src/radix_order_u32.wasm
     wasm-tools strip -a experiments/parallel-hybrid-query/kernels.wat -o experiments/parallel-hybrid-query/kernels.wasm
@@ -68,6 +69,7 @@ build:
     wasm-tools validate --features simd packages/jsimd/src/compressed-string-table/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/columnar/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/blocked-bloom-filter/kernels.wasm
+    wasm-tools validate --features simd packages/jsimd/src/ultra-log-log/kernels.wasm
     wasm-tools validate --features threads,simd packages/olap/src/kernels.wasm
     wasm-tools validate --features simd packages/olap/src/radix_order_u32.wasm
     wasm-tools validate --features threads,simd experiments/parallel-hybrid-query/kernels.wasm
@@ -125,6 +127,7 @@ build:
     wasm-tools print packages/jsimd/src/columnar/kernels.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into|i8x16.popcnt'
     ! wasm-tools print packages/jsimd/src/columnar/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print packages/jsimd/src/blocked-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|merge|i32x4.all_true'
+    wasm-tools print packages/jsimd/src/ultra-log-log/kernels.wasm | rg -q 'add_u32_many|merge_state|i8x16.max_u|v128.bitselect'
     wasm-tools print packages/olap/src/kernels.wasm | rg -q 'local_group_find|local_group_update_i32|local_group_aggregate_i32|local_group_aggregate_between_i32_u32|local_group_merge_partition|hash_join_build_u32|hash_join_count_u32|hash_join_probe_u32|merge_aggregate_state_blocks|scan_i32_between_aggregate|aggregate_i32_constant|scan_adaptive_i32_between_aggregate|scan_i32_between_group_by_u8|i64x2.add|i32x4.min_s|i32x4.max_s|i64x2.extend_low_i32x4_s|i32x4.bitmask|shared'
     wasm-tools print packages/olap/src/radix_order_u32.wasm | rg -q 'sort_u32_pairs|v128.store'
     wasm-tools print experiments/parallel-hybrid-query/kernels.wasm | rg -q 'scan_i32_between_mask|masked_squared_l2_top1_pdx64|masked_squared_l2_topk_pdx64|masked_squared_l2_topk_pdx64_pruned|masked_hamming_top1|masked_hamming_topk|pdx64_squared_l2_selected|i32x4.bitmask|f32x4.mul|i8x16.popcnt|shared'
@@ -387,6 +390,17 @@ check: test package-smoke
     test "$(find examples/tree-shake-blocked-vector-array/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-blocked-vector-array/dist/assets/*.wasm | rg -q 'squared_distance_many|l1_distance_many|inner_product_many|top_k_inner_product|f32x4.abs'
     ! wasm-tools print examples/tree-shake-blocked-vector-array/dist/assets/*.wasm | rg -q 'find_byte|json_token_starts|intersection_count|lookup_many|quantile_many|matmul'
+    pnpm exec tsc -p examples/tree-shake-ultra-log-log/tsconfig.json
+    pnpm exec vite build examples/tree-shake-ultra-log-log
+    test "$(find examples/tree-shake-ultra-log-log/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    test "$(find examples/tree-shake-ultra-log-log/dist/assets -name '*worker*.js' | wc -l | tr -d ' ')" = "0"
+    wasm-tools print examples/tree-shake-ultra-log-log/dist/assets/*.wasm | rg -q 'add_u32_many|merge_state|i8x16.max_u|v128.bitselect'
+    ! wasm-tools print examples/tree-shake-ultra-log-log/dist/assets/*.wasm | rg -q 'find_byte|json_token_starts|intersection_count|lookup_many|quantile_many|matmul'
+    pnpm exec tsc -p examples/tree-shake-ultra-log-log-parallel/tsconfig.json
+    pnpm exec vite build examples/tree-shake-ultra-log-log-parallel
+    test "$(find examples/tree-shake-ultra-log-log-parallel/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    test "$(find examples/tree-shake-ultra-log-log-parallel/dist/assets -name '*.js' | wc -l | tr -d ' ')" = "2"
+    wasm-tools print examples/tree-shake-ultra-log-log-parallel/dist/assets/*.wasm | rg -q 'add_u32_many|merge_state|i8x16.max_u|v128.bitselect'
     pnpm exec tsc -p examples/tree-shake-columnar/tsconfig.json
     pnpm exec vite build examples/tree-shake-columnar
     test "$(find examples/tree-shake-columnar/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"

@@ -32,7 +32,9 @@
     "./fm-index-bytes": "./src/fm-index-bytes/mod.ts",
     "./compressed-string-table": "./src/compressed-string-table/mod.ts",
     "./columnar": "./src/columnar/mod.ts",
-    "./blocked-bloom-filter": "./src/blocked-bloom-filter/mod.ts"
+    "./blocked-bloom-filter": "./src/blocked-bloom-filter/mod.ts",
+    "./ultra-log-log": "./src/ultra-log-log/mod.ts",
+    "./ultra-log-log-parallel": "./src/ultra-log-log-parallel/mod.ts"
   },
   "tasks": {
     "build": "cd ../.. && just build-package",

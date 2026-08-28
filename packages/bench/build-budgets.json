@@ -170,6 +170,18 @@
       "wasmMaxGzipBytes": 550
     },
     {
+      "name": "ultra-log-log",
+      "path": "examples/tree-shake-ultra-log-log/dist/assets",
+      "jsMaxGzipBytes": 4600,
+      "wasmMaxGzipBytes": 700
+    },
+    {
+      "name": "ultra-log-log-parallel",
+      "path": "examples/tree-shake-ultra-log-log-parallel/dist/assets",
+      "jsMaxGzipBytes": 10000,
+      "wasmMaxGzipBytes": 700
+    },
+    {
       "name": "wavelet-matrix-uint16",
       "path": "examples/tree-shake-wavelet-matrix-uint16/dist/assets",
       "jsMaxGzipBytes": 5000,

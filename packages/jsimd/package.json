@@ -34,7 +34,9 @@
     "./fm-index-bytes": "./dist/fm-index-bytes/mod.js",
     "./compressed-string-table": "./dist/compressed-string-table/mod.js",
     "./columnar": "./dist/columnar/mod.js",
-    "./blocked-bloom-filter": "./dist/blocked-bloom-filter/mod.js"
+    "./blocked-bloom-filter": "./dist/blocked-bloom-filter/mod.js",
+    "./ultra-log-log": "./dist/ultra-log-log/mod.js",
+    "./ultra-log-log-parallel": "./dist/ultra-log-log-parallel/mod.js"
   },
   "sideEffects": false,
   "files": ["dist/"],

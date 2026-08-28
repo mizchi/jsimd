@@ -42,7 +42,9 @@ for await (const entry of Deno.readDir(sourceRoot)) {
   if (!entry.isDirectory || !publicDirectories.has(entry.name)) continue;
   const sourceDirectory = `${sourceRoot}/${entry.name}`;
   const targetDirectory = `${outputDirectory}/${entry.name}`;
-  for (const filename of ["kernels.wasm", "kernels.wat", "README.md"]) {
+  for (
+    const filename of ["kernels.wasm", "kernels.wat", "README.md", "THIRD_PARTY_LICENSES.txt"]
+  ) {
     try {
       await Deno.copyFile(`${sourceDirectory}/${filename}`, `${targetDirectory}/${filename}`);
     } catch (error) {
@@ -64,7 +66,11 @@ for (const path of await collectFiles(outputDirectory)) {
 const emittedFiles = await collectFiles(outputDirectory);
 for (const path of emittedFiles) {
   if (!path.endsWith(".js") && !path.endsWith(".d.ts")) continue;
-  const source = await Deno.readTextFile(path);
+  let source = await Deno.readTextFile(path);
+  if (path.endsWith(".js")) {
+    source = source.replaceAll(/(new URL\("\.\/[^"]+)\.ts"/g, '$1.js"');
+    await Deno.writeTextFile(path, source);
+  }
   if (/from\s+["'][^"']+\.ts["']/.test(source)) {
     throw new Error(`TypeScript runtime reference remains in ${path}`);
   }

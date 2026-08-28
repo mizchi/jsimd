@@ -27,9 +27,10 @@ pnpm add @mizchi/jsimd
 - WebAssembly ESM Integration for direct `.wasm` imports
 
 The optional `shared-buffer` entrypoint additionally requires WebAssembly threads and shared memory.
-Browsers must expose `SharedArrayBuffer` (normally through cross-origin isolation) and run
-operations inside Web Workers. Its `create` and `attach` factories are asynchronous because each
-Worker must instantiate the kernel module against the supplied shared memory.
+The `ultra-log-log-parallel` entrypoint requires `SharedArrayBuffer` and Workers but performs no
+atomic Wasm access. Browsers normally expose shared buffers through cross-origin isolation. Node
+uses `node:worker_threads`; Deno and browsers use Web Workers. Their factories are asynchronous
+because each Worker must initialize its module.
 
 All supported environments use the same entrypoints. Existing single-threaded entrypoints expose
 synchronous operations after ESM Integration instantiates their Wasm modules. `shared-buffer` is the
@@ -105,6 +106,8 @@ so each structure has one public name.
 | [`roaring-bitmap`](./src/roaring-bitmap/README.md)                     | Compressed mutable `u32` bitmap              | 2.2–175x         | Construction and point-heavy cases were not measured  | 4.74 kB + 0.53 kB        |
 | [`shared-buffer`](./src/shared-buffer/README.md)                       | Shared memory, queues, snapshots, reduction  | 1.30–7.96x bulk  | Pool lease was 1.10x slower; scheduling excluded      | 26.65 kB + 0.33 kB       |
 | [`static-mphf-u32`](./src/static-mphf-u32/README.md)                   | Frozen perfect hash for known `u32` keys     | 1.75x bulk       | Individual lookup and construction are slower         | 4.09 kB + 0.39 kB        |
+| [`ultra-log-log`](./src/ultra-log-log/README.md)                       | Mergeable approximate `u32` distinct count   | 2.16–22.53x      | Small batches select scalar JavaScript                | 4.08 kB + 0.57 kB        |
+| [`ultra-log-log-parallel`](./src/ultra-log-log-parallel/README.md)     | Persistent-Worker bulk distinct count        | 2.39–5.38x E2E   | Forced 4K Worker path was 3.45x slower                | 9.43 kB + 0.57 kB        |
 | [`wavelet-matrix-uint8`](./src/wavelet-matrix-uint8/README.md)         | Rank/range queries over frozen bytes         | 4.8x vs u32      | Direct byte access is slower                          | 4.25 kB + 0.97 kB        |
 | [`wavelet-matrix-uint16`](./src/wavelet-matrix-uint16/README.md)       | Range queries over frozen `u16` sequences    | 2.3–329x         | Direct access and exact rank are slower               | 4.26 kB + 0.97 kB        |
 | [`wavelet-matrix-uint32`](./src/wavelet-matrix-uint32/README.md)       | Range statistics over frozen `u32` sequences | 2.2–100x+        | Direct access and exact rank are slower               | 4.19 kB + 0.97 kB        |

@@ -25,6 +25,17 @@ try {
   const queueExpression =
     `import { AtomicDenseBitmap, MpmcRingBufferU32, MpmcRingBufferU64, SharedBuffer, SharedSlotMap, ShardedBitmap, StripedHistogram, VersionedBuffer, WorkStealingDequeU32 } from "${metadata.name}/shared-buffer"; using shared = await SharedBuffer.create(); const queue = MpmcRingBufferU32.initialize(shared, 0, 8); queue.push(42); const handles = MpmcRingBufferU64.initialize(shared, 256, 8); const slots = SharedSlotMap.initialize(shared, 576, {capacity: 1, payloadByteLength: 16}); const bitmap = AtomicDenseBitmap.initialize(shared, 832, 65); bitmap.set(64); const sharded = ShardedBitmap.initialize(shared, 960, {capacity: 65, shardCount: 2}); { using shard = sharded.claimShard(0); shard.set(64); } const histogram = StripedHistogram.initialize(shared, 1280, {bucketCount: 5, stripeCount: 2}); { using stripe = histogram.claimStripe(0); stripe.add(2, 7); } const histogramOutput = new Uint32Array(5); histogram.reduceInto(histogramOutput); const versions = VersionedBuffer.initialize(shared, 1600, 16); { using writer = versions.beginWrite(); writer.bytes[0] = 9; writer.publish(); } using snapshot = versions.acquire(); const deque = WorkStealingDequeU32.initialize(shared, 1920, 8); { using owner = deque.owner(); owner.tryPush(44); } { using slot = slots.allocate(); slot.uint32Array(0, 1)[0] = 43; handles.push(slot.handle); if (handles.pop() !== slot.handle || slots.get(slot.handle)?.uint32Array(0, 1)[0] !== 43) throw new Error("unexpected slot result"); } if (queue.pop() !== 42 || slots.outstandingSlots !== 0 || !bitmap.has(64) || !sharded.reduceOr().has(64) || histogramOutput[2] !== 7 || snapshot.bytes[0] !== 9 || deque.trySteal() !== 44) throw new Error("unexpected shared result");`;
   await run("node", ["--input-type=module", "--eval", queueExpression], temporaryDirectory);
+  const ultraLogLogExpression =
+    `import { UltraLogLogU32 } from "${metadata.name}/ultra-log-log"; import { ParallelUltraLogLogU32 } from "${metadata.name}/ultra-log-log-parallel"; const values = Uint32Array.from({length: 50_000}, (_, index) => index); using serial = UltraLogLogU32.from(values, 8); await using parallel = await ParallelUltraLogLogU32.create({precision: 8, maxValues: values.length, workerCount: 2, workerThreshold: 1}); await parallel.replace(values); const expectedState = serial.state(); const actualState = parallel.state(); if (parallel.lastStrategy !== "workers" || !Number.isFinite(serial.estimate()) || !Number.isFinite(parallel.estimate()) || !expectedState.every((value, index) => value === actualState[index])) throw new Error("unexpected UltraLogLog result");`;
+  await Deno.writeTextFile(
+    `${temporaryDirectory}/ultra-log-log-smoke.mjs`,
+    ultraLogLogExpression,
+  );
+  await run(
+    "node",
+    ["--experimental-wasm-modules", "ultra-log-log-smoke.mjs"],
+    temporaryDirectory,
+  );
   await assertImportFails(metadata.name, temporaryDirectory);
 
   for (
@@ -53,6 +64,10 @@ try {
     `${temporaryDirectory}/node_modules/${metadata.name}/dist/bytes/mod.js`;
   const installedSharedBufferModule =
     `${temporaryDirectory}/node_modules/${metadata.name}/dist/shared-buffer/mod.js`;
+  const installedUltraLogLogModule =
+    `${temporaryDirectory}/node_modules/${metadata.name}/dist/ultra-log-log/mod.js`;
+  const installedParallelUltraLogLogModule =
+    `${temporaryDirectory}/node_modules/${metadata.name}/dist/ultra-log-log-parallel/mod.js`;
   const denoExpression = `import { DenseBitmap } from ${
     JSON.stringify(installedModule)
   }; import { indexOf } from ${
@@ -66,6 +81,12 @@ try {
       JSON.stringify(installedSharedBufferModule)
     }; using shared = await SharedBuffer.create(); const queue = MpmcRingBufferU32.initialize(shared, 0, 8); queue.push(42); const handles = MpmcRingBufferU64.initialize(shared, 256, 8); const slots = SharedSlotMap.initialize(shared, 576, {capacity: 1, payloadByteLength: 16}); const bitmap = AtomicDenseBitmap.initialize(shared, 832, 65); bitmap.set(64); const sharded = ShardedBitmap.initialize(shared, 960, {capacity: 65, shardCount: 2}); { using shard = sharded.claimShard(0); shard.set(64); } const histogram = StripedHistogram.initialize(shared, 1280, {bucketCount: 5, stripeCount: 2}); { using stripe = histogram.claimStripe(0); stripe.add(2, 7); } const histogramOutput = new Uint32Array(5); histogram.reduceInto(histogramOutput); const versions = VersionedBuffer.initialize(shared, 1600, 16); { using writer = versions.beginWrite(); writer.bytes[0] = 9; writer.publish(); } using snapshot = versions.acquire(); const deque = WorkStealingDequeU32.initialize(shared, 1920, 8); { using owner = deque.owner(); owner.tryPush(44); } { using slot = slots.allocate(); slot.uint32Array(0, 1)[0] = 43; handles.push(slot.handle); if (handles.pop() !== slot.handle || slots.get(slot.handle)?.uint32Array(0, 1)[0] !== 43) throw new Error("unexpected slot result"); } if (queue.pop() !== 42 || slots.outstandingSlots !== 0 || !bitmap.has(64) || !sharded.reduceOr().has(64) || histogramOutput[2] !== 7 || snapshot.bytes[0] !== 9 || deque.trySteal() !== 44) throw new Error("unexpected shared result");`;
   await run("deno", ["eval", denoQueueExpression], temporaryDirectory);
+  const denoUltraLogLogExpression = `import { UltraLogLogU32 } from ${
+    JSON.stringify(installedUltraLogLogModule)
+  }; import { ParallelUltraLogLogU32 } from ${
+    JSON.stringify(installedParallelUltraLogLogModule)
+  }; const values = Uint32Array.from({length: 50_000}, (_, index) => index); using serial = UltraLogLogU32.from(values, 8); await using parallel = await ParallelUltraLogLogU32.create({precision: 8, maxValues: values.length, workerCount: 2, workerThreshold: 1}); await parallel.replace(values); const actual = parallel.state(); if (parallel.lastStrategy !== "workers" || !serial.state().every((value, index) => value === actual[index])) throw new Error("unexpected UltraLogLog result");`;
+  await run("deno", ["eval", denoUltraLogLogExpression], temporaryDirectory);
 
   await Deno.writeTextFile(
     `${temporaryDirectory}/consumer.ts`,
@@ -77,6 +98,8 @@ import { AtomicDenseBitmap, MpmcRingBufferU32, MpmcRingBufferU64, SharedBlockPoo
 import { AdaptiveU32Column, SelectionMask } from "${metadata.name}/columnar";
 import { BlockedVectorArray } from "${metadata.name}/blocked-vector-array";
 import { WaveletMatrixUint16 } from "${metadata.name}/wavelet-matrix-uint16";
+import { UltraLogLogU32 } from "${metadata.name}/ultra-log-log";
+import { ParallelUltraLogLogU32, type UltraLogLogExecutionStrategy } from "${metadata.name}/ultra-log-log-parallel";
 using bits = DenseBitmap.from(128, [1, 10]);
 using ranked = RankSelectBitVector.from(128, [1, 10]);
 using roaring = RoaringBitmap.from([1, 10]);
@@ -145,6 +168,13 @@ using column = AdaptiveU32Column.from(new Uint32Array([0xffff_ffff, 1, 2]));
 using selected = new SelectionMask(3);
 using vectors = BlockedVectorArray.from(new Float32Array([0, 1, 1, 0]), 2, 2);
 using wavelet = WaveletMatrixUint16.from(new Uint16Array([3, 1, 2, 1]));
+using ultraLogLog = UltraLogLogU32.from(new Uint32Array([1, 2, 3]), 8);
+await using parallelUltraLogLog = await ParallelUltraLogLogU32.create({
+  precision: 8,
+  maxValues: 3,
+  workerCount: 2,
+});
+await parallelUltraLogLog.replace(new Uint32Array([1, 2, 3]));
 column.scanLt(3, selected);
 const nearestIds = new Uint32Array(1);
 const nearestDistances = new Float32Array(1);
@@ -158,6 +188,8 @@ const vectorCount: number = vectors.length;
 const byteIndex: number = indexOf(new Uint8Array([1, 2, 3]), 2);
 const waveletRank: number = wavelet.rank(1, wavelet.length);
 const nearestId: number = nearestIds[0]!;
+const cardinality: number = ultraLogLog.estimate();
+const parallelStrategy: UltraLogLogExecutionStrategy | null = parallelUltraLogLog.lastStrategy;
 void count;
 void rank;
 void roaringCount;
@@ -178,6 +210,8 @@ void stripedCount;
 void histogramCounts;
 void snapshotGeneration;
 void stolenTask;
+void cardinality;
+void parallelStrategy;
 `,
   );
   await run(

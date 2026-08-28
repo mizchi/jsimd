@@ -71,10 +71,11 @@ and was 1.25-1.28x slower at higher hit rates, with noisy tail latency, so the c
 was not adopted. The completed `UltraLogLog` experiment is positive: at 1M `u32` rows, single Wasm
 was 2.16x faster than the equivalent optimized JavaScript path despite input copying, and eight
 persistent Workers plus exact SIMD merge and FGRA estimation were 5.38x faster. SIMD merge alone was
-22.53x faster for eight 16 KiB states. At 4K rows the Worker path was 3.45x slower than JS, so
-package admission requires a size-aware planner plus hash/accuracy API work; evidence remains in
-`experiments/ultra-log-log`. Point-mutation concurrency and new synchronization primitives remain at
-the bottom because they reproduce the workloads where JavaScript and scalar atomics already win.
+22.53x faster for eight 16 KiB states. At 4K rows the Worker path was 3.45x slower than JS. The
+admitted `ultra-log-log` and `ultra-log-log-parallel` subpaths therefore select JS/single Wasm or
+persistent Workers by batch size; evidence remains in `experiments/ultra-log-log`. Point-mutation
+concurrency and new synchronization primitives remain at the bottom because they reproduce the
+workloads where JavaScript and scalar atomics already win.
 
 The project concentrates on workloads where Wasm SIMD and persistent Web Workers can cooperate over
 immutable or phase-owned bulk data. A transactional row store, WAL, MVCC engine, and single-record
@@ -233,9 +234,10 @@ uses SIMD.
       sorted typed-array index.
 - [x] `UltraLogLog`: compare exact merge and FGRA estimation against an optimized JavaScript sketch,
       including hashing, input copies, persistent Worker dispatch, output, and disposal.
+  - [x] Expose size-aware JS/single-Wasm and persistent-Worker planners as separate tree-shakeable
+        jsimd subpaths.
   - [ ] Add pre-hashed 64-bit and byte/string ingestion, statistical accuracy tests, precision
-        conversion, browser measurements, and a size-aware JS/single-Wasm/Worker planner before
-        considering a package export.
+        conversion, and browser measurements.
 - [ ] `SimdOrderedIndex` and semiring graph kernels: admit only after a layout-level workload wins.
 
 Do not add names merely for symmetry. `SimdFloat32Array`, `SimdInt32Vector`, and a standalone

@@ -3,7 +3,9 @@
 This experiment evaluates approximate distinct counting as a good fit for the repository's two
 strengths: bulk hashing in Wasm and reduction of Worker-local state with Wasm SIMD. At one million
 `u32` rows, the complete persistent-Worker path is **5.38x faster** than the equivalent optimized
-JavaScript sketch on the recorded Apple M5 benchmark. It is not a public package API yet.
+JavaScript sketch on the recorded Apple M5 benchmark. The admitted APIs are now exported from
+`@mizchi/jsimd/ultra-log-log` and `@mizchi/jsimd/ultra-log-log-parallel`; this directory retains the
+admission evidence and raw benchmark.
 
 ## What UltraLogLog stores
 
@@ -106,8 +108,9 @@ the Apache-derived estimator are not yet minified or assigned a package bundle b
 
 ## Decision
 
-The performance hypothesis passes for bulk inputs. Keep the current code experimental until the
-following API questions are resolved:
+The performance hypothesis passes for bulk inputs. The `u32` implementation, exact state merge,
+size-aware single-thread planner, and persistent-Worker planner were promoted to jsimd. The
+following extensions remain experimental:
 
 - accept pre-hashed 64-bit values and byte/string batches without weakening hash quality;
 - define precision conversion/downsize semantics for states from different producers;

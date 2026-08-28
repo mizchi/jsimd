@@ -34,20 +34,26 @@ Deno.test("every jsimd export emits its complete release payload", async () => {
     if (!await hasTestFile(sourceDirectory)) {
       throw new Error(`${entry}: no colocated correctness test`);
     }
-    for (
-      const path of [
-        `src/${entry}/mod.ts`,
-        `src/${entry}/README.md`,
+    const paths = [
+      `src/${entry}/mod.ts`,
+      `src/${entry}/README.md`,
+      `dist/${entry}/mod.js`,
+      `dist/${entry}/mod.d.ts`,
+      `dist/${entry}/README.md`,
+    ];
+    if (await isFile(new URL(`src/${entry}/kernels.wat`, packageRoot))) {
+      paths.push(
         `src/${entry}/kernels.wat`,
         `src/${entry}/kernels.wasm`,
         `src/${entry}/kernels.d.wasm.ts`,
-        `dist/${entry}/mod.js`,
-        `dist/${entry}/mod.d.ts`,
-        `dist/${entry}/README.md`,
         `dist/${entry}/kernels.wat`,
         `dist/${entry}/kernels.wasm`,
-      ]
-    ) {
+      );
+    }
+    if (await isFile(new URL(`src/${entry}/THIRD_PARTY_LICENSES.txt`, packageRoot))) {
+      paths.push(`dist/${entry}/THIRD_PARTY_LICENSES.txt`);
+    }
+    for (const path of paths) {
       if (!await isFile(new URL(path, packageRoot))) {
         throw new Error(`${entry}: missing release file ${path}`);
       }
