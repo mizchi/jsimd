@@ -1,6 +1,6 @@
 const packageName = Deno.args[0];
-if (packageName !== "shared" && packageName !== "columnar") {
-  throw new TypeError("expected package name: shared or columnar");
+if (packageName !== "shared" && packageName !== "columnar" && packageName !== "olap") {
+  throw new TypeError("expected package name: shared, columnar, or olap");
 }
 
 const packageDirectory = `packages/${packageName}`;
@@ -20,5 +20,21 @@ const command = new Deno.Command("pnpm", {
 });
 const status = await command.spawn().status;
 if (!status.success) throw new Error(`failed to build ${packageDirectory}`);
+
+if (packageName === "olap") {
+  for (
+    const file of [
+      "group_by.js",
+      "local_group_hash_worker_pool.js",
+      "mod.js",
+      "partitioned_hash_join_worker_pool.js",
+    ]
+  ) {
+    const path = `${outputDirectory}/${file}`;
+    const source = await Deno.readTextFile(path);
+    await Deno.writeTextFile(path, source.replaceAll(/(new URL\("\.\/[^\"]+)\.ts"/g, '$1.js"'));
+  }
+  await Deno.copyFile(`${packageDirectory}/src/kernels.wasm`, `${outputDirectory}/kernels.wasm`);
+}
 
 console.log(`Built ${packageName} package in ${outputDirectory}/`);

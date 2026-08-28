@@ -1,0 +1,344 @@
+{
+  "schemaVersion": 1,
+  "name": "parallel-columnar-query/adaptive-schema-pipeline",
+  "recordedAt": "2026-08-28T08:13:06.558Z",
+  "environment": {
+    "runtime": {
+      "name": "deno",
+      "version": "2.6.4",
+      "userAgent": "Deno/2.6.4"
+    },
+    "platform": "darwin-aarch64",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null
+  },
+  "timing": {
+    "warmups": 5,
+    "samples": 11,
+    "operationsPerSample": 1
+  },
+  "input": {
+    "shape": {
+      "rows": 8388608,
+      "rowGroupRows": 65536,
+      "adaptivePageRows": 256,
+      "workers": 8,
+      "encodings": "constant,for,raw"
+    },
+    "bytes": 33554432
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 9,
+    "summary": "optimized JavaScript, direct Wasm, and Worker scans returned identical count and sum"
+  },
+  "measurements": [
+    {
+      "name": "js/constant",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 24.772333000000117,
+      "p95Ms": 25.06224999999995,
+      "minMs": 24.52729199999999,
+      "maxMs": 25.06224999999995,
+      "samplesMs": [
+        24.655291999999918,
+        24.686374999999998,
+        24.655500000000075,
+        24.783999999999878,
+        25.012249999999767,
+        25.06224999999995,
+        24.832875000000058,
+        24.772333000000117,
+        24.52729199999999,
+        24.991459000000077,
+        24.688916999999947
+      ]
+    },
+    {
+      "name": "direct/constant",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 1.7778330000001006,
+      "p95Ms": 2.2025000000001,
+      "minMs": 1.7235410000000684,
+      "maxMs": 2.2025000000001,
+      "samplesMs": [
+        1.80925000000002,
+        2.2025000000001,
+        1.8184580000001915,
+        1.7943749999999454,
+        1.748583999999937,
+        1.7235410000000684,
+        1.970167000000174,
+        1.7439999999996871,
+        1.733042000000296,
+        1.729457999999795,
+        1.7778330000001006
+      ]
+    },
+    {
+      "name": "workers/constant",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 2.5062500000001364,
+      "p95Ms": 2.7832499999999527,
+      "minMs": 2.474707999999737,
+      "maxMs": 2.7832499999999527,
+      "samplesMs": [
+        2.518916999999874,
+        2.6838749999999436,
+        2.7832499999999527,
+        2.54887500000018,
+        2.5006249999999,
+        2.4804579999999987,
+        2.4827909999999065,
+        2.5062500000001364,
+        2.525333000000046,
+        2.47720900000013,
+        2.474707999999737
+      ]
+    },
+    {
+      "name": "schema-to-shared/constant",
+      "boundary": "construction-inclusive",
+      "unit": "ms",
+      "medianMs": 68.12716699999999,
+      "p95Ms": 72.01683300000002,
+      "minMs": 65.30116699999996,
+      "maxMs": 72.01683300000002,
+      "samplesMs": [
+        70.69037500000002,
+        72.01683300000002,
+        70.601292,
+        67.25704199999996,
+        66.62045899999998,
+        68.12716699999999,
+        65.30116699999996,
+        66.51362500000005,
+        68.19745799999998,
+        65.48062499999992,
+        68.21808400000009
+      ]
+    },
+    {
+      "name": "js/for",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 35.0109580000003,
+      "p95Ms": 35.24979200000007,
+      "minMs": 34.515249999999924,
+      "maxMs": 35.24979200000007,
+      "samplesMs": [
+        34.515249999999924,
+        35.24979200000007,
+        35.0639170000004,
+        34.58720799999992,
+        35.032582999999704,
+        35.0109580000003,
+        34.74304200000006,
+        34.52558399999998,
+        35.10474999999997,
+        35.12187500000027,
+        34.914374999999836
+      ]
+    },
+    {
+      "name": "direct/for",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 11.065042000000176,
+      "p95Ms": 11.393417000000227,
+      "minMs": 10.816249999999854,
+      "maxMs": 11.393417000000227,
+      "samplesMs": [
+        11.15466699999979,
+        10.837666999999783,
+        11.065042000000176,
+        11.268874999999753,
+        11.393417000000227,
+        11.105583000000024,
+        11.051124999999956,
+        10.959290999999666,
+        10.816249999999854,
+        11.228040999999848,
+        10.954208000000108
+      ]
+    },
+    {
+      "name": "workers/for",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 3.779708000000028,
+      "p95Ms": 5.2302080000004025,
+      "minMs": 3.0669590000002245,
+      "maxMs": 5.2302080000004025,
+      "samplesMs": [
+        3.8647909999999683,
+        3.779708000000028,
+        3.952041999999892,
+        3.861000000000331,
+        3.837916999999834,
+        3.665124999999989,
+        3.2465000000001965,
+        3.0669590000002245,
+        3.2200419999999212,
+        5.2302080000004025,
+        3.3672919999999067
+      ]
+    },
+    {
+      "name": "schema-to-shared/for",
+      "boundary": "construction-inclusive",
+      "unit": "ms",
+      "medianMs": 101.22795799999994,
+      "p95Ms": 106.45141699999976,
+      "minMs": 98.85850000000028,
+      "maxMs": 106.45141699999976,
+      "samplesMs": [
+        102.71187499999996,
+        102.00445900000022,
+        100.73537499999975,
+        100.21120900000005,
+        103.42529100000002,
+        99.54449999999997,
+        103.56729199999972,
+        100.89329100000032,
+        101.22795799999994,
+        98.85850000000028,
+        106.45141699999976
+      ]
+    },
+    {
+      "name": "js/raw",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 38.409875000000284,
+      "p95Ms": 40.177582999999686,
+      "minMs": 35.41625000000022,
+      "maxMs": 40.177582999999686,
+      "samplesMs": [
+        37.6704579999996,
+        38.90916700000071,
+        38.51420800000051,
+        40.177582999999686,
+        35.41625000000022,
+        37.948207999999795,
+        38.81850000000031,
+        38.409875000000284,
+        39.933874999999716,
+        37.815332999999555,
+        36.09725000000071
+      ]
+    },
+    {
+      "name": "direct/raw",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 2.661250000000109,
+      "p95Ms": 2.8447919999998703,
+      "minMs": 2.58587499999976,
+      "maxMs": 2.8447919999998703,
+      "samplesMs": [
+        2.6686250000002474,
+        2.600791000000754,
+        2.807625000000371,
+        2.7166660000002594,
+        2.804500000000189,
+        2.657333999999537,
+        2.58587499999976,
+        2.661250000000109,
+        2.6335830000007263,
+        2.596125000000029,
+        2.8447919999998703
+      ]
+    },
+    {
+      "name": "workers/raw",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 2.500750000000153,
+      "p95Ms": 2.8893749999997453,
+      "minMs": 2.482583999999406,
+      "maxMs": 2.8893749999997453,
+      "samplesMs": [
+        2.635874999999942,
+        2.6507080000001224,
+        2.515957999999955,
+        2.500750000000153,
+        2.49212499999976,
+        2.4862499999999272,
+        2.4933750000000146,
+        2.482583999999406,
+        2.497207999999773,
+        2.8893749999997453,
+        2.5307080000002316
+      ]
+    },
+    {
+      "name": "schema-to-shared/raw",
+      "boundary": "construction-inclusive",
+      "unit": "ms",
+      "medianMs": 112.96600000000035,
+      "p95Ms": 120.23675000000003,
+      "minMs": 109.15187500000047,
+      "maxMs": 120.23675000000003,
+      "samplesMs": [
+        117.59204200000022,
+        114.90783300000021,
+        111.62866600000052,
+        110.41212500000074,
+        110.54558300000008,
+        109.99566700000014,
+        109.15187500000047,
+        112.96600000000035,
+        114.91670900000008,
+        119.70374999999967,
+        120.23675000000003
+      ]
+    }
+  ],
+  "metrics": {
+    "storedBytes_constant": 790528,
+    "encodedPayloadBytes_constant": 0,
+    "sharedPayloadRatio_constant": 0,
+    "physicalPages_constant": 32768,
+    "compressionRatio_constant": 42.45,
+    "fastest_constant": "direct",
+    "planned_constant": "direct",
+    "estimatedDirectMs_constant": 1.84,
+    "estimatedWorkerMs_constant": 2.53,
+    "speedupVsJsDirect_constant": 13.93,
+    "speedupVsJsWorkers_constant": 9.88,
+    "storedBytes_for": 9179136,
+    "encodedPayloadBytes_for": 8388608,
+    "sharedPayloadRatio_for": 0.25,
+    "physicalPages_for": 32768,
+    "compressionRatio_for": 3.66,
+    "fastest_for": "workers",
+    "planned_for": "workers",
+    "estimatedDirectMs_for": 12.15,
+    "estimatedWorkerMs_for": 4.37,
+    "speedupVsJsDirect_for": 3.16,
+    "speedupVsJsWorkers_for": 9.26,
+    "storedBytes_raw": 34344960,
+    "encodedPayloadBytes_raw": 33554432,
+    "sharedPayloadRatio_raw": 1,
+    "physicalPages_raw": 32768,
+    "compressionRatio_raw": 0.98,
+    "fastest_raw": "workers",
+    "planned_raw": "workers",
+    "estimatedDirectMs_raw": 3.05,
+    "estimatedWorkerMs_raw": 2.74,
+    "speedupVsJsDirect_raw": 14.43,
+    "speedupVsJsWorkers_raw": 15.36,
+    "sink": "0"
+  },
+  "notes": [
+    "SchemaEngine replacement is complete before timing; resident scans include no backend reads.",
+    "schema-to-shared includes backend snapshot reads, validation, encoded payload copies, shared allocation, Wasm instantiation, Worker startup, and disposal.",
+    "The timed JavaScript baseline uses Number count/sum over fixtures whose exact sum remains within Number.MAX_SAFE_INTEGER.",
+    "The three fixtures force every 256-row physical page into constant, 8-bit FOR, or raw encoding respectively."
+  ]
+}

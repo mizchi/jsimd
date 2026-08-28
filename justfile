@@ -30,7 +30,7 @@ build:
     wasm-tools strip -a packages/jsimd/src/compressed-string-table/kernels.wat -o packages/jsimd/src/compressed-string-table/kernels.wasm
     wasm-tools strip -a packages/jsimd/src/columnar/kernels.wat -o packages/jsimd/src/columnar/kernels.wasm
     wasm-tools strip -a packages/jsimd/src/blocked-bloom-filter/kernels.wat -o packages/jsimd/src/blocked-bloom-filter/kernels.wasm
-    wasm-tools strip -a experiments/parallel-columnar-query/kernels.wat -o experiments/parallel-columnar-query/kernels.wasm
+    wasm-tools strip -a packages/olap/src/kernels.wat -o packages/olap/src/kernels.wasm
     wasm-tools strip -a experiments/parallel-hybrid-query/kernels.wat -o experiments/parallel-hybrid-query/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/bytes/kernels.wasm
@@ -63,7 +63,7 @@ build:
     wasm-tools validate --features simd packages/jsimd/src/compressed-string-table/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/columnar/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/blocked-bloom-filter/kernels.wasm
-    wasm-tools validate --features threads,simd experiments/parallel-columnar-query/kernels.wasm
+    wasm-tools validate --features threads,simd packages/olap/src/kernels.wasm
     wasm-tools validate --features threads,simd experiments/parallel-hybrid-query/kernels.wasm
     wasm-tools print packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm | rg -q 'scan_between_for|scan_between_raw|scan_between_rle|scan_between_dictionary|scan_between_sparse|gather_sparse|sum_sparse|mask_count'
     ! wasm-tools print packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
@@ -115,11 +115,13 @@ build:
     wasm-tools print packages/jsimd/src/columnar/kernels.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into|i8x16.popcnt'
     ! wasm-tools print packages/jsimd/src/columnar/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print packages/jsimd/src/blocked-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|merge|i32x4.all_true'
-    wasm-tools print experiments/parallel-columnar-query/kernels.wasm | rg -q 'local_group_find|local_group_update_i32|local_group_aggregate_i32|local_group_aggregate_between_i32_u32|local_group_merge_partition|hash_join_build_u32|hash_join_count_u32|hash_join_probe_u32|merge_aggregate_state_blocks|scan_i32_between_aggregate|scan_i32_between_group_by_u8|i64x2.add|i32x4.min_s|i32x4.max_s|i64x2.extend_low_i32x4_s|i32x4.bitmask|shared'
+    wasm-tools print packages/olap/src/kernels.wasm | rg -q 'local_group_find|local_group_update_i32|local_group_aggregate_i32|local_group_aggregate_between_i32_u32|local_group_merge_partition|hash_join_build_u32|hash_join_count_u32|hash_join_probe_u32|merge_aggregate_state_blocks|scan_i32_between_aggregate|aggregate_i32_constant|scan_adaptive_i32_between_aggregate|scan_i32_between_group_by_u8|i64x2.add|i32x4.min_s|i32x4.max_s|i64x2.extend_low_i32x4_s|i32x4.bitmask|shared'
     wasm-tools print experiments/parallel-hybrid-query/kernels.wasm | rg -q 'scan_i32_between_mask|masked_squared_l2_top1_pdx64|masked_squared_l2_topk_pdx64|masked_squared_l2_topk_pdx64_pruned|masked_hamming_top1|masked_hamming_topk|pdx64_squared_l2_selected|i32x4.bitmask|f32x4.mul|i8x16.popcnt|shared'
 
-test-parallel-columnar-query: build
-    deno test -A experiments/parallel-columnar-query/mod_test.ts experiments/parallel-columnar-query/aggregate_state_test.ts experiments/parallel-columnar-query/local_group_hash_table_test.ts experiments/parallel-columnar-query/partitioned_hash_join_test.ts
+test-olap-package: build
+    deno test -A packages/olap/src
+
+test-parallel-columnar-query: test-olap-package
 
 test-parallel-hybrid-query: build
     deno test -A experiments/parallel-hybrid-query
@@ -153,6 +155,44 @@ bench-parallel-columnar-hash-join: build
 
 bench-record-parallel-columnar-hash-join: build
     JSIMD_JOIN_OUTPUT=experiments/parallel-columnar-query/benchmarks/partitioned-hash-join.json deno run -A experiments/parallel-columnar-query/partitioned_hash_join_bench.ts
+
+bench-parallel-columnar-physical-pipeline: build
+    deno run -A experiments/parallel-columnar-query/physical_pipeline_bench.ts
+
+bench-record-parallel-columnar-physical-pipeline: build
+    JSIMD_PIPELINE_OUTPUT=experiments/parallel-columnar-query/benchmarks/physical-pipeline.json deno run -A experiments/parallel-columnar-query/physical_pipeline_bench.ts
+
+bench-parallel-columnar-group-physical-pipeline: build
+    deno run -A experiments/parallel-columnar-query/group_physical_pipeline_bench.ts
+
+bench-record-parallel-columnar-group-physical-pipeline: build
+    JSIMD_GROUP_PIPELINE_OUTPUT=experiments/parallel-columnar-query/benchmarks/group-physical-pipeline.json deno run -A experiments/parallel-columnar-query/group_physical_pipeline_bench.ts
+
+bench-parallel-columnar-physical-browser: build
+    pnpm exec tsc -p experiments/parallel-columnar-query/browser-physical-pipeline/tsconfig.json
+    pnpm exec vite build experiments/parallel-columnar-query/browser-physical-pipeline
+    deno run -A tools/bench-parallel-columnar-physical-browser.ts
+
+bench-record-parallel-columnar-physical-browser: build
+    pnpm exec tsc -p experiments/parallel-columnar-query/browser-physical-pipeline/tsconfig.json
+    pnpm exec vite build experiments/parallel-columnar-query/browser-physical-pipeline
+    JSIMD_BROWSER_PIPELINE_OUTPUT=experiments/parallel-columnar-query/benchmarks/browser-physical-pipeline.json deno run -A tools/bench-parallel-columnar-physical-browser.ts
+
+bench-parallel-columnar-adaptive-browser: build
+    pnpm exec tsc -p experiments/parallel-columnar-query/browser-adaptive-pipeline/tsconfig.json
+    pnpm exec vite build experiments/parallel-columnar-query/browser-adaptive-pipeline
+    deno run -A tools/bench-parallel-columnar-adaptive-browser.ts
+
+bench-record-parallel-columnar-adaptive-browser: build
+    pnpm exec tsc -p experiments/parallel-columnar-query/browser-adaptive-pipeline/tsconfig.json
+    pnpm exec vite build experiments/parallel-columnar-query/browser-adaptive-pipeline
+    JSIMD_BROWSER_ADAPTIVE_OUTPUT=experiments/parallel-columnar-query/benchmarks/browser-adaptive-pipeline.json deno run -A tools/bench-parallel-columnar-adaptive-browser.ts
+
+bench-parallel-columnar-adaptive-pipeline: build
+    deno run -A experiments/parallel-columnar-query/adaptive_pipeline_bench.ts
+
+bench-record-parallel-columnar-adaptive-pipeline: build
+    JSIMD_ADAPTIVE_OUTPUT=experiments/parallel-columnar-query/benchmarks/adaptive-pipeline.json deno run -A experiments/parallel-columnar-query/adaptive_pipeline_bench.ts
 
 bench-record-parallel-columnar-group-by: build
     JSIMD_GROUP_OUTPUT=experiments/parallel-columnar-query/benchmarks/group-by.json deno run -A experiments/parallel-columnar-query/group_bench.ts
@@ -238,7 +278,10 @@ build-shared-package: build-jsimd-package
 build-columnar-package: build-jsimd-package
     deno run -A tools/build-typescript-package.ts columnar
 
-build-package: build-shared-package build-columnar-package
+build-olap-package: build-jsimd-package build-shared-package build-columnar-package
+    deno run -A tools/build-typescript-package.ts olap
+
+build-package: build-shared-package build-columnar-package build-olap-package
 
 memory-profile: build
     node --no-warnings --expose-gc tools/profile-memory.ts
@@ -248,6 +291,7 @@ snapshot-transport: build
 
 package-smoke: build-package
     deno run -A tools/smoke-package.ts
+    deno run -A tools/smoke-olap-package.ts
 
 test: build
     deno test -A
@@ -262,6 +306,10 @@ check: test package-smoke
     deno run -A tools/check-benchmark-results.ts
     pnpm exec tsc -p experiments/parallel-columnar-query/duckdb-comparison/tsconfig.json
     pnpm exec vite build experiments/parallel-columnar-query/duckdb-comparison
+    pnpm exec tsc -p experiments/parallel-columnar-query/browser-physical-pipeline/tsconfig.json
+    pnpm exec vite build experiments/parallel-columnar-query/browser-physical-pipeline
+    pnpm exec tsc -p experiments/parallel-columnar-query/browser-adaptive-pipeline/tsconfig.json
+    pnpm exec vite build experiments/parallel-columnar-query/browser-adaptive-pipeline
     deno eval 'const p = JSON.parse(await Deno.readTextFile("packages/jsimd/package.json")); const d = JSON.parse(await Deno.readTextFile("packages/jsimd/deno.json")); if (p.version !== d.version || JSON.stringify(Object.keys(p.exports)) !== JSON.stringify(Object.keys(d.exports))) throw new Error("package.json and deno.json release metadata differ")'
     pnpm exec tsc -p examples/tree-shake-blocked-bloom-filter/tsconfig.json
     pnpm exec vite build examples/tree-shake-blocked-bloom-filter
@@ -281,6 +329,10 @@ check: test package-smoke
     pnpm exec tsc -p packages/columnar/fixtures/tree-shake/tsconfig.json
     pnpm exec vite build packages/columnar/fixtures/tree-shake
     test "$(find packages/columnar/fixtures/tree-shake/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
+    pnpm exec tsc -p packages/olap/fixtures/vite/tsconfig.json
+    pnpm exec vite build packages/olap/fixtures/vite
+    test "$(find packages/olap/fixtures/vite/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "2"
+    test "$(find packages/olap/fixtures/vite/dist/assets -name '*worker*.js' | wc -l | tr -d ' ')" = "1"
     wasm-tools print packages/columnar/fixtures/tree-shake/dist/assets/*.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into'
     ! rg -q 'node:fs|node:path' packages/columnar/fixtures/tree-shake/dist/assets/*.js
     pnpm exec tsc -p packages/columnar/fixtures/browser-benchmark/tsconfig.json

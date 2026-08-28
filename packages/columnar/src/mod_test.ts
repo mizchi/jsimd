@@ -227,6 +227,57 @@ Deno.test("adaptive snapshots reduce persisted clustered-page bytes versus raw p
   assert(snapshotBytes < rawBytes, `snapshot bytes ${snapshotBytes} < raw bytes ${rawBytes}`);
 });
 
+Deno.test("readI32SnapshotPages exposes immutable persisted pages without populating cache", async () => {
+  const backend = new MemoryPageBackend();
+  using engine = new SchemaEngine(analytics, backend);
+  const data = fixture(768);
+  await engine.replace("events", data);
+
+  const before = engine.cacheStats();
+  const column = await engine.readI32SnapshotPages("events", "temperature");
+  const after = engine.cacheStats();
+
+  assertEquals(column.rowCount, 768, "snapshot row count");
+  assertEquals(column.rowGroupSize, 256, "snapshot row-group size");
+  assertEquals(column.pages.length, 3, "snapshot page count");
+  assertEquals(
+    column.pages.map((page) => [page.index, page.rowOffset, page.length, page.min, page.max]),
+    [
+      [0, 0, 256, 0, 255],
+      [1, 256, 256, 1_000, 1_255],
+      [2, 512, 256, 2_000, 2_255],
+    ],
+    "persisted page metadata",
+  );
+  assert(column.pages.every((page) => page.bytes.byteLength === page.byteLength), "page bytes");
+  assert(
+    column.bytesRead === column.pages.reduce((sum, page) => sum + page.byteLength, 0),
+    "bytes read",
+  );
+  assert(column.generation.length > 0, "generation is exposed");
+  assertEquals(before, after, "direct persisted reads do not create resident pages");
+});
+
+Deno.test("readI32SnapshotPages rejects columns that cannot use the shared i32 ABI", async () => {
+  const backend = new MemoryPageBackend();
+  using engine = new SchemaEngine(analytics, backend);
+  await engine.replace("events", fixture(256));
+
+  await assertRejects(() => engine.readI32SnapshotPages("events", "id"), "u32 column");
+
+  const nullableSchema = defineSchema({
+    events: defineTable({ value: i32({ nullable: true }) }, { rowGroupSize: 256 }),
+  });
+  using nullableEngine = new SchemaEngine(nullableSchema, new MemoryPageBackend());
+  await nullableEngine.replace("events", {
+    value: nullable(new Int32Array(256), new Uint8Array(256).fill(1)),
+  });
+  await assertRejects(
+    () => nullableEngine.readI32SnapshotPages("events", "value"),
+    "nullable i32 column",
+  );
+});
+
 Deno.test("schema and page validation reject incompatible or corrupt storage", async () => {
   const backend = new MemoryPageBackend();
   {

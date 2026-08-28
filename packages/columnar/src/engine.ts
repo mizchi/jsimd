@@ -121,6 +121,26 @@ export interface CountResult {
   readonly stats: QueryStats;
 }
 
+/** One immutable, encoded i32 row-group page read directly from a PageBackend. */
+export interface I32SnapshotPage {
+  readonly index: number;
+  readonly rowOffset: number;
+  readonly length: number;
+  readonly min: number;
+  readonly max: number;
+  readonly byteLength: number;
+  readonly bytes: Uint8Array;
+}
+
+/** A generation-consistent set of persisted i32 snapshots for shared physical execution. */
+export interface I32SnapshotPages {
+  readonly generation: string;
+  readonly rowCount: number;
+  readonly rowGroupSize: number;
+  readonly bytesRead: number;
+  readonly pages: readonly I32SnapshotPage[];
+}
+
 interface MutableStats {
   rowGroupsTotal: number;
   rowGroupsSkipped: number;
@@ -722,6 +742,61 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
   cacheStats(): CacheStats {
     this.#assertAlive();
     return this.#cache.stats();
+  }
+
+  /**
+   * Reads a non-nullable i32 column in its persisted snapshot representation.
+   *
+   * This bypasses the resident cache so a physical executor can copy compressed immutable pages
+   * directly into shared memory without first reconstructing a complete host or Wasm column.
+   */
+  async readI32SnapshotPages<Name extends TableName<Schema>>(
+    name: Name,
+    columnName: ColumnName<Schema["tables"][Name]>,
+  ): Promise<I32SnapshotPages> {
+    this.#assertAlive();
+    const table = this.#table(name);
+    const definition = table.columns[columnName];
+    if (definition === undefined) throw new RangeError(`unknown column ${columnName}`);
+    if (definition.kind !== "i32" || definition.nullable) {
+      throw new TypeError("shared i32 snapshots require a non-nullable i32 column");
+    }
+    const manifest = await this.#manifest(name, table);
+    using _pin = acquireVersionedRowGroupPin(this.backend, name, manifest);
+    const pages = await Promise.all(manifest.rowGroups.map(async (group) => {
+      const metadata = group.columns[columnName];
+      if (metadata === undefined) {
+        throw new TypeError("shared i32 snapshots do not support virtual default pages");
+      }
+      if (
+        metadata.kind !== "i32" || metadata.format !== "snapshot" ||
+        metadata.nullCount !== 0 || typeof metadata.min !== "number" ||
+        typeof metadata.max !== "number"
+      ) {
+        throw new TypeError("column page is not a non-nullable i32 snapshot");
+      }
+      const bytes = await this.backend.get(metadata.key);
+      if (bytes === undefined) throw new Error(`missing page ${metadata.key}`);
+      if (bytes.byteLength !== metadata.byteLength) {
+        throw new RangeError(`page ${metadata.key} has an incorrect byte length`);
+      }
+      return Object.freeze({
+        index: group.index,
+        rowOffset: group.rowOffset,
+        length: group.length,
+        min: metadata.min,
+        max: metadata.max,
+        byteLength: metadata.byteLength,
+        bytes,
+      });
+    }));
+    return Object.freeze({
+      generation: manifest.generation,
+      rowCount: manifest.rowCount,
+      rowGroupSize: manifest.rowGroupSize,
+      bytesRead: pages.reduce((sum, page) => sum + page.byteLength, 0),
+      pages: Object.freeze(pages),
+    });
   }
 
   /** Reloads a table manifest published by another engine and drops its resident pages. */

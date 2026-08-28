@@ -1,0 +1,9 @@
+{
+  "name": "@mizchi/jsimd-olap",
+  "version": "0.1.0",
+  "exports": {
+    "./range-aggregate": "./src/range_aggregate.ts",
+    "./group-by-u8": "./src/group_by_u8.ts",
+    "./sparse-group-by-u32": "./src/sparse_group_by_u32.ts"
+  }
+}

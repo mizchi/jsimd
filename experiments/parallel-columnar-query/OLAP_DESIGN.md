@@ -71,6 +71,44 @@ Existing adaptive i32/u32/u8 columns and `SelectionMask` should supply the first
 The abstraction is only useful if operators can scan encoded vectors directly; a mandatory decode
 into flat vectors would erase the current advantage.
 
+The first narrow implementation is now `ExecutionChunkI32`: immutable page descriptors hold row
+ranges and i32 ZoneMaps, while `PhysicalExecutionPlanner` remains a pure cost comparison separated
+from the resident `I32AggregatePipeline`. The pipeline returns the chosen direct/Worker mode,
+surviving-page estimate, estimated costs, and reason with the aggregate result. On the recorded Deno
+runtime, direct count+sum won clearly through 128 surviving 65,536-row pages, 256 pages were within
+1%, and eight Workers won 2.01x at 512 pages. The default is therefore deliberately conservative.
+`SchemaEngine.readI32SnapshotPages()` and `I32AggregatePipeline.createFromSchema()` now provide the
+first storage-to-execution bridge. One manifest generation is pinned while its immutable pages are
+read; the path validates `AdaptiveI32Column` snapshots without creating resident columns, copies
+only encoded constant/FOR/raw payloads into shared Wasm memory, and runs FOR decoding inside the
+SIMD aggregate kernel. The SchemaEngine cache remains empty. IndexedDB and filesystem backends
+cannot provide true zero-copy `SharedArrayBuffer` reads, so one encoded payload copy remains
+explicit.
+
+The first encoding-sensitive calibration showed why physical representation belongs in the chunk
+contract. Across 8,388,608 rows, direct constant aggregation took 1.78 ms because each page reduces
+in O(1), direct raw took 2.66 ms, and direct FOR-8 took 11.07 ms. Eight Workers took 2.51, 2.50, and
+3.78 ms respectively. `PhysicalExecutionPlanner` therefore models descriptor/call overhead plus
+constant/raw/FOR row costs instead of multiplying one universal page cost.
+
+Low-cardinality u8 group-by now has an independent Deno profile and physical pipeline. With eight
+groups and 65,536-row raw pages, direct execution won through 16 surviving pages (1.84 ms versus
+2.31 ms), while Workers won from 32 pages (2.31 ms versus 3.87 ms) and reached 4.50x at 512 pages.
+The calibrated planner selected the fastest mode in all eight tested cases. This profile
+deliberately does not claim to cover sparse hash grouping or encoded multi-column input.
+
+Chromium 152 required a distinct runtime profile. Its persistent-Worker dispatch was approximately
+0.07-0.10 ms rather than Deno's approximately 2.3 ms, moving the raw 65,536-row-page crossover from
+roughly 256/512 pages to 4/16 pages. Adaptive 256-row pages also required a Worker-only page-claim
+term: constant pages were 1.54 ms direct versus 2.11 ms parallel, FOR-8 was 10.46 ms versus 2.92 ms,
+and raw was tied at 2.26/2.28 ms. Modeling dispatch alone incorrectly parallelized constant and raw
+small pages; the fitted page-claim cost selected all three encoding modes and all eight raw page
+counts in the recorded Chrome runs.
+
+This is still not the proposed multi-column `ExecutionChunk`: the bridge supports only one
+non-nullable i32 vector, eagerly stages that vector's encoded pages, and has no shared validity or
+selection-mask pipeline.
+
 ### 3. `AggregateStateBlock`
 
 Use structure-of-arrays state for count, sum, min, max, null count, and the sum/count pair needed by

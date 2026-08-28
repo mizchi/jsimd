@@ -2,9 +2,9 @@ import { detectHostCpu } from "@mizchi/jsimd-bench/browser-runner";
 import { summarizeBenchmarkSamples } from "@mizchi/jsimd-bench/measure";
 import { createBenchmarkResult, detectBenchmarkEnvironment } from "@mizchi/jsimd-bench/result";
 import { SharedBuffer } from "../../packages/jsimd/src/shared-buffer/mod.ts";
-import { instantiateQueryKernels } from "./kernel.ts";
-import { PartitionedHashJoinTableU32 } from "./partitioned_hash_join.ts";
-import { PartitionedHashJoinWorkerPool } from "./partitioned_hash_join_worker_pool.ts";
+import { instantiateQueryKernels } from "../../packages/olap/src/kernel.ts";
+import { PartitionedHashJoinTableU32 } from "../../packages/olap/src/partitioned_hash_join.ts";
+import { PartitionedHashJoinWorkerPool } from "../../packages/olap/src/partitioned_hash_join_worker_pool.ts";
 
 const BUILD_ROWS = Number(Deno.env.get("JSIMD_JOIN_BUILD_ROWS") ?? 1 << 17);
 const DISTINCT_KEYS = Number(Deno.env.get("JSIMD_JOIN_DISTINCT") ?? 1 << 16);

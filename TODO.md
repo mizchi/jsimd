@@ -7,11 +7,13 @@ README owned by each package or implementation. Experimental evidence stays unde
 
 ## Workspace organization
 
-The repository has four distinct ownership levels:
+The repository has five distinct ownership levels:
 
 - `packages/jsimd`: published low-level SIMD kernels and Wasm-resident data structures;
 - `packages/shared`: published SharedArrayBuffer and Web Worker primitives;
 - `packages/columnar`: experimental typed storage and query execution built on low-level packages;
+- `packages/olap`: experimental SIMD and persistent-Worker analytical execution over resident typed
+  columns;
 - `packages/bench`: private benchmark schema, runners, and build-budget checks.
 
 `examples/` contains user-facing integrations. `experiments/` contains admission evidence and
@@ -82,6 +84,30 @@ product-facing query engine to a separate repository once the boundary is stable
         without atomics in the hot path.
   - [x] Record the Bloom crossover: it helps when about 90% of probes miss, but its hashing and
         lookup overhead loses when most probe keys hit.
+- [x] Add the first `ExecutionChunkI32` metadata contract and a pure physical execution cost model
+      that chooses direct SIMD or persistent Workers from surviving ZoneMap pages.
+  - [x] Record the count+sum crossover: direct wins clearly through 128 surviving 65,536-row pages,
+        256 pages are tied, and eight Workers win 2.00x at 512 pages on the recorded Deno runtime.
+  - [x] Connect page-versioned `SchemaEngine` snapshots directly to shared execution chunks without
+        reconstructing complete columns. Persisted constant/FOR/raw i32 payloads are validated and
+        copied once into shared memory; `SchemaEngine` resident pages remain unpopulated.
+  - [x] Add operator/runtime-specific calibration instead of applying the Deno raw count+sum cost
+        constants universally. Deno i32 count+sum separates constant/raw/FOR row costs, dense u8
+        group-by has its own measured 16/32-page crossover, and Chromium has independent dispatch
+        plus Worker page-claim costs verified against raw and adaptive constant/FOR/raw scans.
+- [ ] Measure whether coordinator-side Wasm compilation can reduce persistent-Worker startup time.
+  - [x] Audit the current design against the
+        [WebAssembly Threads overview](https://github.com/WebAssembly/threads/blob/main-legacy/proposals/threads/Overview.md):
+        the coordinator already waits with `Atomics.waitAsync`, Workers block with `Atomics.wait`,
+        and state transitions call `Atomics.notify`. The one-millisecond polling path is only a Deno
+        compatibility fallback for a notified `waitAsync` promise that does not resolve.
+  - [x] Confirm that the OLAP and shared-runtime WAT modules contain no data segments. The
+        proposal's separate one-time data-initialization module therefore does not remove work here;
+        the shared header and snapshot payload are already initialized once before Workers attach.
+  - [ ] Compile the OLAP and shared-runtime `WebAssembly.Module` objects once in the coordinator,
+        structured-clone them in each Worker init message, and benchmark initialization separately
+        from instantiation. The current `modulePromise` cache is per agent, so every new Worker
+        still compiles both modules in its own realm.
 - [ ] Add `RadixSortBlockU32/U64` only if group merge, join partitioning, or order/top-k repays its
       construction and materialization cost.
 

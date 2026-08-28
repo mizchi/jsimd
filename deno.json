@@ -3,6 +3,7 @@
     "./packages/jsimd",
     "./packages/shared",
     "./packages/columnar",
+    "./packages/olap",
     "./packages/bench"
   ],
   "tasks": {

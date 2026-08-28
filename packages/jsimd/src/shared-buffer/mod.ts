@@ -552,7 +552,7 @@ async function compileWasmModule(url: URL): Promise<WebAssembly.Module> {
   const nodeProcess = (globalThis as typeof globalThis & { process?: NodeProcess }).process;
   const fileSystem = nodeProcess?.getBuiltinModule?.("node:fs");
   if (url.protocol === "file:" && fileSystem !== undefined) {
-    return new WebAssembly.Module(fileSystem.readFileSync(url));
+    return new WebAssembly.Module(fileSystem.readFileSync(url) as BufferSource);
   }
 
   const response = await fetch(url);

@@ -2,9 +2,12 @@ import { detectHostCpu } from "@mizchi/jsimd-bench/browser-runner";
 import { summarizeBenchmarkSamples } from "@mizchi/jsimd-bench/measure";
 import { createBenchmarkResult, detectBenchmarkEnvironment } from "@mizchi/jsimd-bench/result";
 import { SharedBuffer } from "../../packages/jsimd/src/shared-buffer/mod.ts";
-import { instantiateQueryKernels } from "./kernel.ts";
-import { type LocalGroupEntryU32, LocalGroupHashTableU32 } from "./local_group_hash_table.ts";
-import { LocalGroupHashWorkerPool } from "./local_group_hash_worker_pool.ts";
+import { instantiateQueryKernels } from "../../packages/olap/src/kernel.ts";
+import {
+  type LocalGroupEntryU32,
+  LocalGroupHashTableU32,
+} from "../../packages/olap/src/local_group_hash_table.ts";
+import { LocalGroupHashWorkerPool } from "../../packages/olap/src/local_group_hash_worker_pool.ts";
 
 const I32_MIN = -0x8000_0000;
 const I32_MAX = 0x7fff_ffff;

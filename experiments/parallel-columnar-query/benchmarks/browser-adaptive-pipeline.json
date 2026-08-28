@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "name": "parallel-columnar-query/browser-adaptive-schema-pipeline",
+  "recordedAt": "2026-08-28T08:33:43.171Z",
+  "environment": {
+    "runtime": {
+      "name": "chromium",
+      "version": "152.0.0.0",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36"
+    },
+    "platform": "aarch64-apple-darwin",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null,
+    "crossOriginIsolated": true
+  },
+  "timing": {
+    "warmups": 5,
+    "samples": 11,
+    "operationsPerSample": 1
+  },
+  "input": {
+    "shape": {
+      "rows": 8388608,
+      "rowGroupRows": 65536,
+      "adaptivePageRows": 256,
+      "workers": 8,
+      "encodings": "constant,for,raw"
+    },
+    "bytes": 33554432
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 99,
+    "summary": "direct, Worker, and automatic adaptive scans returned identical count and sum"
+  },
+  "measurements": [
+    {
+      "name": "direct/constant",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 1.5399999618530273,
+      "p95Ms": 1.9250001907348633,
+      "minMs": 1.434999942779541,
+      "maxMs": 1.9250001907348633,
+      "samplesMs": [
+        1.625,
+        1.494999885559082,
+        1.6399998664855957,
+        1.434999942779541,
+        1.5399999618530273,
+        1.4699997901916504,
+        1.4850001335144043,
+        1.445000171661377,
+        1.8449997901916504,
+        1.7649998664855957,
+        1.9250001907348633
+      ]
+    },
+    {
+      "name": "workers/constant",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 2.1100001335144043,
+      "p95Ms": 2.169999599456787,
+      "minMs": 2.0199999809265137,
+      "maxMs": 2.169999599456787,
+      "samplesMs": [
+        2.1599998474121094,
+        2.0950002670288086,
+        2.0199999809265137,
+        2.1500000953674316,
+        2.1399998664855957,
+        2.0799999237060547,
+        2.1649999618530273,
+        2.0450000762939453,
+        2.1100001335144043,
+        2.1050000190734863,
+        2.169999599456787
+      ]
+    },
+    {
+      "name": "direct/for",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 10.460000038146973,
+      "p95Ms": 10.884999752044678,
+      "minMs": 10.40500020980835,
+      "maxMs": 10.884999752044678,
+      "samplesMs": [
+        10.40500020980835,
+        10.615000247955322,
+        10.884999752044678,
+        10.444999694824219,
+        10.434999942779541,
+        10.460000038146973,
+        10.609999656677246,
+        10.450000286102295,
+        10.410000324249268,
+        10.574999809265137,
+        10.630000114440918
+      ]
+    },
+    {
+      "name": "workers/for",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 2.9200000762939453,
+      "p95Ms": 3.6299996376037598,
+      "minMs": 2.825000286102295,
+      "maxMs": 3.6299996376037598,
+      "samplesMs": [
+        2.9200000762939453,
+        2.8949999809265137,
+        3.1750001907348633,
+        2.825000286102295,
+        2.9800000190734863,
+        2.9149999618530273,
+        2.8600001335144043,
+        2.8399996757507324,
+        3.0349998474121094,
+        3.1150002479553223,
+        3.6299996376037598
+      ]
+    },
+    {
+      "name": "direct/raw",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 2.2649998664855957,
+      "p95Ms": 2.690000057220459,
+      "minMs": 2.239999771118164,
+      "maxMs": 2.690000057220459,
+      "samplesMs": [
+        2.690000057220459,
+        2.2699999809265137,
+        2.239999771118164,
+        2.2649998664855957,
+        2.265000343322754,
+        2.2649998664855957,
+        2.25,
+        2.2750000953674316,
+        2.2400002479553223,
+        2.2799997329711914,
+        2.2450003623962402
+      ]
+    },
+    {
+      "name": "workers/raw",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 2.2800002098083496,
+      "p95Ms": 2.3550000190734863,
+      "minMs": 2.1949996948242188,
+      "maxMs": 2.3550000190734863,
+      "samplesMs": [
+        2.2799997329711914,
+        2.2800002098083496,
+        2.3550000190734863,
+        2.2849998474121094,
+        2.2249999046325684,
+        2.2150001525878906,
+        2.1949996948242188,
+        2.309999942779541,
+        2.255000114440918,
+        2.304999828338623,
+        2.3249998092651367
+      ]
+    }
+  ],
+  "metrics": {
+    "plannerMatchesFastest": 3,
+    "plannerDecisionCount": 3,
+    "encoding_constant": "constant",
+    "physicalPages_constant": 32768,
+    "encodedPayloadBytes_constant": 0,
+    "fastest_constant": "direct",
+    "planned_constant": "direct",
+    "speedup_constant": 1.37,
+    "encoding_for": "frame-of-reference",
+    "physicalPages_for": 32768,
+    "encodedPayloadBytes_for": 8388608,
+    "fastest_for": "workers",
+    "planned_for": "workers",
+    "speedup_for": 3.58,
+    "encoding_raw": "raw",
+    "physicalPages_raw": 32768,
+    "encodedPayloadBytes_raw": 33554432,
+    "fastest_raw": "direct",
+    "planned_raw": "direct",
+    "speedup_raw": 1.01
+  },
+  "notes": [
+    "Each encoding is built and copied into shared memory before resident timing begins.",
+    "Direct and Worker measurements alternate in one isolated Chrome process.",
+    "Every 256-row page is forced into constant, 8-bit FOR, or raw encoding."
+  ]
+}

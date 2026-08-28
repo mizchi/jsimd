@@ -2,7 +2,7 @@ import {
   type GroupByAggregate,
   groupByBetweenReference,
   ParallelI32GroupByU8Query,
-} from "./group_by.ts";
+} from "../../packages/olap/src/group_by.ts";
 import { detectHostCpu } from "@mizchi/jsimd-bench/browser-runner";
 import { summarizeBenchmarkSamples } from "@mizchi/jsimd-bench/measure";
 import { createBenchmarkResult, detectBenchmarkEnvironment } from "@mizchi/jsimd-bench/result";

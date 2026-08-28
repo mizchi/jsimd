@@ -1,4 +1,4 @@
-import { ParallelI32Query } from "./mod.ts";
+import { ParallelI32Query } from "../../packages/olap/src/mod.ts";
 import { detectHostCpu } from "@mizchi/jsimd-bench/browser-runner";
 import { summarizeBenchmarkSamples } from "@mizchi/jsimd-bench/measure";
 import { createBenchmarkResult, detectBenchmarkEnvironment } from "@mizchi/jsimd-bench/result";

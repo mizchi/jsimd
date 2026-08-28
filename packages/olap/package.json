@@ -1,0 +1,38 @@
+{
+  "name": "@mizchi/jsimd-olap",
+  "version": "0.1.0",
+  "description": "Experimental SIMD and Web Worker execution engine for resident typed columns",
+  "type": "module",
+  "exports": {
+    "./range-aggregate": {
+      "types": "./dist/range_aggregate.d.ts",
+      "default": "./dist/range_aggregate.js"
+    },
+    "./group-by-u8": {
+      "types": "./dist/group_by_u8.d.ts",
+      "default": "./dist/group_by_u8.js"
+    },
+    "./sparse-group-by-u32": {
+      "types": "./dist/sparse_group_by_u32.d.ts",
+      "default": "./dist/sparse_group_by_u32.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "cd ../.. && just build-olap-package",
+    "prepack": "cd ../.. && just build-olap-package",
+    "test": "cd ../.. && just test-olap-package"
+  },
+  "dependencies": {
+    "@mizchi/jsimd-columnar": "workspace:^",
+    "@mizchi/jsimd-shared": "workspace:^"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

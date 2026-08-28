@@ -20,6 +20,9 @@ importers:
       '@mizchi/jsimd-columnar':
         specifier: workspace:*
         version: link:packages/columnar
+      '@mizchi/jsimd-olap':
+        specifier: workspace:*
+        version: link:packages/olap
       '@mizchi/jsimd-shared':
         specifier: workspace:*
         version: link:packages/shared
@@ -53,6 +56,15 @@ importers:
         version: link:../bench
 
   packages/jsimd: {}
+
+  packages/olap:
+    dependencies:
+      '@mizchi/jsimd-columnar':
+        specifier: workspace:^
+        version: link:../columnar
+      '@mizchi/jsimd-shared':
+        specifier: workspace:^
+        version: link:../shared
 
   packages/shared:
     dependencies:

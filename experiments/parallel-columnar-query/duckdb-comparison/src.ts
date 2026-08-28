@@ -4,10 +4,13 @@ import duckdbPthreadWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.
 import duckdbEhWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url";
 import duckdbCoiUrl from "@duckdb/duckdb-wasm/dist/duckdb-coi.wasm?url";
 import duckdbEhUrl from "@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url";
-import { type GroupByAggregate, ParallelI32GroupByU8Query } from "../group_by.ts";
-import type { LocalGroupEntryU32 } from "../local_group_hash_table.ts";
-import { ParallelI32Query } from "../mod.ts";
-import { SparseU32GroupByQuery } from "../sparse_group_by.ts";
+import {
+  type GroupByAggregate,
+  ParallelI32GroupByU8Query,
+} from "../../../packages/olap/src/group_by.ts";
+import type { LocalGroupEntryU32 } from "../../../packages/olap/src/local_group_hash_table.ts";
+import { ParallelI32Query } from "../../../packages/olap/src/mod.ts";
+import { SparseU32GroupByQuery } from "../../../packages/olap/src/sparse_group_by.ts";
 
 type Mode = "jsimd-single" | "jsimd-workers" | "duckdb-eh" | "duckdb-coi";
 type Workload = "q6" | "q1" | "logs" | "sparse";

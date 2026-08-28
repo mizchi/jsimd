@@ -23,6 +23,8 @@ export {
 export {
   type CacheStats,
   type CountResult,
+  type I32SnapshotPage,
+  type I32SnapshotPages,
   type PageFormat,
   type PredicateOperator,
   QueryBuilder,
