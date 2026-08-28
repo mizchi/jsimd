@@ -38,6 +38,7 @@ experiments/parallel-hybrid-query/kernels.wasm
 experiments/parallel-columnar-selection/kernels.wasm
 experiments/parallel-bloom-filter/kernels.wasm
 experiments/radix-sort-block/kernels.wasm
+experiments/ultra-log-log/kernels.wasm
 experiments/bitmap-grid-astar/tree-shake-fixture/dist/
 experiments/columnar-schema-engine/tree-shake-fixture/dist/
 experiments/columnar-schema-engine/browser-benchmark/dist/

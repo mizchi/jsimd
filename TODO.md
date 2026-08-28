@@ -46,14 +46,13 @@ package export.
 
 | rank | candidate                                       | weight | first admission workload                                                      |
 | ---: | :---------------------------------------------- | -----: | :---------------------------------------------------------------------------- |
-|    1 | `UltraLogLog` / striped cardinality sketch      |     64 | Per-Worker ingestion plus SIMD max merge, including hash cost                 |
-|    2 | resident WebGPU hybrid vector pipeline          |     55 | Batched resident query on a second adapter/runtime; never single-query upload |
-|    3 | `MortonSpatialIndex`                            |     54 | Frozen batched tile/range lookup versus sorted typed-array intervals          |
-|    4 | `RangeFilterU32`                                |     48 | Storage workload where measured ZoneMap false positives cause page reads      |
-|    5 | `DijkstraCsrGraph`                              |     44 | Weighted graph families beyond the existing favorable grid                    |
-|    6 | `ShardedHashMap`                                |     31 | Contended batched phases versus per-Worker/native `Map`, not point lookup     |
-|    7 | `MultiQueuePriorityQueue`                       |     22 | Only a scheduler workload that amortizes the already-rejected point queue     |
-|    8 | extra locks or `EpochDomain` without a consumer |      5 | Do not implement speculatively                                                |
+|    1 | resident WebGPU hybrid vector pipeline          |     55 | Batched resident query on a second adapter/runtime; never single-query upload |
+|    2 | `MortonSpatialIndex`                            |     54 | Frozen batched tile/range lookup versus sorted typed-array intervals          |
+|    3 | `RangeFilterU32`                                |     48 | Storage workload where measured ZoneMap false positives cause page reads      |
+|    4 | `DijkstraCsrGraph`                              |     44 | Weighted graph families beyond the existing favorable grid                    |
+|    5 | `ShardedHashMap`                                |     31 | Contended batched phases versus per-Worker/native `Map`, not point lookup     |
+|    6 | `MultiQueuePriorityQueue`                       |     22 | Only a scheduler workload that amortizes the already-rejected point queue     |
+|    7 | extra locks or `EpochDomain` without a consumer |      5 | Do not implement speculatively                                                |
 
 The metadata-backed `RadixOrderU32` admission experiment is complete. Persisted per-row-group
 ordering facts removed runtime distribution discovery: at 1M rows the public stable key-plus-row-ID
@@ -69,8 +68,13 @@ query-scheduler evidence, not a public concurrent collection. The practical next
 ranked first because both isolated halves had positive evidence; the completed admission experiment
 reduced a 1M-key rebuild by 2.46x, but refresh plus exact lookup improved only 1.08x at 90% misses
 and was 1.25-1.28x slower at higher hit rates, with noisy tail latency, so the concurrent wrapper
-was not adopted. Point-mutation concurrency and new synchronization primitives remain at the bottom
-because they reproduce the workloads where JavaScript and scalar atomics already win.
+was not adopted. The completed `UltraLogLog` experiment is positive: at 1M `u32` rows, single Wasm
+was 2.16x faster than the equivalent optimized JavaScript path despite input copying, and eight
+persistent Workers plus exact SIMD merge and FGRA estimation were 5.38x faster. SIMD merge alone was
+22.53x faster for eight 16 KiB states. At 4K rows the Worker path was 3.45x slower than JS, so
+package admission requires a size-aware planner plus hash/accuracy API work; evidence remains in
+`experiments/ultra-log-log`. Point-mutation concurrency and new synchronization primitives remain at
+the bottom because they reproduce the workloads where JavaScript and scalar atomics already win.
 
 The project concentrates on workloads where Wasm SIMD and persistent Web Workers can cooperate over
 immutable or phase-owned bulk data. A transactional row store, WAL, MVCC engine, and single-record
@@ -227,8 +231,11 @@ uses SIMD.
       JavaScript baseline.
 - [ ] `MortonSpatialIndex`: define an immutable spatial/tile lookup workload and compare with a
       sorted typed-array index.
-- [ ] `UltraLogLog`: compare merge and estimation against an optimized JavaScript sketch, including
-      hashing cost.
+- [x] `UltraLogLog`: compare exact merge and FGRA estimation against an optimized JavaScript sketch,
+      including hashing, input copies, persistent Worker dispatch, output, and disposal.
+  - [ ] Add pre-hashed 64-bit and byte/string ingestion, statistical accuracy tests, precision
+        conversion, browser measurements, and a size-aware JS/single-Wasm/Worker planner before
+        considering a package export.
 - [ ] `SimdOrderedIndex` and semiring graph kernels: admit only after a layout-level workload wins.
 
 Do not add names merely for symmetry. `SimdFloat32Array`, `SimdInt32Vector`, and a standalone

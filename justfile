@@ -36,6 +36,7 @@ build:
     wasm-tools strip -a experiments/parallel-columnar-selection/kernels.wat -o experiments/parallel-columnar-selection/kernels.wasm
     wasm-tools strip -a experiments/parallel-bloom-filter/kernels.wat -o experiments/parallel-bloom-filter/kernels.wasm
     wasm-tools strip -a experiments/radix-sort-block/kernels.wat -o experiments/radix-sort-block/kernels.wasm
+    wasm-tools strip -a experiments/ultra-log-log/kernels.wat -o experiments/ultra-log-log/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/bytes/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/bitmap/kernels.wasm
@@ -73,6 +74,7 @@ build:
     wasm-tools validate --features threads,simd experiments/parallel-columnar-selection/kernels.wasm
     wasm-tools validate --features threads,simd experiments/parallel-bloom-filter/kernels.wasm
     wasm-tools validate --features simd experiments/radix-sort-block/kernels.wasm
+    wasm-tools validate --features simd experiments/ultra-log-log/kernels.wasm
     wasm-tools print packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm | rg -q 'scan_between_for|scan_between_raw|scan_between_rle|scan_between_dictionary|scan_between_sparse|gather_sparse|sum_sparse|mask_count'
     ! wasm-tools print packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print packages/jsimd/src/bytes/kernels.wasm | rg -q 'find_byte'
@@ -129,6 +131,7 @@ build:
     wasm-tools print experiments/parallel-columnar-selection/kernels.wasm | rg -q 'scan_i32_between_mask|mask_and|aggregate_i32_mask|i32x4.bitmask|i64x2.add|shared'
     wasm-tools print experiments/parallel-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|i32x4.all_true|shared'
     wasm-tools print experiments/radix-sort-block/kernels.wasm | rg -q 'sort_u32_pairs|sort_u32|sort_u64|v128.store'
+    wasm-tools print experiments/ultra-log-log/kernels.wasm | rg -q 'build_u32|merge_states|i8x16.max_u|v128.bitselect'
 
 test-olap-package: build
     deno test -A packages/olap/src
@@ -146,6 +149,15 @@ test-parallel-bloom-filter: build
 
 test-radix-sort-block: build
     deno test -A experiments/radix-sort-block
+
+test-ultra-log-log: build
+    deno test -A experiments/ultra-log-log
+
+bench-ultra-log-log: build
+    deno run -A experiments/ultra-log-log/bench.ts
+
+bench-record-ultra-log-log: build
+    JSIMD_ULL_OUTPUT=experiments/ultra-log-log/benchmarks/isolated-build-merge.json deno run -A experiments/ultra-log-log/bench.ts
 
 test-striped-roaring-bitmap: build
     deno test -A experiments/striped-roaring-bitmap
