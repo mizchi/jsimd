@@ -37,6 +37,41 @@ An experiment does not become a package export merely because its isolated kerne
 win an end-to-end representative workload after construction, data conversion, JS/Wasm or GPU
 boundaries, output materialization, scheduling, and disposal.
 
+### Weighted next implementation order
+
+Feature work is ranked by end-to-end evidence (35%), fit with resident bulk execution (25%), reuse
+of measured primitives (20%), resistance to a strong JavaScript builtin baseline (10%), and
+implementation/bundle cost (10%). A score authorizes only the first admission experiment, not a
+package export.
+
+| rank | candidate                                       | weight | first admission workload                                                      |
+| ---: | :---------------------------------------------- | -----: | :---------------------------------------------------------------------------- |
+|    1 | `UltraLogLog` / striped cardinality sketch      |     64 | Per-Worker ingestion plus SIMD max merge, including hash cost                 |
+|    2 | resident WebGPU hybrid vector pipeline          |     55 | Batched resident query on a second adapter/runtime; never single-query upload |
+|    3 | `MortonSpatialIndex`                            |     54 | Frozen batched tile/range lookup versus sorted typed-array intervals          |
+|    4 | `RangeFilterU32`                                |     48 | Storage workload where measured ZoneMap false positives cause page reads      |
+|    5 | `DijkstraCsrGraph`                              |     44 | Weighted graph families beyond the existing favorable grid                    |
+|    6 | `ShardedHashMap`                                |     31 | Contended batched phases versus per-Worker/native `Map`, not point lookup     |
+|    7 | `MultiQueuePriorityQueue`                       |     22 | Only a scheduler workload that amortizes the already-rejected point queue     |
+|    8 | extra locks or `EpochDomain` without a consumer |      5 | Do not implement speculatively                                                |
+
+The metadata-backed `RadixOrderU32` admission experiment is complete. Persisted per-row-group
+ordering facts removed runtime distribution discovery: at 1M rows the public stable key-plus-row-ID
+operator was 2.18x faster than the strongest packed-u64 JavaScript baseline on uniform random input,
+2.01x faster on radix-partitioned input, at parity on sorted input (1.03x), and at parity on
+256-value-cardinality input (0.99x). It is published from `@mizchi/jsimd-olap/radix-order-u32`;
+generic key-only u32/u64 sorting remains experimental because its unconditional API includes losing
+distributions. The `StripedRoaringBitmap` admission experiment is also complete: persistent Workers
+were 2.77x slower for one resident dense intersection pair and 1.16x slower for 16 pairs. A 64-pair
+batch improved median throughput 1.92x and p95 1.83x versus serial resident Roaring. Keep it as
+query-scheduler evidence, not a public concurrent collection. The practical next experiment is
+`UltraLogLog` with Worker-local ingestion and SIMD register merge. Worker-local Bloom was initially
+ranked first because both isolated halves had positive evidence; the completed admission experiment
+reduced a 1M-key rebuild by 2.46x, but refresh plus exact lookup improved only 1.08x at 90% misses
+and was 1.25-1.28x slower at higher hit rates, with noisy tail latency, so the concurrent wrapper
+was not adopted. Point-mutation concurrency and new synchronization primitives remain at the bottom
+because they reproduce the workloads where JavaScript and scalar atomics already win.
+
 The project concentrates on workloads where Wasm SIMD and persistent Web Workers can cooperate over
 immutable or phase-owned bulk data. A transactional row store, WAL, MVCC engine, and single-record
 OLTP indexes are out of scope: their scalar point operations, durability boundary, and contention
@@ -125,8 +160,18 @@ product-facing query engine to a separate repository once the boundary is stable
 - [x] Do not adopt the reusable-mask selection pipeline or pursue its downstream-Worker variant. The
       corrected comparison has no robust win over fused JavaScript; keep the implementation as a
       reproducible negative experiment and retain only the independently useful shared-mask ABI.
-- [ ] Add `RadixSortBlockU32/U64` only if group merge, join partitioning, or order/top-k repays its
-      construction and materialization cost.
+- [x] Compare copy-inclusive `RadixSortBlockU32/U64` against native typed-array sort. Large random
+      blocks win, but small, sorted, and low-cardinality blocks do not; retain a JS fallback.
+- [x] Add stable key-plus-row-ID radix output and compare a physical `ORDER BY key` boundary against
+      both comparator-based JavaScript and a stronger packed-`BigUint64Array` native sort.
+- [x] Add distribution sampling plus already-sorted and native-packed fallbacks. Automatic selection
+      prevents catastrophic choices, but its discovery pass remains visible on favorable JS fallback
+      inputs.
+- [x] Integrate trustworthy sortedness/cardinality metadata from the columnar manifest so the
+      operator bypasses discovery. Persist `first`, `last`, and adjacent-inversion facts per
+      immutable row group, combine them with min/max at manifest-read time without loading page
+      payloads, and publish the admitted stable-u32 operator as
+      `@mizchi/jsimd-olap/radix-order-u32`.
 
 ### P2: hybrid and vector search
 
@@ -154,11 +199,19 @@ Concurrent design follows four distinct contracts:
 Wasm has no atomic `v128` operations, so point mutation remains scalar and phase-local bulk work
 uses SIMD.
 
-- [ ] Evaluate concurrent Bloom filters as Worker-local filters plus SIMD OR. Atomic OR with
-      concurrent queries must not silently promise snapshot consistency.
+- [x] Evaluate concurrent Bloom filters as Worker-local filters plus SIMD OR. A persistent
+      four-Worker build plus reduction rebuilt 1M keys 2.46x faster than serial Bloom, but refresh
+      plus exact lookup was only 1.08x faster at 90% misses and 1.25-1.28x slower at higher hit
+      rates, with noisy p95. Keep the implementation as a negative experiment; the existing
+      `ShardedBitmap` already provides the useful phase-owned reduction ABI without adding a narrow
+      concurrent Bloom collection.
 - [ ] Evaluate `ShardedHashMap` with one mutex per shard and the existing fingerprint table.
-- [ ] Evaluate `StripedRoaringBitmap`, `ConcurrentSplitBlockBloomFilter`, `MultiQueuePriorityQueue`,
-      and `ConcurrentAppendLog` only on representative workloads.
+- [x] Evaluate `StripedRoaringBitmap` as batched resident posting-list intersection. Four Workers
+      lose for one and 16 dense pairs; 64 pairs improve median throughput 1.92x and p95 1.83x. Keep
+      the physical batch under `experiments/` as scheduler evidence rather than exporting a
+      point-concurrent collection.
+- [ ] Evaluate `ConcurrentSplitBlockBloomFilter`, `MultiQueuePriorityQueue`, and
+      `ConcurrentAppendLog` only on representative workloads.
 - [ ] Add `RwLock`, `Condvar`, `Semaphore`, or `OnceCell` only when a concrete consumer needs one.
 - [ ] Add `EpochDomain` only when locks, barriers, or bounded snapshot slots cannot safely reclaim
       storage.
@@ -248,6 +301,7 @@ workload.
 | sparse-matrix BFS   | Direct JavaScript adjacency traversal was 1.70x faster              |
 | `SimdPriorityQueue` | Point/batched queue workload was 0.75-0.76x JavaScript              |
 | bitmap A* SIMD heap | Barrier maps were 0.62-0.63x the scalar Wasm heap                   |
+| Worker-local Bloom  | Rebuild won 2.46x; refresh + exact lost except at 90% misses        |
 
 ## Admission and completion policy
 

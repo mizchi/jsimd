@@ -1,0 +1,210 @@
+{
+  "schemaVersion": 1,
+  "name": "striped-roaring-bitmap/resident-intersection-batch",
+  "recordedAt": "2026-08-28T14:02:06.941Z",
+  "environment": {
+    "runtime": {
+      "name": "deno",
+      "version": "2.6.4",
+      "userAgent": "Deno/2.6.4"
+    },
+    "platform": "darwin-aarch64",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null
+  },
+  "timing": {
+    "warmups": 10,
+    "samples": 11,
+    "operationsPerSample": 5
+  },
+  "input": {
+    "shape": {
+      "containersPerSet": 16,
+      "valuesLeft": 149808,
+      "valuesRight": 95328,
+      "pairCounts": [
+        1,
+        16,
+        64
+      ],
+      "workers": 4
+    },
+    "bytes": 62754816
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 81,
+    "summary": "Worker-resident Roaring intersections match serial Roaring cardinalities"
+  },
+  "measurements": [
+    {
+      "name": "serial-roaring/1-pairs",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 0.011158199999999851,
+      "p95Ms": 0.0431083999999828,
+      "minMs": 0.006616800000028888,
+      "maxMs": 0.0431083999999828,
+      "samplesMs": [
+        0.029950000000008005,
+        0.00749999999998181,
+        0.013649999999961438,
+        0.01962499999999636,
+        0.012508400000024266,
+        0.00885840000000826,
+        0.011158199999999851,
+        0.006825000000026194,
+        0.006616800000028888,
+        0.0066834000000199015,
+        0.0431083999999828
+      ]
+    },
+    {
+      "name": "striped-workers/1-pairs",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 0.03089999999997417,
+      "p95Ms": 0.056816600000001924,
+      "minMs": 0.025866599999972095,
+      "maxMs": 0.056816600000001924,
+      "samplesMs": [
+        0.03289160000003903,
+        0.02739160000000993,
+        0.02793339999998352,
+        0.025866599999972095,
+        0.03516659999995682,
+        0.03484159999998156,
+        0.026883399999996983,
+        0.03089999999997417,
+        0.031341800000018336,
+        0.02869999999998072,
+        0.056816600000001924
+      ]
+    },
+    {
+      "name": "serial-roaring/16-pairs",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 0.09358339999998862,
+      "p95Ms": 0.09453340000000025,
+      "minMs": 0.09169160000001284,
+      "maxMs": 0.09453340000000025,
+      "samplesMs": [
+        0.09169160000001284,
+        0.09265839999998207,
+        0.09413319999998748,
+        0.09344999999998435,
+        0.09445839999998498,
+        0.09250000000001819,
+        0.09453340000000025,
+        0.09304999999999382,
+        0.09365820000002714,
+        0.09393319999999221,
+        0.09358339999998862
+      ]
+    },
+    {
+      "name": "striped-workers/16-pairs",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 0.10841660000000956,
+      "p95Ms": 0.14732500000000073,
+      "minMs": 0.09409159999995609,
+      "maxMs": 0.14732500000000073,
+      "samplesMs": [
+        0.11089999999999237,
+        0.12559160000000702,
+        0.09710000000000037,
+        0.10329999999999018,
+        0.10841660000000956,
+        0.14732500000000073,
+        0.09803320000000895,
+        0.09409159999995609,
+        0.10936680000004344,
+        0.098633400000017,
+        0.11077500000001236
+      ]
+    },
+    {
+      "name": "serial-roaring/64-pairs",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 0.37876679999999396,
+      "p95Ms": 0.4250083999999788,
+      "minMs": 0.36762500000004367,
+      "maxMs": 0.4250083999999788,
+      "samplesMs": [
+        0.3870249999999942,
+        0.3753082000000177,
+        0.37354999999997746,
+        0.37876679999999396,
+        0.41475839999998243,
+        0.4250083999999788,
+        0.38386680000003254,
+        0.3833165999999892,
+        0.3741750000000138,
+        0.36762500000004367,
+        0.3784083999999893
+      ]
+    },
+    {
+      "name": "striped-workers/64-pairs",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 0.19695839999999407,
+      "p95Ms": 0.23240840000003118,
+      "minMs": 0.1561250000000655,
+      "maxMs": 0.23240840000003118,
+      "samplesMs": [
+        0.18164999999999054,
+        0.22715840000000753,
+        0.23240840000003118,
+        0.20782500000000254,
+        0.16755819999998495,
+        0.23015000000000327,
+        0.21201679999999215,
+        0.19695839999999407,
+        0.1561250000000655,
+        0.1735083999999915,
+        0.15696659999998702
+      ]
+    },
+    {
+      "name": "sorted-u32/64-pairs",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 74.24096659999995,
+      "p95Ms": 78.55415819999999,
+      "minMs": 71.24156659999998,
+      "maxMs": 78.55415819999999,
+      "samplesMs": [
+        72.94087499999996,
+        72.86032500000002,
+        72.16519159999999,
+        77.11740840000002,
+        71.24156659999998,
+        74.24096659999995,
+        78.55415819999999,
+        76.46244999999999,
+        78.15098339999986,
+        75.02689160000008,
+        73.15470000000005
+      ]
+    }
+  ],
+  "metrics": {
+    "speedup_1_pairs": 0.36,
+    "speedup_16_pairs": 0.86,
+    "speedup_64_pairs": 1.92,
+    "speedup_vs_sorted_64_pairs": 376.94,
+    "intersectionCardinality": 13632,
+    "sink": 0
+  },
+  "notes": [
+    "All Roaring containers and Workers are resident; construction and Worker startup are excluded.",
+    "Each operation includes Worker dispatch and returning one exact number cardinality per pair.",
+    "The serial baseline uses the same resident Roaring implementation; the sorted baseline scans both complete typed arrays.",
+    "Pairs are independent posting-list intersections assigned round-robin to persistent Workers."
+  ]
+}

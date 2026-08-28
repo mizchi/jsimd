@@ -1,6 +1,7 @@
 import { I32GroupByU8Pipeline } from "./group_by_u8.ts";
 import { I32AggregatePipeline } from "./range_aggregate.ts";
 import { SparseU32GroupByQuery } from "./sparse_group_by_u32.ts";
+import { RadixOrderU32 } from "./radix_order_u32.ts";
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -43,4 +44,16 @@ Deno.test("public entry point executes range, dense group-by, and sparse group-b
   );
   const sparseResult = await sparse.aggregateBetween(100, 200);
   assert(sparseResult.groups.length === 8, "sparse group count");
+
+  await using order = await RadixOrderU32.create(keys.length);
+  const orderedKeys = new Uint32Array(keys.length);
+  const rowIds = new Uint32Array(keys.length);
+  const strategy = order.orderInto(keys, orderedKeys, rowIds, {
+    rowCount: keys.length,
+    ascending: false,
+    adjacentInversions: keys.length - 1,
+    valueRange: 8,
+  });
+  assert(strategy === "native-packed", "narrow order strategy");
+  assert(orderedKeys[0] === 0 && orderedKeys.at(-1) === 7, "ordered u32 keys");
 });

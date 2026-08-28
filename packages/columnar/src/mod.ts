@@ -32,4 +32,6 @@ export {
   type QueryResult,
   type QueryStats,
   SchemaEngine,
+  type U32OrderMetadata,
+  type U32OrderPageMetadata,
 } from "./engine.ts";

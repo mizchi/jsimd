@@ -97,6 +97,36 @@ The sparse query remains an immutable create/use/dispose object. Replacing its c
 the bounded hash-table workload and may require a different capacity, so it does not pretend to
 offer the same-shaped snapshot replacement contract.
 
+## Stable u32 order
+
+`RadixOrderU32` produces sorted keys and a stable row-ID permutation. It consumes manifest-only
+facts from `SchemaEngine`, so sorted, narrow-range, and legacy columns keep a JavaScript builtin
+path while large unordered columns use four-pass Wasm radix sorting.
+
+```ts
+import { RadixOrderU32 } from "@mizchi/jsimd-olap/radix-order-u32";
+
+const facts = await engine.readU32OrderMetadata("events", "entityId");
+const keys = (await engine.query("events").select("entityId").execute()).columns.entityId;
+const sortedKeys = new Uint32Array(keys.length);
+const rowIds = new Uint32Array(keys.length);
+
+await using order = await RadixOrderU32.create(keys.length);
+const strategy = order.orderInto(keys, sortedKeys, rowIds, facts);
+```
+
+The ordering facts are persisted during ingestion and updated per immutable row group. Reading them
+does not load column payloads. Existing manifests without these optional facts safely use the native
+packed-u64 fallback. The operator is specialized to non-nullable unsigned keys; descending,
+nullable, multi-column, and arbitrary-payload ordering are not implied.
+
+On the recorded Apple M5 / Deno 2.6.4 benchmark at 1,048,576 rows, metadata-backed ordering was
+2.18x faster than packed-u64 JavaScript on uniform random keys and 2.01x faster on radix-partitioned
+keys. It stayed near parity on already sorted keys (1.03x) and low-cardinality keys (0.99x) by
+selecting direct-copy or native-sort paths. Ingestion-time metadata construction is excluded from
+these repeated resident-query measurements. Facts and keys must describe the same immutable table
+generation.
+
 ## Performance boundary
 
 The intended case is repeated scans over large resident numeric columns, page-prunable predicates,
@@ -129,7 +159,7 @@ and
 |                         | `@mizchi/jsimd-olap`                                                         | DuckDB-Wasm                                                             |
 | :---------------------- | :--------------------------------------------------------------------------- | :---------------------------------------------------------------------- |
 | Interface               | Typed, fixed-purpose TypeScript APIs                                         | SQL, relational tables, and Arrow integration                           |
-| Current operations      | Range aggregate, dense-u8 group-by, bounded sparse-u32 group-by              | General filters, joins, grouping, sorting, windows, and SQL expressions |
+| Current operations      | Range aggregate, dense/sparse group-by, stable u32 order                     | General filters, joins, grouping, sorting, windows, and SQL expressions |
 | Execution               | Direct Wasm SIMD or persistent Web Workers selected by a physical cost model | Single-threaded `eh` or experimental threaded `coi` bundle              |
 | Best fit                | Repeated scans over resident typed columns with small aggregate results      | General analytical queries and dynamic SQL                              |
 | Recorded fixture assets | 17.56 KiB JavaScript + 2.52 KiB Wasm gzip for range aggregate                | 7.42-7.49 MiB Wasm + 186-356 KiB Worker JavaScript gzip                 |
@@ -139,8 +169,10 @@ jsimd fixture includes only the imported kernels and runtime.
 
 The isolated Vite fixture for `range-aggregate` produces one query Worker and two Wasm assets (the
 shared runtime and OLAP kernels): 17.56 KiB JavaScript and 2.52 KiB Wasm gzip in total. The npm
-tarball containing all three entrypoints is about 41.0 KiB compressed. Subpath exports are
-intentional: importing `range-aggregate` does not emit the group-by Workers.
+tarball containing all four entrypoints is about 43.9 KiB compressed. The isolated `radix-order-u32`
+fixture is 2.21 KiB gzip in total (1.94 KiB JavaScript + 0.27 KiB Wasm) and emits no Worker runtime.
+Subpath exports are intentional: importing `range-aggregate` does not emit the group-by Workers,
+while importing `radix-order-u32` does not emit any shared-memory runtime.
 
 This package is unlikely to win when initialization is included in a one-shot query, only a few
 pages survive, input must first be copied from storage, most rows must be materialized, or the query

@@ -15,6 +15,10 @@
     "./sparse-group-by-u32": {
       "types": "./dist/sparse_group_by_u32.d.ts",
       "default": "./dist/sparse_group_by_u32.js"
+    },
+    "./radix-order-u32": {
+      "types": "./dist/radix_order_u32.d.ts",
+      "default": "./dist/radix_order_u32.js"
     }
   },
   "sideEffects": false,

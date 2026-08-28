@@ -119,6 +119,39 @@ Deno.test("count loads only predicate columns and replace publishes a new genera
   assertEquals((await backend.list("tables/events/pages/")).length, 3, "current pages retained");
 });
 
+Deno.test("u32 order metadata survives immutable row-group updates", async () => {
+  const backend = new MemoryPageBackend();
+  using engine = new SchemaEngine(analytics, backend);
+  await engine.replace("events", fixture());
+
+  const before = engine.cacheStats();
+  const sorted = await engine.readU32OrderMetadata("events", "id");
+  assertEquals(sorted.rowCount, 768, "order metadata row count");
+  assertEquals(sorted.ascending, true, "globally ascending column");
+  assertEquals(sorted.adjacentInversions, 0, "sorted inversion count");
+  assertEquals(sorted.minimum, 10, "order minimum");
+  assertEquals(sorted.maximum, 777, "order maximum");
+  assertEquals(sorted.valueRange, 768, "order value range");
+  assertEquals(sorted.pages.length, 3, "order page facts");
+  assertEquals(engine.cacheStats(), before, "order metadata does not load page payloads");
+  await assertRejects(
+    () => engine.readU32OrderMetadata("events", "temperature"),
+    "i32 order metadata is rejected",
+  );
+
+  await engine.updateRowGroups("events", [{
+    index: 1,
+    columns: {
+      id: Uint32Array.from({ length: 256 }, (_, index) => 400 - index),
+    },
+  }]);
+  const updated = await engine.readU32OrderMetadata("events", "id");
+  assertEquals(updated.ascending, false, "updated column is not ascending");
+  assertEquals(updated.adjacentInversions, 255, "page-local inversions are preserved");
+  assertEquals(updated.pages[1]?.first, 400, "updated first value");
+  assertEquals(updated.pages[1]?.last, 145, "updated last value");
+});
+
 Deno.test("row-group updates reuse immutable pages and pin observed generations", async () => {
   const backend = new MemoryPageBackend();
   using engine = new SchemaEngine(analytics, backend, { cacheBytes: 1 << 20 });

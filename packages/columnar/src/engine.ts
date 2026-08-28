@@ -54,6 +54,13 @@ interface ColumnManifest {
   readonly max: Scalar | null;
   readonly nullCount: number;
   readonly byteLength: number;
+  readonly u32Order?: U32OrderManifest;
+}
+
+interface U32OrderManifest {
+  readonly first: number;
+  readonly last: number;
+  readonly adjacentInversions: number;
 }
 
 interface RowGroupManifest {
@@ -139,6 +146,30 @@ export interface I32SnapshotPages {
   readonly rowGroupSize: number;
   readonly bytesRead: number;
   readonly pages: readonly I32SnapshotPage[];
+}
+
+export interface U32OrderPageMetadata {
+  readonly index: number;
+  readonly rowOffset: number;
+  readonly length: number;
+  readonly minimum: number;
+  readonly maximum: number;
+  readonly first: number | undefined;
+  readonly last: number | undefined;
+  readonly adjacentInversions: number | undefined;
+}
+
+/** Manifest-only facts for planning stable order over one non-nullable u32 column. */
+export interface U32OrderMetadata {
+  readonly generation: string;
+  readonly rowCount: number;
+  readonly rowGroupSize: number;
+  readonly minimum: number | null;
+  readonly maximum: number | null;
+  readonly valueRange: number | null;
+  readonly ascending: boolean | undefined;
+  readonly adjacentInversions: number | undefined;
+  readonly pages: readonly U32OrderPageMetadata[];
 }
 
 interface MutableStats {
@@ -586,7 +617,7 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
         const bytes = encodeStoredColumn(definition, pageInput, this.#pageFormat);
         const key = `tables/${name}/pages/${generation}/${index}/${columnName}.bin`;
         await this.backend.put(key, bytes);
-        const [minimum, maximum, nullCount] = minMax(definition, pageInput);
+        const [minimum, maximum, nullCount, u32Order] = columnStatistics(definition, pageInput);
         columns[columnName] = Object.freeze({
           key,
           kind: definition.kind,
@@ -595,6 +626,7 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
           max: maximum,
           nullCount,
           byteLength: bytes.byteLength,
+          ...(u32Order === undefined ? {} : { u32Order }),
         });
       }
       rowGroups.push(Object.freeze({
@@ -672,7 +704,7 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
         }
         const bytes = encodeStoredColumn(definition, input, this.#pageFormat);
         const key = `tables/${name}/pages/${generation}/${update.index}/${columnName}.bin`;
-        const [minimum, maximum, nullCount] = minMax(definition, input);
+        const [minimum, maximum, nullCount, u32Order] = columnStatistics(definition, input);
         return Object.freeze({
           name: columnName,
           bytes,
@@ -684,6 +716,7 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
             max: maximum,
             nullCount,
             byteLength: bytes.byteLength,
+            ...(u32Order === undefined ? {} : { u32Order }),
           }),
         });
       });
@@ -795,6 +828,78 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
       rowCount: manifest.rowCount,
       rowGroupSize: manifest.rowGroupSize,
       bytesRead: pages.reduce((sum, page) => sum + page.byteLength, 0),
+      pages: Object.freeze(pages),
+    });
+  }
+
+  /** Reads u32 ordering facts from the manifest without loading any column page payload. */
+  async readU32OrderMetadata<Name extends TableName<Schema>>(
+    name: Name,
+    columnName: ColumnName<Schema["tables"][Name]>,
+  ): Promise<U32OrderMetadata> {
+    this.#assertAlive();
+    const table = this.#table(name);
+    const definition = table.columns[columnName];
+    if (definition === undefined) throw new RangeError(`unknown column ${columnName}`);
+    if (definition.kind !== "u32" || definition.nullable) {
+      throw new TypeError("order metadata requires a non-nullable u32 column");
+    }
+    const manifest = await this.#manifest(name, table);
+    const pages: U32OrderPageMetadata[] = [];
+    let minimum: number | null = null;
+    let maximum: number | null = null;
+    let adjacentInversions = 0;
+    let known = true;
+    let previousLast: number | undefined;
+    for (const group of manifest.rowGroups) {
+      const metadata = group.columns[columnName];
+      let pageMinimum: number;
+      let pageMaximum: number;
+      let order: U32OrderManifest | undefined;
+      if (metadata === undefined) {
+        const value = defaultValue(definition);
+        if (typeof value !== "number") throw new TypeError("u32 default must be numeric");
+        pageMinimum = value;
+        pageMaximum = value;
+        order = { first: value, last: value, adjacentInversions: 0 };
+      } else {
+        if (
+          metadata.kind !== "u32" || metadata.nullCount !== 0 ||
+          typeof metadata.min !== "number" || typeof metadata.max !== "number"
+        ) throw new TypeError("column page is not a non-nullable u32 page");
+        pageMinimum = metadata.min;
+        pageMaximum = metadata.max;
+        order = metadata.u32Order;
+      }
+      if (minimum === null || pageMinimum < minimum) minimum = pageMinimum;
+      if (maximum === null || pageMaximum > maximum) maximum = pageMaximum;
+      if (order === undefined) {
+        known = false;
+      } else {
+        adjacentInversions += order.adjacentInversions;
+        if (previousLast !== undefined && previousLast > order.first) adjacentInversions++;
+        previousLast = order.last;
+      }
+      pages.push(Object.freeze({
+        index: group.index,
+        rowOffset: group.rowOffset,
+        length: group.length,
+        minimum: pageMinimum,
+        maximum: pageMaximum,
+        first: order?.first,
+        last: order?.last,
+        adjacentInversions: order?.adjacentInversions,
+      }));
+    }
+    return Object.freeze({
+      generation: manifest.generation,
+      rowCount: manifest.rowCount,
+      rowGroupSize: manifest.rowGroupSize,
+      minimum,
+      maximum,
+      valueRange: minimum === null || maximum === null ? null : maximum - minimum + 1,
+      ascending: known ? adjacentInversions === 0 : undefined,
+      adjacentInversions: known ? adjacentInversions : undefined,
       pages: Object.freeze(pages),
     });
   }
@@ -1283,10 +1388,10 @@ function typedArrayName(
   return "Uint8Array";
 }
 
-function minMax(
+function columnStatistics(
   definition: ColumnDefinition,
   input: unknown,
-): readonly [Scalar | null, Scalar | null, number] {
+): readonly [Scalar | null, Scalar | null, number, U32OrderManifest | undefined] {
   if (definition.kind === "string") {
     const values = input as readonly (string | null)[];
     let minimum: string | null = null;
@@ -1300,22 +1405,32 @@ function minMax(
       if (minimum === null || value < minimum) minimum = value;
       if (maximum === null || value > maximum) maximum = value;
     }
-    return [minimum, maximum, nullCount];
+    return [minimum, maximum, nullCount, undefined];
   }
   const { values, validity } = numericParts(definition, input);
   let minimum: number | null = null;
   let maximum: number | null = null;
   let nullCount = 0;
+  let adjacentInversions = 0;
+  const trackU32Order = definition.kind === "u32" && !definition.nullable;
   for (let index = 0; index < values.length; index++) {
     if (validity !== undefined && validity[index] === 0) {
       nullCount++;
       continue;
     }
     const value = values[index]!;
+    if (trackU32Order && index > 0 && values[index - 1]! > value) adjacentInversions++;
     if (minimum === null || value < minimum) minimum = value;
     if (maximum === null || value > maximum) maximum = value;
   }
-  return [minimum, maximum, nullCount];
+  const u32Order = trackU32Order && values.length > 0
+    ? Object.freeze({
+      first: values[0]!,
+      last: values[values.length - 1]!,
+      adjacentInversions,
+    })
+    : undefined;
+  return [minimum, maximum, nullCount, u32Order];
 }
 
 function newTypedArray(
@@ -1514,11 +1629,39 @@ function validateManifest(value: unknown): TableManifest {
         !["raw", "snapshot", "dictionary"].includes(column.format) ||
         !validScalarOrNull(column.min) || !validScalarOrNull(column.max) ||
         !Number.isSafeInteger(column.nullCount) ||
-        !Number.isSafeInteger(column.byteLength)
+        !Number.isSafeInteger(column.byteLength) ||
+        !validU32OrderManifest(
+          column.u32Order,
+          column.kind,
+          column.min,
+          column.max,
+          group.length,
+        )
       ) throw new RangeError("invalid column manifest");
     }
   }
   return candidate as TableManifest;
+}
+
+function validU32OrderManifest(
+  value: unknown,
+  kind: ColumnDefinition["kind"] | undefined,
+  minimum: Scalar | null | undefined,
+  maximum: Scalar | null | undefined,
+  length: number,
+): value is U32OrderManifest | undefined {
+  if (value === undefined) return true;
+  if (
+    kind !== "u32" || typeof minimum !== "number" || typeof maximum !== "number" ||
+    typeof value !== "object" || value === null
+  ) return false;
+  const order = value as Partial<U32OrderManifest>;
+  return Number.isInteger(order.first) && order.first! >= 0 && order.first! <= 0xffff_ffff &&
+    order.first! >= minimum && order.first! <= maximum &&
+    Number.isInteger(order.last) && order.last! >= 0 && order.last! <= 0xffff_ffff &&
+    order.last! >= minimum && order.last! <= maximum &&
+    Number.isSafeInteger(order.adjacentInversions) && order.adjacentInversions! >= 0 &&
+    order.adjacentInversions! <= Math.max(0, length - 1);
 }
 
 function validStoredDefinition(value: unknown): value is StoredColumnDefinition {

@@ -35,6 +35,10 @@ if (packageName === "olap") {
     await Deno.writeTextFile(path, source.replaceAll(/(new URL\("\.\/[^\"]+)\.ts"/g, '$1.js"'));
   }
   await Deno.copyFile(`${packageDirectory}/src/kernels.wasm`, `${outputDirectory}/kernels.wasm`);
+  await Deno.copyFile(
+    `${packageDirectory}/src/radix_order_u32.wasm`,
+    `${outputDirectory}/radix_order_u32.wasm`,
+  );
 }
 
 console.log(`Built ${packageName} package in ${outputDirectory}/`);
