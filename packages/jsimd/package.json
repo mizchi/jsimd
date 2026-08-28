@@ -39,8 +39,8 @@
   "sideEffects": false,
   "files": ["dist/"],
   "scripts": {
-    "build": "cd ../.. && just build-package",
-    "prepack": "cd ../.. && just build-package",
+    "build": "cd ../.. && just build-jsimd-package",
+    "prepack": "cd ../.. && just build-jsimd-package",
     "test": "cd ../.. && deno test -A packages/jsimd"
   },
   "license": "MIT",

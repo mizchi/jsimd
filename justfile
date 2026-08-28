@@ -217,10 +217,16 @@ check-benchmark-results:
 check-build-budgets:
     deno run -A tools/check-build-budgets.ts
 
-build-package: build
+build-jsimd-package: build
     deno run -A tools/build-package.ts
-    pnpm --filter @mizchi/jsimd-shared build
-    pnpm --filter @mizchi/jsimd-columnar build
+
+build-shared-package: build-jsimd-package
+    deno run -A tools/build-typescript-package.ts shared
+
+build-columnar-package: build-jsimd-package
+    deno run -A tools/build-typescript-package.ts columnar
+
+build-package: build-shared-package build-columnar-package
 
 memory-profile: build
     node --no-warnings --expose-gc tools/profile-memory.ts

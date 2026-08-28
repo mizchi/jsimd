@@ -7,7 +7,10 @@
   "types": "./dist/mod.d.ts",
   "sideEffects": false,
   "files": ["dist/", "README.md"],
-  "scripts": { "build": "tsc -p tsconfig.json" },
+  "scripts": {
+    "build": "cd ../.. && just build-shared-package",
+    "prepack": "cd ../.. && just build-shared-package"
+  },
   "dependencies": { "@mizchi/jsimd": "workspace:^" },
   "license": "MIT",
   "publishConfig": { "access": "public" }

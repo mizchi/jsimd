@@ -19,6 +19,19 @@ Deno.test("workspace packages keep explicit public boundaries", async () => {
   }
 });
 
+Deno.test("every publishable package rebuilds its payload before packing", async () => {
+  for (const directory of ["jsimd", "shared", "columnar"]) {
+    const manifest = await readJson<{
+      files?: readonly string[];
+      private?: boolean;
+      scripts?: Record<string, string>;
+    }>(new URL(`packages/${directory}/package.json`, root));
+    assertEquals(manifest.private, undefined);
+    assertEquals(Array.isArray(manifest.files), true);
+    assertEquals(typeof manifest.scripts?.prepack, "string");
+  }
+});
+
 Deno.test("implementation sources live behind their package boundaries", async () => {
   await assertFile(new URL("packages/jsimd/src/bitmap/mod.ts", root));
   await assertFile(new URL("packages/shared/src/mod.ts", root));
