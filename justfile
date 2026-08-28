@@ -316,6 +316,12 @@ bench-record-parallel-columnar-duckdb-browser: build
     pnpm exec vite build experiments/parallel-columnar-query/duckdb-comparison
     JSIMD_DUCKDB_OUTPUT_DIR=experiments/parallel-columnar-query/benchmarks deno run -A tools/bench-parallel-columnar-duckdb-browser.ts
 
+bench-parallel-columnar-duckdb-native:
+    deno run -A tools/bench-parallel-columnar-duckdb-native.ts
+
+bench-record-parallel-columnar-duckdb-native:
+    JSIMD_DUCKDB_NATIVE_OUTPUT_DIR=experiments/parallel-columnar-query/benchmarks deno run -A tools/bench-parallel-columnar-duckdb-native.ts
+
 bench-columnar-schema-indexeddb-browser: build
     pnpm exec tsc -p packages/columnar/fixtures/browser-benchmark/tsconfig.json
     pnpm exec vite build packages/columnar/fixtures/browser-benchmark

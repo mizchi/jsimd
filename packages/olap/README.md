@@ -156,6 +156,37 @@ median of 11 samples. The raw records are available for
 and
 [sparse grouping](../../experiments/parallel-columnar-query/benchmarks/duckdb-browser-sparse.json).
 
+### DuckDB Native comparison
+
+Native DuckDB closes most of the gap to these specialized kernels, but did not overtake them in the
+recorded workloads. The following warm-query medians were measured on the same Apple M5 with DuckDB
+Native 1.5.2. Native runs use an in-memory resident table and a fresh CLI process for each thread
+configuration. The final column compares the eight-Worker jsimd path with eight-thread Native
+DuckDB.
+
+| workload                      | input                                  | jsimd direct | jsimd 8 Workers | DuckDB Native 1 thread | DuckDB Native 8 threads | jsimd speedup |
+| :---------------------------- | :------------------------------------- | -----------: | --------------: | ---------------------: | ----------------------: | ------------: |
+| Q6-shaped range `count + sum` | 33.6M rows, 25% selected               |      4.10 ms |         1.25 ms |               22.29 ms |                 5.74 ms |         4.59x |
+| Q1-shaped dense group-by      | 16.8M rows, 8 groups, 50% selected     |     14.64 ms |         3.29 ms |               43.55 ms |                11.43 ms |         3.47x |
+| ZoneMap-pruned log group-by   | 16.8M rows, 8 groups, 10% selected     |      2.62 ms |        0.675 ms |                4.60 ms |                 1.46 ms |         2.16x |
+| Nullable sparse-u32 group-by  | 16.8M rows, 2,048 groups, 10% selected |     13.33 ms |         3.87 ms |               14.55 ms |                 6.45 ms |         1.67x |
+
+[DuckDB's JSON profiler](https://duckdb.org/docs/current/dev/profiling) supplies the Native
+`LATENCY` metric: whole-query execution and result production are included, while CLI startup, CLI
+result serialization, and table construction are excluded. Each thread configuration is repeated in
+three fresh processes; each process performs five warmups and retains 11 samples, and the table
+reports the median of all 33 samples. The jsimd numbers are the Chrome 152 measurements above; they
+were not collected inside the Native CLI process. The browser records use DuckDB-Wasm 1.4.3, while
+the Native records use DuckDB 1.5.2, so this is a same-host implementation comparison rather than a
+claim of cycle-identical engine versions. Raw Native records are available for
+[Q6](../../experiments/parallel-columnar-query/benchmarks/duckdb-native.json),
+[Q1](../../experiments/parallel-columnar-query/benchmarks/duckdb-native-q1.json),
+[the pruned log workload](../../experiments/parallel-columnar-query/benchmarks/duckdb-native-logs.json),
+and
+[sparse grouping](../../experiments/parallel-columnar-query/benchmarks/duckdb-native-sparse.json).
+Reproduce them with `just bench-record-parallel-columnar-duckdb-native`; set `DUCKDB` to select a
+specific CLI binary.
+
 |                         | `@mizchi/jsimd-olap`                                                         | DuckDB-Wasm                                                             |
 | :---------------------- | :--------------------------------------------------------------------------- | :---------------------------------------------------------------------- |
 | Interface               | Typed, fixed-purpose TypeScript APIs                                         | SQL, relational tables, and Arrow integration                           |

@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "name": "parallel-columnar-query/duckdb-native-sparse",
+  "recordedAt": "2026-08-28T15:08:52.896Z",
+  "environment": {
+    "runtime": {
+      "name": "duckdb-native",
+      "version": "v1.5.2 (Variegata) 8a5851971f",
+      "userAgent": "Deno/2.6.4"
+    },
+    "platform": "darwin-aarch64",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null
+  },
+  "timing": {
+    "warmups": 15,
+    "samples": 33,
+    "operationsPerSample": 1
+  },
+  "input": {
+    "shape": {
+      "workload": "sparse",
+      "rows": 16777216,
+      "selectivity": 0.1,
+      "groupCount": 2048
+    },
+    "bytes": 218103808
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 6,
+    "summary": "native DuckDB sparse nullable group states matched"
+  },
+  "measurements": [
+    {
+      "name": "duckdb-native/threads=1",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 14.549707999999999,
+      "p95Ms": 16.228666,
+      "minMs": 13.492708,
+      "maxMs": 16.510583,
+      "samplesMs": [
+        13.857125,
+        13.612667,
+        13.492708,
+        13.938,
+        13.729291,
+        13.787584,
+        13.702417,
+        13.570875,
+        13.63575,
+        13.584000000000001,
+        14.272542,
+        16.510583,
+        15.223167,
+        14.934583,
+        14.549707999999999,
+        14.935583000000001,
+        16.228666,
+        16.118582999999997,
+        15.098125,
+        14.079833,
+        14.461375,
+        14.149417,
+        15.427,
+        14.665875,
+        15.503333,
+        14.0945,
+        15.65925,
+        14.010709,
+        15.18375,
+        15.627583000000001,
+        15.552625,
+        14.688457999999999,
+        14.743833
+      ]
+    },
+    {
+      "name": "duckdb-native/threads=8",
+      "boundary": "resident",
+      "unit": "ms",
+      "medianMs": 6.449,
+      "p95Ms": 7.9895000000000005,
+      "minMs": 5.307125,
+      "maxMs": 8.456083,
+      "samplesMs": [
+        7.697917,
+        7.9895000000000005,
+        7.968207999999999,
+        6.575791,
+        6.6685,
+        7.942457999999999,
+        7.828875000000001,
+        7.664125,
+        7.039667000000001,
+        6.955375,
+        6.656750000000001,
+        5.8245,
+        5.3474580000000005,
+        6.100750000000001,
+        6.409375,
+        8.456083,
+        7.641041,
+        6.174333,
+        6.223625,
+        6.699333,
+        5.951583,
+        6.442749999999999,
+        5.972583,
+        5.4190000000000005,
+        6.449,
+        6.101541,
+        6.505834,
+        5.508083,
+        5.307125,
+        5.317125,
+        6.084458,
+        6.003958,
+        7.10775
+      ]
+    }
+  ],
+  "metrics": {
+    "configuredThreads_1": 1,
+    "tableConstructionMedianMs_1": 303.03945799999997,
+    "configuredThreads_8": 8,
+    "tableConstructionMedianMs_8": 313.665458
+  },
+  "notes": [
+    "Each resident boundary is DuckDB profiler latency for one warm query over a resident in-memory table; CLI startup, CLI result serialization, and table construction are excluded.",
+    "Result production is included. Each of 3 process repetitions performs one discarded validation query, five profiled warmups, and eleven retained samples.",
+    "Each process repetition constructs a fresh in-memory table in a fresh native DuckDB CLI process."
+  ]
+}
