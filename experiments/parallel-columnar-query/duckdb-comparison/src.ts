@@ -5,10 +5,12 @@ import duckdbEhWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker
 import duckdbCoiUrl from "@duckdb/duckdb-wasm/dist/duckdb-coi.wasm?url";
 import duckdbEhUrl from "@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url";
 import { type GroupByAggregate, ParallelI32GroupByU8Query } from "../group_by.ts";
+import type { LocalGroupEntryU32 } from "../local_group_hash_table.ts";
 import { ParallelI32Query } from "../mod.ts";
+import { SparseU32GroupByQuery } from "../sparse_group_by.ts";
 
 type Mode = "jsimd-single" | "jsimd-workers" | "duckdb-eh" | "duckdb-coi";
-type Workload = "q6" | "q1" | "logs";
+type Workload = "q6" | "q1" | "logs" | "sparse";
 
 interface SerializedGroupAggregate extends Omit<GroupByAggregate, "sum"> {
   readonly sum: string;
@@ -20,12 +22,17 @@ interface BenchmarkResult {
   readonly rows: number;
   readonly bytes: number;
   readonly workerCount: number;
+  readonly groupCount?: number;
   readonly initializationMs: number;
   readonly medianMs: number;
   readonly samplesMs: readonly number[];
   readonly count?: number;
   readonly sum?: string;
   readonly groups?: readonly SerializedGroupAggregate[];
+  readonly sparseGroupCount?: number;
+  readonly sparseChecksum?: number;
+  readonly pagesScanned?: number;
+  readonly pagesSkipped?: number;
   readonly crossOriginIsolated: boolean;
   readonly userAgent: string;
   readonly duckdbVersion?: string;
@@ -36,6 +43,8 @@ const parameters = new URLSearchParams(location.search);
 const mode = parseMode(parameters.get("mode"));
 const workload = parseWorkload(parameters.get("workload"));
 const rows = parsePositiveInteger(parameters.get("rows") ?? "33554432", "rows");
+const sparseGroupCount = parsePositiveInteger(parameters.get("groups") ?? "2048", "groups");
+const sparseCapacity = nextPowerOfTwo(Math.ceil(sparseGroupCount / 0.75));
 
 void run(mode, workload, rows).then(report, reportError);
 
@@ -46,11 +55,15 @@ async function run(mode: Mode, workload: Workload, rows: number): Promise<Benchm
     case "duckdb-coi":
       return workload === "q6"
         ? await runDuckDb(mode, rows)
+        : workload === "sparse"
+        ? await runDuckDbSparse(mode, rows)
         : await runDuckDbGroupBy(mode, workload, rows);
     case "jsimd-single":
     case "jsimd-workers":
       return workload === "q6"
         ? await runJsimd(mode, rows)
+        : workload === "sparse"
+        ? await runJsimdSparse(mode, rows)
         : await runJsimdGroupBy(mode, workload, rows);
   }
 }
@@ -122,6 +135,60 @@ async function runJsimdGroupBy(
     }
     validateGroups(aggregates, expected);
     return groupResult(mode, workload, rows, workerCount, initializationMs, samplesMs, aggregates);
+  } finally {
+    await query[Symbol.asyncDispose]();
+  }
+}
+
+async function runJsimdSparse(
+  mode: "jsimd-single" | "jsimd-workers",
+  rows: number,
+): Promise<BenchmarkResult> {
+  const workerCount = mode === "jsimd-workers"
+    ? Math.min(8, highestPowerOfTwo(navigator.hardwareConcurrency || 1))
+    : 1;
+  const filter = new Int32Array(rows);
+  const keys = new Uint32Array(rows);
+  const values = new Int32Array(rows);
+  const validities = new Uint8Array(rows);
+  for (let index = 0; index < rows; index++) {
+    filter[index] = index;
+    keys[index] = sparseKey(index);
+    values[index] = (index % 20_001) - 10_000;
+    validities[index] = index % 17 === 0 ? 0 : 1;
+  }
+  const lower = Math.floor(rows * 0.7);
+  const upper = Math.floor(rows * 0.8);
+  const expected = expectedSparseGroupBy(filter, keys, values, validities, lower, upper);
+  const initializationStart = performance.now();
+  const query = await SparseU32GroupByQuery.create(
+    { filter, keys, values, validities },
+    { capacity: sparseCapacity, workerCount, pageRows: 65_536 },
+  );
+  const initializationMs = performance.now() - initializationStart;
+  try {
+    const execute = () => query.aggregateBetween(lower, upper);
+    for (let index = 0; index < 5; index++) {
+      validateSparseGroups((await execute()).groups, expected);
+    }
+    const samplesMs: number[] = [];
+    let result = await execute();
+    for (let index = 0; index < 11; index++) {
+      const start = performance.now();
+      result = await execute();
+      samplesMs.push(performance.now() - start);
+    }
+    validateSparseGroups(result.groups, expected);
+    return sparseResult(
+      mode,
+      rows,
+      workerCount,
+      initializationMs,
+      samplesMs,
+      result.groups,
+      result.pagesScanned,
+      result.pagesSkipped,
+    );
   } finally {
     await query[Symbol.asyncDispose]();
   }
@@ -252,6 +319,71 @@ async function runDuckDbGroupBy(
   }
 }
 
+async function runDuckDbSparse(
+  mode: "duckdb-eh" | "duckdb-coi",
+  rows: number,
+): Promise<BenchmarkResult> {
+  const threaded = mode === "duckdb-coi";
+  const workerCount = threaded ? Math.min(8, navigator.hardwareConcurrency || 1) : 1;
+  const worker = new Worker(threaded ? duckdbCoiWorkerUrl : duckdbEhWorkerUrl);
+  const database = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
+  const initializationStart = performance.now();
+  try {
+    await database.instantiate(
+      threaded ? duckdbCoiUrl : duckdbEhUrl,
+      threaded ? duckdbPthreadWorkerUrl : null,
+    );
+    const duckdbVersion = await database.getVersion();
+    const connection = await database.connect();
+    try {
+      await connection.query(`SET threads = ${workerCount}`);
+      const settings = await connection.query(
+        "SELECT current_setting('threads')::INTEGER AS threads",
+      );
+      const configuredThreads = Number(settings.getChild("threads")?.get(0));
+      if (configuredThreads !== workerCount) {
+        throw new Error(`DuckDB configured ${configuredThreads} threads, expected ${workerCount}`);
+      }
+      await connection.query(
+        `CREATE TABLE data AS
+         SELECT CAST(i AS INTEGER) AS filter,
+                CAST((((i % ${sparseGroupCount})::UBIGINT * 2654435761) & 4294967295) AS UINTEGER) AS group_id,
+                CASE WHEN i % 17 = 0 THEN NULL ELSE CAST((i % 20001) - 10000 AS INTEGER) END AS value
+         FROM range(${rows}) AS rows(i)`,
+      );
+      const initializationMs = performance.now() - initializationStart;
+      const lower = Math.floor(rows * 0.7);
+      const upper = Math.floor(rows * 0.8);
+      const sql =
+        "SELECT group_id, count(value) AS count, count(*) - count(value) AS null_count, " +
+        "sum(value) AS sum, min(value) AS min, max(value) AS max " +
+        `FROM data WHERE filter >= ${lower} AND filter < ${upper} ` +
+        "GROUP BY group_id ORDER BY group_id";
+      const expected = expectedSparseFromRows(rows, lower, upper);
+      for (let index = 0; index < 5; index++) {
+        validateSparseGroups(readDuckDbSparseGroups(await connection.query(sql)), expected);
+      }
+      const samplesMs: number[] = [];
+      let groups: readonly LocalGroupEntryU32[] = [];
+      for (let index = 0; index < 11; index++) {
+        const start = performance.now();
+        groups = readDuckDbSparseGroups(await connection.query(sql));
+        samplesMs.push(performance.now() - start);
+      }
+      validateSparseGroups(groups, expected);
+      return {
+        ...sparseResult(mode, rows, workerCount, initializationMs, samplesMs, groups, 0, 0),
+        duckdbVersion,
+        duckdbConfiguredThreads: configuredThreads,
+      };
+    } finally {
+      await connection.close();
+    }
+  } finally {
+    await database.terminate();
+  }
+}
+
 function validateDuckDb(
   table: Awaited<ReturnType<duckdb.AsyncDuckDBConnection["query"]>>,
   rows: number,
@@ -274,6 +406,26 @@ function readDuckDbGroups(
       sum: BigInt(String(table.getChild("sum")?.get(index))),
       min: Number(table.getChild("min")?.get(index)),
       max: Number(table.getChild("max")?.get(index)),
+    });
+  }
+  return output;
+}
+
+function readDuckDbSparseGroups(
+  table: Awaited<ReturnType<duckdb.AsyncDuckDBConnection["query"]>>,
+): LocalGroupEntryU32[] {
+  const output: LocalGroupEntryU32[] = [];
+  for (let index = 0; index < table.numRows; index++) {
+    const count = Number(table.getChild("count")?.get(index));
+    const sum = BigInt(String(table.getChild("sum")?.get(index)));
+    output.push({
+      key: Number(table.getChild("group_id")?.get(index)),
+      count,
+      nullCount: Number(table.getChild("null_count")?.get(index)),
+      sum,
+      min: count === 0 ? null : Number(table.getChild("min")?.get(index)),
+      max: count === 0 ? null : Number(table.getChild("max")?.get(index)),
+      average: count === 0 ? null : Number(sum) / count,
     });
   }
   return output;
@@ -307,6 +459,97 @@ function expectedGroupBy(rows: number, workload: "q1" | "logs"): GroupByAggregat
     });
   }
   return output;
+}
+
+interface MutableSparseAggregate {
+  count: number;
+  nullCount: number;
+  sum: number;
+  min: number;
+  max: number;
+}
+
+function expectedSparseGroupBy(
+  filter: Int32Array,
+  keys: Uint32Array,
+  values: Int32Array,
+  validities: Uint8Array,
+  lower: number,
+  upper: number,
+): LocalGroupEntryU32[] {
+  const states = new Map<number, MutableSparseAggregate>();
+  for (let row = 0; row < filter.length; row++) {
+    if (filter[row]! < lower || filter[row]! >= upper) continue;
+    updateExpectedSparse(states, keys[row]!, values[row]!, validities[row] !== 0);
+  }
+  return materializeExpectedSparse(states);
+}
+
+function expectedSparseFromRows(rows: number, lower: number, upper: number): LocalGroupEntryU32[] {
+  const states = new Map<number, MutableSparseAggregate>();
+  for (let row = lower; row < upper && row < rows; row++) {
+    updateExpectedSparse(states, sparseKey(row), (row % 20_001) - 10_000, row % 17 !== 0);
+  }
+  return materializeExpectedSparse(states);
+}
+
+function updateExpectedSparse(
+  states: Map<number, MutableSparseAggregate>,
+  key: number,
+  value: number,
+  valid: boolean,
+): void {
+  let state = states.get(key);
+  if (state === undefined) {
+    state = { count: 0, nullCount: 0, sum: 0, min: 0x7fff_ffff, max: -0x8000_0000 };
+    states.set(key, state);
+  }
+  if (!valid) {
+    state.nullCount++;
+    return;
+  }
+  state.count++;
+  state.sum += value;
+  if (value < state.min) state.min = value;
+  if (value > state.max) state.max = value;
+}
+
+function materializeExpectedSparse(
+  states: ReadonlyMap<number, MutableSparseAggregate>,
+): LocalGroupEntryU32[] {
+  return [...states].map(([key, state]) => ({
+    key,
+    count: state.count,
+    nullCount: state.nullCount,
+    sum: BigInt(state.sum),
+    min: state.count === 0 ? null : state.min,
+    max: state.count === 0 ? null : state.max,
+    average: state.count === 0 ? null : state.sum / state.count,
+  })).sort((left, right) => left.key - right.key);
+}
+
+function validateSparseGroups(
+  actual: readonly LocalGroupEntryU32[],
+  expected: readonly LocalGroupEntryU32[],
+): void {
+  if (actual.length !== expected.length) {
+    throw new Error(
+      `incorrect sparse group count: actual=${actual.length}, expected=${expected.length}`,
+    );
+  }
+  for (let index = 0; index < expected.length; index++) {
+    const left = actual[index]!;
+    const right = expected[index]!;
+    if (
+      left.key !== right.key || left.count !== right.count ||
+      left.nullCount !== right.nullCount || left.sum !== right.sum || left.min !== right.min ||
+      left.max !== right.max
+    ) throw new Error(`incorrect sparse aggregate for key ${right.key}`);
+  }
+}
+
+function sparseKey(row: number): number {
+  return Math.imul(row % sparseGroupCount, 0x9e37_79b1) >>> 0;
 }
 
 function groupBounds(workload: "q1" | "logs", rows: number): readonly [number, number] {
@@ -395,6 +638,46 @@ function groupResult(
   };
 }
 
+function sparseResult(
+  mode: Mode,
+  rows: number,
+  workerCount: number,
+  initializationMs: number,
+  samplesMs: number[],
+  groups: readonly LocalGroupEntryU32[],
+  pagesScanned: number,
+  pagesSkipped: number,
+): BenchmarkResult {
+  return {
+    mode,
+    workload: "sparse",
+    rows,
+    bytes: rows * 13,
+    workerCount,
+    groupCount: sparseGroupCount,
+    initializationMs,
+    medianMs: median(samplesMs),
+    samplesMs,
+    sparseGroupCount: groups.length,
+    sparseChecksum: checksumSparseGroups(groups),
+    pagesScanned,
+    pagesSkipped,
+    crossOriginIsolated,
+    userAgent: navigator.userAgent,
+  };
+}
+
+function checksumSparseGroups(groups: readonly LocalGroupEntryU32[]): number {
+  let checksum = 0;
+  for (const group of groups) {
+    checksum = (
+      checksum ^ group.key ^ group.count ^ group.nullCount ^ Number(BigInt.asIntN(32, group.sum)) ^
+      (group.min ?? 0) ^ (group.max ?? 0)
+    ) >>> 0;
+  }
+  return checksum;
+}
+
 function median(values: readonly number[]): number {
   const sorted = [...values].sort((left, right) => left - right);
   return sorted[Math.floor(sorted.length / 2)]!;
@@ -410,8 +693,16 @@ function parseMode(value: string | null): Mode {
 
 function parseWorkload(value: string | null): Workload {
   if (value === null || value === "q6") return "q6";
-  if (value === "q1" || value === "logs") return value;
+  if (value === "q1" || value === "logs" || value === "sparse") return value;
   throw new Error(`invalid benchmark workload: ${value}`);
+}
+
+function highestPowerOfTwo(value: number): number {
+  return 2 ** Math.floor(Math.log2(Math.max(1, value)));
+}
+
+function nextPowerOfTwo(value: number): number {
+  return 2 ** Math.ceil(Math.log2(value));
 }
 
 function parsePositiveInteger(value: string, name: string): number {

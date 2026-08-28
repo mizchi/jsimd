@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "name": "parallel-columnar-query/local-group-hash-u32",
+  "recordedAt": "2026-08-28T06:46:11.270Z",
+  "environment": {
+    "runtime": {
+      "name": "deno",
+      "version": "2.6.4",
+      "userAgent": "Deno/2.6.4"
+    },
+    "platform": "darwin-aarch64",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null
+  },
+  "timing": {
+    "warmups": 5,
+    "samples": 11,
+    "operationsPerSample": 1
+  },
+  "input": {
+    "shape": {
+      "rows": 1048576,
+      "distinctKeys": 4096,
+      "capacity": 8192,
+      "partitions": 4
+    },
+    "bytes": 9437184
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 2,
+    "summary": "every key and nullable count/sum/min/max state matched JavaScript Map"
+  },
+  "measurements": [
+    {
+      "name": "javascript-map",
+      "boundary": "materialization-inclusive",
+      "unit": "ms",
+      "medianMs": 40.51825000000002,
+      "p95Ms": 47.78899999999999,
+      "minMs": 19.47916699999996,
+      "maxMs": 47.78899999999999,
+      "samplesMs": [
+        40.51825000000002,
+        36.68820800000003,
+        47.78899999999999,
+        42.685708000000034,
+        41.616084,
+        41.378584000000046,
+        37.203125,
+        42.10245800000007,
+        37.04845899999998,
+        36.881125,
+        19.47916699999996
+      ]
+    },
+    {
+      "name": "single-wasm-swiss-table",
+      "boundary": "materialization-inclusive",
+      "unit": "ms",
+      "medianMs": 27.04433300000005,
+      "p95Ms": 30.505250000000046,
+      "minMs": 12.362082999999984,
+      "maxMs": 30.505250000000046,
+      "samplesMs": [
+        30.505250000000046,
+        26.662959,
+        27.04433300000005,
+        15.770624999999995,
+        13.701999999999884,
+        12.362082999999984,
+        14.319708999999875,
+        27.80987499999992,
+        29.339249999999993,
+        28.06337499999995,
+        28.426375000000007
+      ]
+    },
+    {
+      "name": "worker-local-radix-merge/partitions=4",
+      "boundary": "materialization-inclusive",
+      "unit": "ms",
+      "medianMs": 29.717249999999922,
+      "p95Ms": 35.41687499999989,
+      "minMs": 27.351833999999826,
+      "maxMs": 35.41687499999989,
+      "samplesMs": [
+        27.351833999999826,
+        35.41687499999989,
+        29.410458000000062,
+        28.065083000000186,
+        33.45812500000011,
+        29.717249999999922,
+        29.941082999999935,
+        33.532457999999906,
+        28.956042000000025,
+        28.524250000000166,
+        32.112249999999904
+      ]
+    },
+    {
+      "name": "persistent-workers-radix-owner-merge/workers=4",
+      "boundary": "materialization-inclusive",
+      "unit": "ms",
+      "medianMs": 9.20425000000023,
+      "p95Ms": 10.452792000000045,
+      "minMs": 8.594916000000012,
+      "maxMs": 10.452792000000045,
+      "samplesMs": [
+        8.857499999999845,
+        8.594916000000012,
+        10.221708000000035,
+        9.20425000000023,
+        9.168500000000222,
+        9.774875000000065,
+        9.147833999999875,
+        8.990583000000015,
+        9.373540999999932,
+        10.452792000000045,
+        9.486333000000059
+      ]
+    }
+  ],
+  "metrics": {
+    "speedupSingleWasmVsJs": 1.5,
+    "speedupSequentialRadixVsJs": 1.36,
+    "sequentialRadixOverheadVsSingle": 1.1,
+    "speedupWorkersVsJs": 4.4,
+    "speedupWorkersVsSingle": 2.94,
+    "sink": 0
+  },
+  "notes": [
+    "Inputs and Wasm tables are resident in one SharedBuffer; JavaScript reads the same typed arrays.",
+    "The radix result measures the data structure and owner-merge ABI sequentially; it is not a Worker speedup result.",
+    "The persistent-Worker result runs one local build and one owned output partition per Worker; construction is excluded.",
+    "Every measurement includes clearing prior state and materializing all aggregate entries."
+  ]
+}

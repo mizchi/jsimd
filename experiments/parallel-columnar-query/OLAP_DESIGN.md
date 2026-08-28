@@ -100,11 +100,38 @@ Worker-local group tables
 
 Do not begin with a concurrently mutated global table.
 
+The experimental `LocalGroupHashTableU32` now uses a 16-byte SIMD fingerprint probe group, complete
+u32 keys, and nullable i32 `count/nullCount/sum/min/max` state in shared memory. Each persistent
+Worker builds one exclusive table, then owns one radix-partition output and merges that partition
+from every partial table after the barrier. No table is concurrently mutated. At 1,048,576 rows and
+4,096 groups this was 4.40x faster than JavaScript `Map`, including result materialization. At 256
+groups single-thread Wasm was effectively tied with `Map`, so a planner must retain the dense
+fixed-array path for small known domains. A second immutable query path applies i32 ZoneMaps and a
+four-lane SIMD range predicate before grouping. At 16,777,216 rows, 2,048 sparse u32 groups, and 10%
+selectivity, 8 persistent Workers took 3.87 ms versus 22.17 ms for DuckDB-Wasm `eh` and 14.86 ms for
+the explicitly threaded `coi` bundle, including 2,048-state materialization. This admits the
+low-level table and merge ABI as a useful physical-operator experiment; planner and schema APIs
+still belong outside this repository.
+
 ### 5. `PartitionedHashJoinTable`
 
 The minimum join substrate consists of resident hash values, u32 row IDs, radix partition offsets,
 duplicate-key chains, and a caller-owned output buffer of matching row-ID pairs. An optional blocked
 Bloom filter may reject absent probe keys. Each partition should have one build/probe owner.
+
+The experimental `PartitionedHashJoinTableU32` now implements that physical ABI with independent
+Swiss-style control groups and Bloom blocks per radix partition. Build keys, duplicate chains, and
+row IDs stay resident in shared Wasm memory. A direct probe or four persistent Workers materialize
+exact row-ID pairs into caller-owned buffers in deterministic probe-major/build-input order. Worker
+output shards are disjoint, so an immutable table needs no atomic operation in the probe loop.
+
+On Apple M5 with 131,072 build rows, 65,536 distinct keys, two build rows per key, and 1,048,576
+probe rows, the four-Worker path was faster than both JavaScript `Map` and direct Wasm at every
+recorded hit ratio. The blocked Bloom prefilter improved the four-Worker median from 4.36 ms to 3.95
+ms when 90% of probes missed. At 90% hits it increased the median from 6.43 ms to 7.75 ms. Therefore
+Bloom selection is a planner decision based on expected misses, not a default table feature. The
+benchmark includes exact pair materialization but excludes table build and Worker startup; raw
+samples and p95 values are retained in `benchmarks/partitioned-hash-join.json`.
 
 ### 6. `DictionaryStringColumn`
 

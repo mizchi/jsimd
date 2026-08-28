@@ -66,10 +66,22 @@ product-facing query engine to a separate repository once the boundary is stable
       derived average, and barrier-delimited SIMD reduction. The current eight-group query remains
       end-to-end faster than optimized JavaScript, but higher-cardinality merge benchmarks are
       required before extracting this as a public API.
-- [ ] Evaluate `LocalGroupHashTableU32` with radix-partitioned ownership merge against the current
+- [x] Evaluate `LocalGroupHashTableU32` with radix-partitioned ownership merge against the current
       low-cardinality group-by and threaded DuckDB-Wasm.
-- [ ] Evaluate `PartitionedHashJoinTable` with caller-owned row-ID output and an optional blocked
+  - [x] Implement the experimental shared-memory SwissTable ABI, nullable i32 aggregate state, and
+        persistent-Worker radix-owner merge.
+  - [x] Record cardinality-sensitive comparisons with JavaScript `Map`; keep the dense fixed-array
+        path for small known key domains.
+  - [x] Integrate page pruning/filtering and compare the same sparse-u32 group-by with DuckDB-Wasm
+        before considering extraction.
+- [x] Evaluate `PartitionedHashJoinTableU32` with caller-owned row-ID output and an optional blocked
       Bloom prefilter.
+  - [x] Preserve duplicate build rows and deterministic probe-major/build-input output order in a
+        fixed-capacity shared-memory ABI.
+  - [x] Let persistent Workers probe one immutable table and write completely disjoint output shards
+        without atomics in the hot path.
+  - [x] Record the Bloom crossover: it helps when about 90% of probes miss, but its hashing and
+        lookup overhead loses when most probe keys hit.
 - [ ] Add `RadixSortBlockU32/U64` only if group merge, join partitioning, or order/top-k repays its
       construction and materialization cost.
 

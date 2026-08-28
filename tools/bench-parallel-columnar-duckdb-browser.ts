@@ -8,10 +8,14 @@ const root = new URL(
   import.meta.url,
 );
 const requestedRows = Deno.env.get("JSIMD_QUERY_ROWS");
+const sparseGroupCount = parsePositiveInteger(
+  Deno.env.get("JSIMD_QUERY_GROUPS") ?? "2048",
+  "groups",
+);
 const modes = ["jsimd-single", "jsimd-workers", "duckdb-eh", "duckdb-coi"] as const;
 const requestedWorkload = Deno.env.get("JSIMD_QUERY_WORKLOAD");
 const workloads = requestedWorkload === undefined
-  ? ["q6", "q1", "logs"] as const
+  ? ["q6", "q1", "logs", "sparse"] as const
   : [parseWorkload(requestedWorkload)] as const;
 const cpu = await detectHostCpu();
 const outputDirectory = Deno.env.get("JSIMD_DUCKDB_OUTPUT_DIR");
@@ -26,7 +30,7 @@ for (const workload of workloads) {
   for (const mode of modes) {
     const result = await runBrowserBenchmark<BrowserResult>({
       root,
-      query: { mode, workload, rows },
+      query: { mode, workload, rows, groups: sparseGroupCount },
       profilePrefix: `jsimd-duckdb-${workload}-${mode}-`,
       browserArgs: ["--disable-gpu"],
       crossOriginIsolated: true,
@@ -51,10 +55,11 @@ console.log(JSON.stringify({ workloads, results: allResults }, null, 2));
 
 interface BrowserResult {
   readonly mode: typeof modes[number];
-  readonly workload: "q6" | "q1" | "logs";
+  readonly workload: "q6" | "q1" | "logs" | "sparse";
   readonly rows: number;
   readonly bytes: number;
   readonly workerCount: number;
+  readonly groupCount?: number;
   readonly initializationMs: number;
   readonly medianMs: number;
   readonly samplesMs: readonly number[];
@@ -65,7 +70,7 @@ interface BrowserResult {
 }
 
 async function createWorkloadResult(
-  workload: "q6" | "q1" | "logs",
+  workload: "q6" | "q1" | "logs" | "sparse",
   rows: number,
   results: readonly BrowserResult[],
   cpu: string,
@@ -105,7 +110,11 @@ async function createWorkloadResult(
         workload,
         rows,
         selectivity: workload === "q6" ? 0.25 : workload === "q1" ? 0.5 : 0.1,
-        groupCount: workload === "q6" ? 0 : 8,
+        groupCount: workload === "q6"
+          ? 0
+          : workload === "sparse"
+          ? results[0]!.groupCount ?? sparseGroupCount
+          : 8,
       },
       bytes: results[0]!.bytes,
     },
@@ -114,6 +123,8 @@ async function createWorkloadResult(
       checks: results.length,
       summary: workload === "q6"
         ? "all count and sum outputs matched"
+        : workload === "sparse"
+        ? "all sparse u32 group nullable count, sum, minimum, and maximum outputs matched"
         : "all eight group count, sum, minimum, and maximum outputs matched",
     },
     measurements: results.map((result) =>
@@ -152,7 +163,11 @@ async function bundledAssetMetrics(
   return {
     bundleGzipBytesJsimdWasm: sum((name) => name.startsWith("kernels-") && name.endsWith(".wasm")),
     bundleGzipBytesJsimdWorker: sum((name) =>
-      workload === "q6" ? /^worker-.*\.js$/.test(name) : /^group_worker-.*\.js$/.test(name)
+      workload === "q6"
+        ? /^worker-.*\.js$/.test(name)
+        : workload === "sparse"
+        ? /^local_group_hash_worker-.*\.js$/.test(name)
+        : /^group_worker-.*\.js$/.test(name)
     ),
     bundleGzipBytesDuckdbEhWasm: sum((name) =>
       name.startsWith("duckdb-eh-") && name.endsWith(".wasm")
@@ -173,7 +188,7 @@ function parsePositiveInteger(value: string, name: string): number {
   return parsed;
 }
 
-function parseWorkload(value: string): "q6" | "q1" | "logs" {
-  if (value === "q6" || value === "q1" || value === "logs") return value;
-  throw new Error(`JSIMD_QUERY_WORKLOAD must be q6, q1, or logs, got ${value}`);
+function parseWorkload(value: string): "q6" | "q1" | "logs" | "sparse" {
+  if (value === "q6" || value === "q1" || value === "logs" || value === "sparse") return value;
+  throw new Error(`JSIMD_QUERY_WORKLOAD must be q6, q1, logs, or sparse, got ${value}`);
 }

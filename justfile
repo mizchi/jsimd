@@ -115,11 +115,11 @@ build:
     wasm-tools print packages/jsimd/src/columnar/kernels.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into|i8x16.popcnt'
     ! wasm-tools print packages/jsimd/src/columnar/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print packages/jsimd/src/blocked-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|merge|i32x4.all_true'
-    wasm-tools print experiments/parallel-columnar-query/kernels.wasm | rg -q 'merge_aggregate_state_blocks|scan_i32_between_aggregate|scan_i32_between_group_by_u8|i64x2.add|i32x4.min_s|i32x4.max_s|i64x2.extend_low_i32x4_s|i32x4.bitmask|shared'
+    wasm-tools print experiments/parallel-columnar-query/kernels.wasm | rg -q 'local_group_find|local_group_update_i32|local_group_aggregate_i32|local_group_aggregate_between_i32_u32|local_group_merge_partition|hash_join_build_u32|hash_join_count_u32|hash_join_probe_u32|merge_aggregate_state_blocks|scan_i32_between_aggregate|scan_i32_between_group_by_u8|i64x2.add|i32x4.min_s|i32x4.max_s|i64x2.extend_low_i32x4_s|i32x4.bitmask|shared'
     wasm-tools print experiments/parallel-hybrid-query/kernels.wasm | rg -q 'scan_i32_between_mask|masked_squared_l2_top1_pdx64|masked_squared_l2_topk_pdx64|masked_squared_l2_topk_pdx64_pruned|masked_hamming_top1|masked_hamming_topk|pdx64_squared_l2_selected|i32x4.bitmask|f32x4.mul|i8x16.popcnt|shared'
 
 test-parallel-columnar-query: build
-    deno test -A experiments/parallel-columnar-query/mod_test.ts experiments/parallel-columnar-query/aggregate_state_test.ts
+    deno test -A experiments/parallel-columnar-query/mod_test.ts experiments/parallel-columnar-query/aggregate_state_test.ts experiments/parallel-columnar-query/local_group_hash_table_test.ts experiments/parallel-columnar-query/partitioned_hash_join_test.ts
 
 test-parallel-hybrid-query: build
     deno test -A experiments/parallel-hybrid-query
@@ -141,6 +141,18 @@ bench-record-parallel-columnar-query: build
 
 bench-parallel-columnar-group-by: build
     deno run -A experiments/parallel-columnar-query/group_bench.ts
+
+bench-parallel-columnar-local-group-hash: build
+    deno run -A experiments/parallel-columnar-query/local_group_hash_bench.ts
+
+bench-record-parallel-columnar-local-group-hash: build
+    JSIMD_LOCAL_GROUP_OUTPUT=experiments/parallel-columnar-query/benchmarks/local-group-hash.json deno run -A experiments/parallel-columnar-query/local_group_hash_bench.ts
+
+bench-parallel-columnar-hash-join: build
+    deno run -A experiments/parallel-columnar-query/partitioned_hash_join_bench.ts
+
+bench-record-parallel-columnar-hash-join: build
+    JSIMD_JOIN_OUTPUT=experiments/parallel-columnar-query/benchmarks/partitioned-hash-join.json deno run -A experiments/parallel-columnar-query/partitioned_hash_join_bench.ts
 
 bench-record-parallel-columnar-group-by: build
     JSIMD_GROUP_OUTPUT=experiments/parallel-columnar-query/benchmarks/group-by.json deno run -A experiments/parallel-columnar-query/group_bench.ts
