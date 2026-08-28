@@ -1,6 +1,6 @@
 {
   "name": "@mizchi/jsimd",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Prebuilt WebAssembly SIMD kernels and Wasm-resident data structures for JavaScript",
   "type": "module",
   "exports": {
