@@ -1,8 +1,33 @@
 # Implementation TODO
 
-This file contains only release work, future experiments, and admission decisions for
-`@mizchi/jsimd`. Completed APIs, algorithms, benchmark results, and implementation history belong in
-the README next to each implementation. Experimental evidence stays under `experiments/<name>/`.
+This file contains only workspace organization, release work, future experiments, and admission
+decisions. Completed APIs, algorithms, benchmark results, and implementation history belong in the
+README owned by each package or implementation. Experimental evidence stays under
+`experiments/<name>/`.
+
+## Workspace organization
+
+The repository has four distinct ownership levels:
+
+- `packages/jsimd`: published low-level SIMD kernels and Wasm-resident data structures;
+- `packages/shared`: published SharedArrayBuffer and Web Worker primitives;
+- `packages/columnar`: experimental typed storage and query execution built on low-level packages;
+- `packages/bench`: private benchmark schema, runners, and build-budget checks.
+
+`examples/` contains user-facing integrations. `experiments/` contains admission evidence and
+rejected or not-yet-stable prototypes; production packages must never depend on either directory.
+
+- [ ] Move the shared-memory implementation, WAT, tests, and documentation from
+      `packages/jsimd/src/shared-buffer` into `packages/shared`; retain the old jsimd subpath only
+      as an explicitly versioned compatibility export.
+- [ ] Give `packages/columnar` ownership of its column kernel and remove the ambiguous overlap with
+      `@mizchi/jsimd/columnar` once its low-level dependency boundary is stable.
+- [ ] Move build-only tree-shake fixtures under their owning package. Keep only runnable,
+      user-facing integrations under `examples/`.
+- [ ] Replace source-relative cross-package imports in experiments and examples with workspace
+      package imports where doing so still permits Worker module loading.
+- [ ] Generate or validate package exports, Deno exports, WAT build entries, declarations, README
+      inclusion, Wasm assets, and isolated fixtures from one release manifest.
 
 ## Experiment priority
 
@@ -120,10 +145,16 @@ result.
 
 ## Maintenance
 
-- [ ] Split `packages/jsimd/mod_test.ts` coverage into colocated
+- [x] Split `packages/jsimd/mod_test.ts` coverage into colocated
       `packages/jsimd/src/<name>/*_test.ts` files without shipping tests in the npm artifact.
-- [ ] Add a small release manifest test that compares `src` public directories, package exports,
+- [x] Add a small release manifest test that compares `src` public directories, package exports,
       generated declarations, README files, WAT sources, and emitted Wasm assets.
+- [ ] Test each publishable package from its `pnpm pack` tarball in Node, Deno, TypeScript, and Vite
+      as applicable, rather than relying only on workspace source resolution.
+- [ ] Standardize repository metadata, runtime requirements, license inclusion, and independent
+      versioning across public package manifests.
+- [ ] Add an import-boundary check: low-level packages may not depend on higher-level packages,
+      examples, or experiments.
 - [ ] Keep isolated Vite fixtures for every public entrypoint and require exactly one expected Wasm
       asset per imported subpath.
 - [ ] Refresh recorded build sizes and representative benchmarks only when implementation or

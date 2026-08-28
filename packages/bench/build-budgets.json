@@ -189,7 +189,7 @@
     }
   ],
   "requiredCorrectnessTests": [
-    "packages/jsimd/mod_test.ts",
+    "tools/release_manifest_test.ts",
     "packages/jsimd/src/columnar/snapshot_test.ts",
     "packages/jsimd/src/shared-buffer/buffer_test.ts"
   ]
