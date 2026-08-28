@@ -24,16 +24,16 @@ Int32Array --publish--> double-buffered immutable snapshot
                               |
               Worker-local Wasm SIMD count + sum
                               |
-                   cache-line partial results
+                 cache-line aggregate blocks
                               |
-                        scalar final merge
+                     Wasm SIMD final merge
 ```
 
 Each 32-byte page descriptor records the data offset, logical row range, and signed `min/max` zone
 map. Workers are persistent. Query bounds and one snapshot generation are published with an epoch,
 dispatched over per-worker SPSC rings, and completed through a shared wait group. Workers
-dynamically claim coarse pages through one atomic counter. Each result slot is 64 bytes so workers
-never write the same cache line.
+dynamically claim coarse pages through one atomic counter. Each result slot starts on a separate
+cache line, so workers never write the same cache line.
 
 There is no atomic `v128` operation. Immutability and exclusive page claims make the SIMD loads
 safe; the only atomic operations are task publication, page claims, cancellation, completion, and
@@ -96,9 +96,12 @@ column), eight groups, 50% selectivity, 65,536 rows per page, median of 11 warm 
 The SIMD kernel only vectorizes the range predicate. Selected lanes still update scalar per-group
 states, so the single-thread gain is modest and varies with selectivity and group distribution. The
 larger gain comes from immutable page ownership and Worker-local aggregation without atomics in the
-hot loop. Construction took 218.54 ms and is excluded from warm latency, so this remains a resident
-OLAP workload rather than a one-shot conversion win. The raw result is in
-`benchmarks/group-by.json`.
+hot loop. Final Worker states are now combined through the experimental cache-line-aligned
+`AggregateStateBlock`: count/null-count/sum/min/max use a SoA layout, average is derived, and four
+groups are reduced per SIMD iteration. At eight groups the merge is too small to claim an isolated
+speedup; a higher-cardinality benchmark is required before making this a public API. Construction
+took 218.54 ms and is excluded from warm latency, so this remains a resident OLAP workload rather
+than a one-shot conversion win. The raw result is in `benchmarks/group-by.json`.
 
 ## Recorded result
 

@@ -1,6 +1,232 @@
 (module
   (import "jsimd" "memory" (memory 1 65536 shared))
 
+  ;; Barrier-delimited merge of two disjoint aggregate state blocks.
+  ;; Counts/null counts and extrema use four i32 lanes; sums use two i64x2 vectors.
+  (func (export "merge_aggregate_state_blocks")
+    (param $destination_counts i32)
+    (param $destination_null_counts i32)
+    (param $destination_sums i32)
+    (param $destination_minimums i32)
+    (param $destination_maximums i32)
+    (param $source_counts i32)
+    (param $source_null_counts i32)
+    (param $source_sums i32)
+    (param $source_minimums i32)
+    (param $source_maximums i32)
+    (param $length i32)
+    (local $destination_value i32)
+    (local $source_value i32)
+
+    (block $simd_done
+      (loop $simd
+        local.get $length
+        i32.const 4
+        i32.lt_u
+        br_if $simd_done
+
+        local.get $destination_counts
+        local.get $destination_counts
+        v128.load align=4
+        local.get $source_counts
+        v128.load align=4
+        i32x4.add
+        v128.store align=4
+
+        local.get $destination_null_counts
+        local.get $destination_null_counts
+        v128.load align=4
+        local.get $source_null_counts
+        v128.load align=4
+        i32x4.add
+        v128.store align=4
+
+        local.get $destination_sums
+        local.get $destination_sums
+        v128.load align=8
+        local.get $source_sums
+        v128.load align=8
+        i64x2.add
+        v128.store align=8
+        local.get $destination_sums
+        i32.const 16
+        i32.add
+        local.get $destination_sums
+        v128.load offset=16 align=8
+        local.get $source_sums
+        v128.load offset=16 align=8
+        i64x2.add
+        v128.store align=8
+
+        local.get $destination_minimums
+        local.get $destination_minimums
+        v128.load align=4
+        local.get $source_minimums
+        v128.load align=4
+        i32x4.min_s
+        v128.store align=4
+
+        local.get $destination_maximums
+        local.get $destination_maximums
+        v128.load align=4
+        local.get $source_maximums
+        v128.load align=4
+        i32x4.max_s
+        v128.store align=4
+
+        local.get $destination_counts
+        i32.const 16
+        i32.add
+        local.set $destination_counts
+        local.get $destination_null_counts
+        i32.const 16
+        i32.add
+        local.set $destination_null_counts
+        local.get $destination_sums
+        i32.const 32
+        i32.add
+        local.set $destination_sums
+        local.get $destination_minimums
+        i32.const 16
+        i32.add
+        local.set $destination_minimums
+        local.get $destination_maximums
+        i32.const 16
+        i32.add
+        local.set $destination_maximums
+        local.get $source_counts
+        i32.const 16
+        i32.add
+        local.set $source_counts
+        local.get $source_null_counts
+        i32.const 16
+        i32.add
+        local.set $source_null_counts
+        local.get $source_sums
+        i32.const 32
+        i32.add
+        local.set $source_sums
+        local.get $source_minimums
+        i32.const 16
+        i32.add
+        local.set $source_minimums
+        local.get $source_maximums
+        i32.const 16
+        i32.add
+        local.set $source_maximums
+        local.get $length
+        i32.const 4
+        i32.sub
+        local.set $length
+        br $simd
+      )
+    )
+
+    (block $scalar_done
+      (loop $scalar
+        local.get $length
+        i32.eqz
+        br_if $scalar_done
+
+        local.get $destination_counts
+        local.get $destination_counts
+        i32.load align=4
+        local.get $source_counts
+        i32.load align=4
+        i32.add
+        i32.store align=4
+        local.get $destination_null_counts
+        local.get $destination_null_counts
+        i32.load align=4
+        local.get $source_null_counts
+        i32.load align=4
+        i32.add
+        i32.store align=4
+        local.get $destination_sums
+        local.get $destination_sums
+        i64.load align=8
+        local.get $source_sums
+        i64.load align=8
+        i64.add
+        i64.store align=8
+        local.get $destination_minimums
+        i32.load align=4
+        local.set $destination_value
+        local.get $source_minimums
+        i32.load align=4
+        local.set $source_value
+        local.get $destination_minimums
+        local.get $destination_value
+        local.get $source_value
+        local.get $destination_value
+        local.get $source_value
+        i32.lt_s
+        select
+        i32.store align=4
+        local.get $destination_maximums
+        i32.load align=4
+        local.set $destination_value
+        local.get $source_maximums
+        i32.load align=4
+        local.set $source_value
+        local.get $destination_maximums
+        local.get $destination_value
+        local.get $source_value
+        local.get $destination_value
+        local.get $source_value
+        i32.gt_s
+        select
+        i32.store align=4
+
+        local.get $destination_counts
+        i32.const 4
+        i32.add
+        local.set $destination_counts
+        local.get $destination_null_counts
+        i32.const 4
+        i32.add
+        local.set $destination_null_counts
+        local.get $destination_sums
+        i32.const 8
+        i32.add
+        local.set $destination_sums
+        local.get $destination_minimums
+        i32.const 4
+        i32.add
+        local.set $destination_minimums
+        local.get $destination_maximums
+        i32.const 4
+        i32.add
+        local.set $destination_maximums
+        local.get $source_counts
+        i32.const 4
+        i32.add
+        local.set $source_counts
+        local.get $source_null_counts
+        i32.const 4
+        i32.add
+        local.set $source_null_counts
+        local.get $source_sums
+        i32.const 8
+        i32.add
+        local.set $source_sums
+        local.get $source_minimums
+        i32.const 4
+        i32.add
+        local.set $source_minimums
+        local.get $source_maximums
+        i32.const 4
+        i32.add
+        local.set $source_maximums
+        local.get $length
+        i32.const 1
+        i32.sub
+        local.set $length
+        br $scalar
+      )
+    )
+  )
+
   ;; Scans [pointer, pointer + length * 4) for minimum <= value < maximum.
   ;; The caller owns result: u32 count at +0 and signed i64 sum at +8.
   (func (export "scan_i32_between_aggregate")

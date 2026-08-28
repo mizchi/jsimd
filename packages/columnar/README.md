@@ -45,6 +45,13 @@ await database.replace("events", {
   kind: Uint8Array.of(1, 2, 2, 3),
 });
 
+await database.updateRowGroups("events", [{
+  index: 0,
+  columns: {
+    kind: Uint8Array.of(3, 3, 2, 1),
+  },
+}]);
+
 const result = await database.query("events")
   .where("temperature", "between", 20, 30) // half-open [20, 30)
   .where("kind", "eq", 2)
@@ -114,8 +121,14 @@ typed arrays
   virtual pages and cause no storage read.
 - `replace()` writes a new immutable generation and publishes its manifest last. Old generations
   remain readable until explicit `vacuum()`.
+- `updateRowGroups()` replaces only the named columns in fixed-size row groups. Unchanged column
+  pages keep their immutable keys, so a one-column update does not rewrite or reconstruct the rest
+  of the table. Every supplied column must contain exactly that row group's logical length.
 - An engine holds a manifest snapshot. Another writer is observed only after `refresh(table)`, which
   also drops resident pages for that table.
+- Engines sharing the same `PageBackend` object pin their observed manifest generations. `vacuum()`
+  retains pages needed by those engines until they refresh or leave their `using` scope. Separate
+  backend objects, browser tabs, and processes still require external writer/vacuum coordination.
 - `cacheBytes` bounds retained host payload plus live Wasm encoded payload. `cacheStats()` exposes
   both components. A pinned query working set may temporarily exceed the bound, but lease release
   evicts back below it. This is live-payload accounting, not process RSS: JavaScript object headers
@@ -184,7 +197,7 @@ raw samples, warmups, input shape, CPU/browser metadata, and correctness checks 
 ## Isolated build size
 
 The isolated tree-shake fixture imports the complete experimental schema engine and all column
-types. Its production output contains a 13.84 kB gzip minified JavaScript asset and one 1.16 kB gzip
+types. Its production output contains a 14.56 kB gzip minified JavaScript asset and one 1.16 kB gzip
 Wasm asset. The separate browser benchmark also imports the internal result harness, so it is not
 used as the engine build-size measurement. These figures are updated by the repository verification
 pass rather than estimated from source.

@@ -119,6 +119,99 @@ Deno.test("count loads only predicate columns and replace publishes a new genera
   assertEquals((await backend.list("tables/events/pages/")).length, 3, "current pages retained");
 });
 
+Deno.test("row-group updates reuse immutable pages and pin observed generations", async () => {
+  const backend = new MemoryPageBackend();
+  using engine = new SchemaEngine(analytics, backend, { cacheBytes: 1 << 20 });
+  await engine.replace("events", fixture());
+  const initial = await readManifest(backend, "events");
+
+  const observer = new SchemaEngine(analytics, backend, { cacheBytes: 1 << 20 });
+  assertEquals(
+    (await observer.query("events").count()).value,
+    768,
+    "observer pins initial generation",
+  );
+
+  await engine.updateRowGroups("events", [{
+    index: 1,
+    columns: {
+      temperature: Int32Array.from({ length: 256 }, (_, index) => 7_000 + index),
+    },
+  }]);
+  const updated = await readManifest(backend, "events");
+
+  assert(initial.generation !== updated.generation, "update publishes a new generation");
+  for (const groupIndex of [0, 2]) {
+    assertEquals(
+      updated.rowGroups[groupIndex].columns,
+      initial.rowGroups[groupIndex].columns,
+      `unchanged row group ${groupIndex} reuses every page`,
+    );
+  }
+  assertEquals(
+    updated.rowGroups[1].columns.id,
+    initial.rowGroups[1].columns.id,
+    "unchanged column page is reused",
+  );
+  assertEquals(
+    updated.rowGroups[1].columns.kind,
+    initial.rowGroups[1].columns.kind,
+    "second unchanged column page is reused",
+  );
+  assert(
+    updated.rowGroups[1].columns.temperature.key !==
+      initial.rowGroups[1].columns.temperature.key,
+    "changed column receives a new immutable page",
+  );
+  assertEquals(
+    (await engine.query("events").where("temperature", "between", 7_000, 7_256).count()).value,
+    256,
+    "new generation observes the replacement page",
+  );
+
+  observer.clearCache();
+  assertEquals(
+    (await observer.query("events").where("temperature", "between", 1_000, 1_256).count()).value,
+    256,
+    "pinned observer can reload the old page",
+  );
+  assertEquals(await engine.vacuum("events"), 0, "vacuum retains pages pinned by an observer");
+
+  observer[Symbol.dispose]();
+  assertEquals(await engine.vacuum("events"), 1, "vacuum reclaims the released replacement page");
+  assertEquals((await backend.list("tables/events/pages/")).length, 9, "only live pages remain");
+});
+
+Deno.test("row-group updates validate immutable page boundaries before writing", async () => {
+  const backend = new MemoryPageBackend();
+  using engine = new SchemaEngine(analytics, backend);
+  await engine.replace("events", fixture(512));
+  const before = await backend.list("tables/events/pages/");
+
+  await assertRejects(() => engine.updateRowGroups("events", []), "empty update is rejected");
+  await assertRejects(
+    () => engine.updateRowGroups("events", [{ index: 2, columns: { kind: new Uint8Array() } }]),
+    "out-of-range group is rejected",
+  );
+  await assertRejects(
+    () =>
+      engine.updateRowGroups("events", [{
+        index: 0,
+        columns: { kind: Uint8Array.of(1) },
+      }]),
+    "partial physical page is rejected",
+  );
+  await assertRejects(
+    () =>
+      engine.updateRowGroups("events", [
+        { index: 0, columns: { kind: new Uint8Array(256) } },
+        { index: 0, columns: { kind: new Uint8Array(256) } },
+      ]),
+    "duplicate group update is rejected",
+  );
+  assertEquals(await backend.list("tables/events/pages/"), before, "validation writes no pages");
+});
+
 Deno.test("adaptive snapshots reduce persisted clustered-page bytes versus raw pages", async () => {
   const snapshotBackend = new MemoryPageBackend();
   const rawBackend = new MemoryPageBackend();
@@ -359,4 +452,20 @@ async function pageBytes(backend: MemoryPageBackend, prefix: string): Promise<nu
   let total = 0;
   for (const key of await backend.list(prefix)) total += (await backend.get(key))!.byteLength;
   return total;
+}
+
+interface TestTableManifest {
+  readonly generation: string;
+  readonly rowGroups: readonly {
+    readonly columns: Readonly<Record<string, { readonly key: string }>>;
+  }[];
+}
+
+async function readManifest(
+  backend: MemoryPageBackend,
+  table: string,
+): Promise<TestTableManifest> {
+  const bytes = await backend.get(`tables/${table}/manifest.json`);
+  assert(bytes !== undefined, "table manifest exists");
+  return JSON.parse(new TextDecoder().decode(bytes)) as TestTableManifest;
 }

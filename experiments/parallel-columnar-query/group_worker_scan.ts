@@ -1,6 +1,7 @@
 import type { SharedBuffer, VersionedBuffer } from "../../packages/jsimd/src/shared-buffer/mod.ts";
 import type { QueryKernels } from "./kernel.ts";
 import type { GroupQueryWorkerInit } from "./group_protocol.ts";
+import { AggregateStateBlock } from "./aggregate_state.ts";
 
 export const GROUP_PAGE_DESCRIPTOR_WORDS = 8;
 export const GROUP_RESULT_HEADER_BYTES = 64;
@@ -19,29 +20,16 @@ const PAGE_GROUPS_OFFSET_INDEX = 2;
 const PAGE_ROW_COUNT_INDEX = 4;
 const PAGE_MINIMUM_INDEX = 5;
 const PAGE_MAXIMUM_INDEX = 6;
-const I32_MIN = -0x8000_0000;
-const I32_MAX = 0x7fff_ffff;
 
 export interface GroupWorkerResult {
-  readonly counts: Uint32Array;
-  readonly sums: BigInt64Array;
-  readonly minimums: Int32Array;
-  readonly maximums: Int32Array;
+  readonly state: AggregateStateBlock;
   readonly pagesScanned: number;
   readonly pagesSkipped: number;
   readonly cancelled: boolean;
 }
 
-interface ResultOffsets {
-  readonly counts: number;
-  readonly sums: number;
-  readonly minimums: number;
-  readonly maximums: number;
-  readonly byteLength: number;
-}
-
 export function groupResultSlotBytes(groupCount: number): number {
-  return resultOffsets(groupCount).byteLength;
+  return GROUP_RESULT_HEADER_BYTES + AggregateStateBlock.byteLengthFor(groupCount);
 }
 
 export function scanAvailableGroupPages(
@@ -67,19 +55,11 @@ export function scanAvailableGroupPages(
     snapshot.bytes.byteOffset + layout.snapshotDescriptorOffset,
     layout.pageCount * GROUP_PAGE_DESCRIPTOR_WORDS,
   );
-  const offsets = resultOffsets(layout.groupCount);
-  const counts = shared.uint32Array(layout.resultOffset + offsets.counts, layout.groupCount);
-  const sums = new BigInt64Array(
-    shared.memory.buffer,
-    shared.dataOffset + layout.resultOffset + offsets.sums,
+  const state = AggregateStateBlock.attach(
+    shared,
+    layout.resultOffset + GROUP_RESULT_HEADER_BYTES,
     layout.groupCount,
-  );
-  const minimums = shared.int32Array(layout.resultOffset + offsets.minimums, layout.groupCount);
-  const maximums = shared.int32Array(layout.resultOffset + offsets.maximums, layout.groupCount);
-  counts.fill(0);
-  sums.fill(0n);
-  minimums.fill(I32_MAX);
-  maximums.fill(I32_MIN);
+  ).reset();
 
   let pagesScanned = 0;
   let pagesSkipped = 0;
@@ -109,10 +89,10 @@ export function scanAvailableGroupPages(
       rowCount,
       minimum,
       maximum,
-      shared.dataOffset + layout.resultOffset + offsets.counts,
-      shared.dataOffset + layout.resultOffset + offsets.sums,
-      shared.dataOffset + layout.resultOffset + offsets.minimums,
-      shared.dataOffset + layout.resultOffset + offsets.maximums,
+      state.countsPointer,
+      state.sumsPointer,
+      state.minimumsPointer,
+      state.maximumsPointer,
     );
     pagesScanned++;
   }
@@ -134,36 +114,14 @@ export function readGroupWorkerResult(
   if ((Atomics.load(header, 0) >>> 0) !== epoch) {
     throw new Error("group worker result epoch does not match the query");
   }
-  const offsets = resultOffsets(groupCount);
   return {
-    counts: shared.uint32Array(resultOffset + offsets.counts, groupCount),
-    sums: new BigInt64Array(
-      shared.memory.buffer,
-      shared.dataOffset + resultOffset + offsets.sums,
+    state: AggregateStateBlock.attach(
+      shared,
+      resultOffset + GROUP_RESULT_HEADER_BYTES,
       groupCount,
     ),
-    minimums: shared.int32Array(resultOffset + offsets.minimums, groupCount),
-    maximums: shared.int32Array(resultOffset + offsets.maximums, groupCount),
     pagesScanned: header[1]!,
     pagesSkipped: header[2]!,
     cancelled: header[3] !== 0,
   };
-}
-
-function resultOffsets(groupCount: number): ResultOffsets {
-  const counts = GROUP_RESULT_HEADER_BYTES;
-  const sums = alignTo(counts + groupCount * 4, 8);
-  const minimums = sums + groupCount * 8;
-  const maximums = minimums + groupCount * 4;
-  return {
-    counts,
-    sums,
-    minimums,
-    maximums,
-    byteLength: alignTo(maximums + groupCount * 4, 64),
-  };
-}
-
-function alignTo(value: number, alignment: number): number {
-  return Math.ceil(value / alignment) * alignment;
 }

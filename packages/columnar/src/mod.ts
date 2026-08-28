@@ -10,6 +10,7 @@ export {
   i32,
   nullable,
   type NullableColumn,
+  type RowGroupUpdate,
   type SchemaDefinition,
   string,
   type StringColumnDefinition,

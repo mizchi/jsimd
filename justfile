@@ -115,11 +115,11 @@ build:
     wasm-tools print packages/jsimd/src/columnar/kernels.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|i32x4.lt_u|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into|i8x16.popcnt'
     ! wasm-tools print packages/jsimd/src/columnar/kernels.wasm | rg -q 'find_byte|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print packages/jsimd/src/blocked-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|merge|i32x4.all_true'
-    wasm-tools print experiments/parallel-columnar-query/kernels.wasm | rg -q 'scan_i32_between_aggregate|scan_i32_between_group_by_u8|i64x2.extend_low_i32x4_s|i32x4.bitmask|shared'
+    wasm-tools print experiments/parallel-columnar-query/kernels.wasm | rg -q 'merge_aggregate_state_blocks|scan_i32_between_aggregate|scan_i32_between_group_by_u8|i64x2.add|i32x4.min_s|i32x4.max_s|i64x2.extend_low_i32x4_s|i32x4.bitmask|shared'
     wasm-tools print experiments/parallel-hybrid-query/kernels.wasm | rg -q 'scan_i32_between_mask|masked_squared_l2_top1_pdx64|masked_squared_l2_topk_pdx64|masked_squared_l2_topk_pdx64_pruned|masked_hamming_top1|masked_hamming_topk|pdx64_squared_l2_selected|i32x4.bitmask|f32x4.mul|i8x16.popcnt|shared'
 
 test-parallel-columnar-query: build
-    deno test -A experiments/parallel-columnar-query/mod_test.ts
+    deno test -A experiments/parallel-columnar-query/mod_test.ts experiments/parallel-columnar-query/aggregate_state_test.ts
 
 test-parallel-hybrid-query: build
     deno test -A experiments/parallel-hybrid-query

@@ -8,6 +8,7 @@ import {
   VersionedBuffer,
 } from "../../packages/jsimd/src/shared-buffer/mod.ts";
 import { instantiateQueryKernels, type QueryKernels } from "./kernel.ts";
+import { AggregateStateBlock } from "./aggregate_state.ts";
 import {
   GROUP_STOP_TASK,
   type GroupQueryWorkerInit,
@@ -22,6 +23,7 @@ import {
   GROUP_QUERY_MINIMUM_INDEX,
   GROUP_QUERY_NEXT_PAGE_INDEX,
   GROUP_QUERY_WORDS,
+  GROUP_RESULT_HEADER_BYTES,
   groupResultSlotBytes,
   readGroupWorkerResult,
   scanAvailableGroupPages,
@@ -229,7 +231,9 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
       ]);
       return mergeResults(
         this.#shared,
+        this.#kernels,
         this.#layout.resultOffsets,
+        this.#layout.coordinatorResultOffset,
         this.groupCount,
         epoch,
       );
@@ -255,7 +259,9 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
     }, epoch);
     return mergeResults(
       this.#shared,
+      this.#kernels,
       [this.#layout.coordinatorResultOffset],
+      this.#layout.coordinatorResultOffset,
       this.groupCount,
       epoch,
     );
@@ -434,34 +440,49 @@ function createLayout(
 
 function mergeResults(
   shared: SharedBuffer,
+  kernels: QueryKernels,
   resultOffsets: readonly number[],
+  coordinatorResultOffset: number,
   groupCount: number,
   epoch: number,
 ): GroupByResult {
-  const counts = new Uint32Array(groupCount);
-  const sums = Array<bigint>(groupCount).fill(0n);
-  const minimums = new Int32Array(groupCount).fill(I32_MAX);
-  const maximums = new Int32Array(groupCount).fill(I32_MIN);
+  const output = AggregateStateBlock.attach(
+    shared,
+    coordinatorResultOffset + GROUP_RESULT_HEADER_BYTES,
+    groupCount,
+  );
+  const reuseCoordinatorState = resultOffsets.length === 1 &&
+    resultOffsets[0] === coordinatorResultOffset;
+  if (!reuseCoordinatorState) output.reset();
   let pagesScanned = 0;
   let pagesSkipped = 0;
   for (const resultOffset of resultOffsets) {
     const partial = readGroupWorkerResult(shared, resultOffset, groupCount, epoch);
     pagesScanned += partial.pagesScanned;
     pagesSkipped += partial.pagesSkipped;
-    for (let group = 0; group < groupCount; group++) {
-      const partialCount = partial.counts[group]!;
-      if (partialCount === 0) continue;
-      counts[group] += partialCount;
-      sums[group] = sums[group]! + partial.sums[group]!;
-      if (partial.minimums[group]! < minimums[group]!) minimums[group] = partial.minimums[group]!;
-      if (partial.maximums[group]! > maximums[group]!) maximums[group] = partial.maximums[group]!;
-    }
+    if (!reuseCoordinatorState) output.mergeFrom(partial.state, kernels);
   }
   return {
-    groups: compactGroups(counts, sums, minimums, maximums),
+    groups: compactAggregateState(output),
     pagesScanned,
     pagesSkipped,
   };
+}
+
+function compactAggregateState(state: AggregateStateBlock): GroupByAggregate[] {
+  const output: GroupByAggregate[] = [];
+  for (let group = 0; group < state.groupCount; group++) {
+    const aggregate = state.at(group);
+    if (aggregate.count === 0) continue;
+    output.push({
+      group,
+      count: aggregate.count,
+      sum: aggregate.sum,
+      min: aggregate.min!,
+      max: aggregate.max!,
+    });
+  }
+  return output;
 }
 
 function compactGroups(

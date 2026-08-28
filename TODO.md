@@ -35,6 +35,12 @@ An experiment does not become a package export merely because its isolated kerne
 win an end-to-end representative workload after construction, data conversion, JS/Wasm or GPU
 boundaries, output materialization, scheduling, and disposal.
 
+The project concentrates on workloads where Wasm SIMD and persistent Web Workers can cooperate over
+immutable or phase-owned bulk data. A transactional row store, WAL, MVCC engine, and single-record
+OLTP indexes are out of scope: their scalar point operations, durability boundary, and contention
+control do not exercise the project's primary advantage. A future database may consume these OLAP
+primitives, but transactional storage belongs in a separate repository.
+
 ### P1: parallel OLAP and storage
 
 The physical execution hypothesis is recorded in
@@ -53,8 +59,19 @@ product-facing query engine to a separate repository once the boundary is stable
       columnar schema experiment before considering extraction.
 - [x] Run real-browser IndexedDB cold/warm restoration benchmarks; do not infer them from the Deno
       IndexedDB implementation.
-- [ ] Replace whole-column double buffering with page-versioned publication if snapshot memory
-      amplification becomes the limiting cost.
+- [x] Replace whole-table rewrites with page-versioned row-group updates. Unchanged immutable column
+      pages are reused, and engines sharing one backend object pin observed generations until
+      refresh or disposal.
+- [x] Add experimental `AggregateStateBlock` for Worker-local count/null-count/sum/min/max state,
+      derived average, and barrier-delimited SIMD reduction. The current eight-group query remains
+      end-to-end faster than optimized JavaScript, but higher-cardinality merge benchmarks are
+      required before extracting this as a public API.
+- [ ] Evaluate `LocalGroupHashTableU32` with radix-partitioned ownership merge against the current
+      low-cardinality group-by and threaded DuckDB-Wasm.
+- [ ] Evaluate `PartitionedHashJoinTable` with caller-owned row-ID output and an optional blocked
+      Bloom prefilter.
+- [ ] Add `RadixSortBlockU32/U64` only if group merge, join partitioning, or order/top-k repays its
+      construction and materialization cost.
 
 ### P2: hybrid and vector search
 

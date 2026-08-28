@@ -10,6 +10,7 @@ import {
   type ColumnDefinition,
   type ColumnOutput,
   type NullableColumn,
+  type RowGroupUpdate,
   type SchemaDefinition,
   schemaFingerprint,
   type TableDefinition,
@@ -23,6 +24,10 @@ import {
   encodeNullableStoredPage,
   stringPageHostBytes,
 } from "./stored_page.ts";
+import {
+  acquireVersionedRowGroupPin,
+  pinnedVersionedRowGroupPageKeys,
+} from "./versioned_row_group.ts";
 
 const MANIFEST_VERSION = 2;
 const textEncoder = new TextEncoder();
@@ -515,6 +520,7 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
   readonly backend: PageBackend;
   readonly #cache: ResidentPageCache;
   readonly #manifests = new Map<string, TableManifest>();
+  readonly #manifestPins = new Map<string, Disposable>();
   readonly #pageFormat: Exclude<PageFormat, "dictionary">;
   #disposed = false;
 
@@ -594,8 +600,107 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
       rowGroups: Object.freeze(rowGroups),
     });
     await this.backend.put(manifestKey(name), textEncoder.encode(JSON.stringify(manifest)));
-    this.#manifests.set(name, manifest);
+    this.#setManifest(name, manifest);
     this.#cache.clear(`tables/${name}/pages/`);
+  }
+
+  /** Publishes replacements for selected immutable column pages without rewriting other pages. */
+  async updateRowGroups<Name extends TableName<Schema>>(
+    name: Name,
+    updates: readonly RowGroupUpdate<Schema["tables"][Name]>[],
+  ): Promise<void> {
+    this.#assertAlive();
+    if (!Array.isArray(updates) || updates.length === 0) {
+      throw new RangeError("row-group updates must not be empty");
+    }
+    const table = this.#table(name);
+    const current = await this.#manifest(name, table);
+    const generation = `${Date.now()}-${crypto.randomUUID()}`;
+    const seen = new Set<number>();
+    const planned: {
+      readonly index: number;
+      readonly columns: readonly {
+        readonly name: string;
+        readonly bytes: Uint8Array;
+        readonly metadata: ColumnManifest;
+      }[];
+    }[] = [];
+
+    for (const update of updates) {
+      if (
+        typeof update !== "object" || update === null || !Number.isSafeInteger(update.index) ||
+        update.index < 0 || update.index >= current.rowGroups.length
+      ) {
+        throw new RangeError("row-group update index is out of range");
+      }
+      if (seen.has(update.index)) throw new RangeError("row-group update indices must be unique");
+      seen.add(update.index);
+      if (typeof update.columns !== "object" || update.columns === null) {
+        throw new TypeError("row-group update columns must be an object");
+      }
+      const entries = Object.entries(update.columns);
+      if (entries.length === 0) throw new RangeError("row-group update columns must not be empty");
+      const group = current.rowGroups[update.index]!;
+      const columns = entries.map(([columnName, input]) => {
+        const definition = table.columns[columnName];
+        if (definition === undefined) throw new RangeError(`unknown column ${columnName}`);
+        const length = validateColumnInput(columnName, definition, input);
+        if (length !== group.length) {
+          throw new RangeError(
+            `row-group column ${columnName} must contain exactly ${group.length} values`,
+          );
+        }
+        const bytes = encodeStoredColumn(definition, input, this.#pageFormat);
+        const key = `tables/${name}/pages/${generation}/${update.index}/${columnName}.bin`;
+        const [minimum, maximum, nullCount] = minMax(definition, input);
+        return Object.freeze({
+          name: columnName,
+          bytes,
+          metadata: Object.freeze({
+            key,
+            kind: definition.kind,
+            format: definition.kind === "string" ? "dictionary" : this.#pageFormat,
+            min: minimum,
+            max: maximum,
+            nullCount,
+            byteLength: bytes.byteLength,
+          }),
+        });
+      });
+      planned.push(Object.freeze({ index: update.index, columns: Object.freeze(columns) }));
+    }
+
+    const rowGroups = current.rowGroups.slice();
+    for (const update of planned) {
+      const currentGroup = current.rowGroups[update.index]!;
+      const columns: Record<string, ColumnManifest> = { ...currentGroup.columns };
+      for (const column of update.columns) {
+        await this.backend.put(column.metadata.key, column.bytes);
+        columns[column.name] = column.metadata;
+      }
+      rowGroups[update.index] = Object.freeze({
+        ...currentGroup,
+        columns: Object.freeze(columns),
+      });
+    }
+
+    const definitions = Object.fromEntries(
+      Object.entries(table.columns).map(([columnName, definition]) => [
+        columnName,
+        storedDefinition(definition),
+      ]),
+    );
+    const manifest: TableManifest = Object.freeze({
+      version: MANIFEST_VERSION,
+      generation,
+      fingerprint: schemaFingerprint(table),
+      definitions: Object.freeze(definitions),
+      rowCount: current.rowCount,
+      rowGroupSize: current.rowGroupSize,
+      rowGroups: Object.freeze(rowGroups),
+    });
+    await this.backend.put(manifestKey(name), textEncoder.encode(JSON.stringify(manifest)));
+    this.#setManifest(name, manifest);
   }
 
   query<Name extends TableName<Schema>>(
@@ -624,7 +729,7 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
     this.#assertAlive();
     const table = this.#table(name);
     const manifest = await this.#readManifest(name, table);
-    this.#manifests.set(name, manifest);
+    this.#setManifest(name, manifest);
     this.#cache.clear(`tables/${name}/pages/`);
   }
 
@@ -632,10 +737,11 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
     this.#assertAlive();
     const manifest = await this.#manifest(name, this.#table(name));
     const prefix = `tables/${name}/pages/`;
-    const currentPrefix = `${prefix}${manifest.generation}/`;
-    const obsolete = (await this.backend.list(prefix)).filter((key) =>
-      !key.startsWith(currentPrefix)
-    );
+    const live = pinnedVersionedRowGroupPageKeys(this.backend, name);
+    for (const group of manifest.rowGroups) {
+      for (const column of Object.values(group.columns)) live.add(column.key);
+    }
+    const obsolete = (await this.backend.list(prefix)).filter((key) => !live.has(key));
     await Promise.all(obsolete.map((key) => this.backend.delete(key)));
     this.#cache.clear(prefix);
     return obsolete.length;
@@ -645,6 +751,8 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
     if (this.#disposed) return;
     this.#disposed = true;
     this.#cache[Symbol.dispose]();
+    for (const pin of this.#manifestPins.values()) pin[Symbol.dispose]();
+    this.#manifestPins.clear();
     this.#manifests.clear();
     this.backend[Symbol.dispose]?.();
   }
@@ -658,6 +766,7 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
   ): Promise<QueryResult<Table, Selected> | CountResult> {
     this.#assertAlive();
     const manifest = await this.#manifest(tableName, table);
+    using _pin = acquireVersionedRowGroupPin(this.backend, tableName, manifest);
     const stats: MutableStats = {
       rowGroupsTotal: manifest.rowGroups.length,
       rowGroupsSkipped: 0,
@@ -762,8 +871,20 @@ export class SchemaEngine<Schema extends SchemaDefinition> {
     const cached = this.#manifests.get(name);
     if (cached !== undefined) return cached;
     const manifest = await this.#readManifest(name, table);
-    this.#manifests.set(name, manifest);
+    this.#setManifest(name, manifest);
     return manifest;
+  }
+
+  #setManifest(name: string, manifest: TableManifest): void {
+    const previous = this.#manifests.get(name);
+    if (previous?.generation === manifest.generation) {
+      this.#manifests.set(name, manifest);
+      return;
+    }
+    const pin = acquireVersionedRowGroupPin(this.backend, name, manifest);
+    this.#manifestPins.get(name)?.[Symbol.dispose]();
+    this.#manifestPins.set(name, pin);
+    this.#manifests.set(name, manifest);
   }
 
   async #readManifest(name: string, table: TableDefinition): Promise<TableManifest> {

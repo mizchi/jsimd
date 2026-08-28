@@ -1,6 +1,19 @@
 import { instantiateSharedModule } from "../../packages/jsimd/src/shared-buffer/mod.ts";
 
 export interface QueryKernels extends WebAssembly.Exports {
+  merge_aggregate_state_blocks(
+    destinationCountsPointer: number,
+    destinationNullCountsPointer: number,
+    destinationSumsPointer: number,
+    destinationMinimumsPointer: number,
+    destinationMaximumsPointer: number,
+    sourceCountsPointer: number,
+    sourceNullCountsPointer: number,
+    sourceSumsPointer: number,
+    sourceMinimumsPointer: number,
+    sourceMaximumsPointer: number,
+    groupCount: number,
+  ): void;
   scan_i32_between_aggregate(
     pointer: number,
     length: number,

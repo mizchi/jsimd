@@ -1,8 +1,8 @@
 # Experimental OLAP execution design
 
-Status: design note only. Nothing in this document is admitted to the implementation queue or the
-public package API. Each layer still requires an end-to-end benchmark against optimized JavaScript
-and DuckDB-Wasm before implementation.
+Status: physical-execution plan. Page-versioned row-group publication has graduated into the
+experimental columnar package; the remaining operators still require an end-to-end benchmark against
+optimized JavaScript and DuckDB-Wasm before admission.
 
 ## Motivation
 
@@ -77,6 +77,14 @@ Use structure-of-arrays state for count, sum, min, max, null count, and the sum/
 average. Workers update private state and combine it only after a barrier. Aggregate state should
 remain resident and use scaled integers before adding a general decimal contract.
 
+The experimental implementation now stores `count/nullCount/sum/min/max` in one cache-line-aligned
+SoA block. It derives average from sum/count, uses neutral extrema for empty groups, and combines
+four groups per Wasm SIMD iteration with a scalar tail. The parallel u8 group-by uses this block for
+both Worker-local output and final reduction. The scan remains non-nullable; null-count production
+will be connected when nullable physical vectors reach this execution path. Eight groups are too few
+to isolate a meaningful merge speedup, so public extraction depends on a higher-cardinality
+benchmark.
+
 ### 4. `LocalGroupHashTableU32`
 
 Start with u8/u16/u32 or packed small-integer keys and dictionary IDs. Reuse the existing SIMD
@@ -108,6 +116,11 @@ dictionary IDs. String decoding stays outside scan, group-by, and join hot paths
 Replace whole-column double buffering with immutable page handles. A new generation reuses unchanged
 pages and allocates only replacements; reader guards delay page reuse. This is the bridge to the
 existing memory, IndexedDB, and filesystem page backends.
+
+`SchemaEngine.updateRowGroups()` now provides this contract for engines sharing one `PageBackend`
+object. It publishes the new manifest after writing replacement pages, retains unchanged page keys,
+and delays vacuum while another engine pins an observed generation. Cross-instance filesystem,
+IndexedDB connection, and multi-tab coordination remain outside that in-process guarantee.
 
 ### 8. `RadixSortBlock`
 

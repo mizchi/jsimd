@@ -70,6 +70,15 @@ export type TableInput<Table extends TableDefinition> = {
   readonly [Name in keyof Table["columns"]]: ColumnInput<Table["columns"][Name]>;
 };
 
+export interface RowGroupUpdate<Table extends TableDefinition> {
+  readonly index: number;
+  readonly columns: Partial<
+    {
+      readonly [Name in keyof Table["columns"]]: ColumnInput<Table["columns"][Name]>;
+    }
+  >;
+}
+
 export type ColumnOutput<Definition extends ColumnDefinition> = ColumnInput<Definition>;
 
 export function nullable<Values extends Int32Array | Uint32Array | Uint8Array>(
