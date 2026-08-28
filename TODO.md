@@ -3,7 +3,8 @@
 This file contains only workspace organization, release work, future experiments, and admission
 decisions. Completed APIs, algorithms, benchmark results, and implementation history belong in the
 README owned by each package or implementation. Experimental evidence stays under
-`experiments/<name>/`.
+`experiments/<name>/`. Cross-cutting lessons that change future admission decisions are summarized
+here.
 
 ## Workspace organization
 
@@ -54,28 +55,51 @@ package export.
 |    6 | `MultiQueuePriorityQueue`                       |     22 | Only a scheduler workload that amortizes the already-rejected point queue     |
 |    7 | extra locks or `EpochDomain` without a consumer |      5 | Do not implement speculatively                                                |
 
-The metadata-backed `RadixOrderU32` admission experiment is complete. Persisted per-row-group
-ordering facts removed runtime distribution discovery: at 1M rows the public stable key-plus-row-ID
-operator was 2.18x faster than the strongest packed-u64 JavaScript baseline on uniform random input,
-2.01x faster on radix-partitioned input, at parity on sorted input (1.03x), and at parity on
-256-value-cardinality input (0.99x). It is published from `@mizchi/jsimd-olap/radix-order-u32`;
-generic key-only u32/u64 sorting remains experimental because its unconditional API includes losing
-distributions. The `StripedRoaringBitmap` admission experiment is also complete: persistent Workers
-were 2.77x slower for one resident dense intersection pair and 1.16x slower for 16 pairs. A 64-pair
-batch improved median throughput 1.92x and p95 1.83x versus serial resident Roaring. Keep it as
-query-scheduler evidence, not a public concurrent collection. The practical next experiment is
-`UltraLogLog` with Worker-local ingestion and SIMD register merge. Worker-local Bloom was initially
-ranked first because both isolated halves had positive evidence; the completed admission experiment
-reduced a 1M-key rebuild by 2.46x, but refresh plus exact lookup improved only 1.08x at 90% misses
-and was 1.25-1.28x slower at higher hit rates, with noisy tail latency, so the concurrent wrapper
-was not adopted. The completed `UltraLogLog` experiment is positive: at 1M `u32` rows, single Wasm
-was 2.16x faster than the equivalent optimized JavaScript path despite input copying, and eight
-persistent Workers plus exact SIMD merge and FGRA estimation were 5.38x faster. SIMD merge alone was
-22.53x faster for eight 16 KiB states. At 4K rows the Worker path was 3.45x slower than JS. The
-admitted `ultra-log-log` and `ultra-log-log-parallel` subpaths therefore select JS/single Wasm or
-persistent Workers by batch size; evidence remains in `experiments/ultra-log-log`. Point-mutation
-concurrency and new synchronization primitives remain at the bottom because they reproduce the
-workloads where JavaScript and scalar atomics already win.
+### Recorded admission lessons
+
+`RadixOrderU32` demonstrated that physical metadata can matter more than another kernel. Persisted
+per-row-group ordering facts removed runtime distribution discovery: at 1M rows the public stable
+key-plus-row-ID operator was 2.18x faster than the strongest packed-u64 JavaScript baseline on
+uniform random input and 2.01x faster on radix-partitioned input, while remaining at parity on
+sorted (1.03x) and 256-value-cardinality (0.99x) inputs. It is exported from
+`@mizchi/jsimd-olap/radix-order-u32`; generic key-only u32/u64 sorting remains experimental because
+its unconditional API includes losing distributions.
+
+Persistent Workers need enough independent bulk work, not merely fast isolated halves.
+`StripedRoaringBitmap` was 2.77x slower for one resident dense intersection pair and 1.16x slower
+for 16 pairs, but a 64-pair batch improved median throughput 1.92x and p95 1.83x. Worker-local Bloom
+rebuilt 1M keys 2.46x faster, yet refresh plus exact lookup improved only 1.08x at 90% misses and
+was 1.25-1.28x slower at higher hit rates. Keep both as scheduler and selectivity evidence rather
+than public concurrent collections.
+
+`UltraLogLogU32` was admitted because both expensive phases match the repository: bulk hashing is a
+regular resident loop and independent compact states can be reduced with SIMD. On Apple M5 / Deno
+2.6.4 at precision 14, 1M `u32` values were 2.16x faster than optimized JavaScript through single
+Wasm despite input copying; eight persistent Workers were 5.38x faster end to end; exact merge of
+eight 16 KiB states was 22.53x faster. Forced Workers at 4K values were 3.45x slower, so dispatch is
+not a point-operation optimization.
+
+The reusable design decisions from that admission are:
+
+- route small synchronous batches through JavaScript, bulk batches through Wasm, and only larger
+  repeated replacements through persistent Workers; the current measured defaults are 16,384 and
+  65,536 values respectively; the Worker threshold is runtime-tunable, while changing the exposed
+  synchronous threshold requires new benchmark evidence;
+- keep synchronous and Worker orchestration in separate `ultra-log-log` and `ultra-log-log-parallel`
+  subpaths so a synchronous Vite build emits no Worker asset;
+- define correctness at the state level: an UltraLogLog register contains rank plus history bits, so
+  exact merge needs masked rank comparison and `v128.bitselect`, not plain `i8x16.max_u`;
+- keep owning Wasm state behind `using`, persistent Worker ownership behind `await using`, and test
+  allocator balance plus packaged Worker disposal;
+- validate the packed artifact in Node Worker threads, Deno Workers, TypeScript, and Vite because
+  source tests do not catch rewritten Worker URLs or missing release files; and
+- budget each subpath independently. The recorded isolated gzip payload is 4.08 kB JS + 0.57 kB Wasm
+  for the synchronous API and 9.43 kB JS + 0.57 kB Wasm for the Worker API.
+
+Exact benchmark samples and algorithm details remain in
+[`experiments/ultra-log-log`](./experiments/ultra-log-log/README.md) and the two public READMEs.
+Point-mutation concurrency and speculative synchronization primitives remain low priority because
+JavaScript and scalar atomics already win those workloads.
 
 The project concentrates on workloads where Wasm SIMD and persistent Web Workers can cooperate over
 immutable or phase-owned bulk data. A transactional row store, WAL, MVCC engine, and single-record
@@ -234,8 +258,16 @@ uses SIMD.
       sorted typed-array index.
 - [x] `UltraLogLog`: compare exact merge and FGRA estimation against an optimized JavaScript sketch,
       including hashing, input copies, persistent Worker dispatch, output, and disposal.
-  - [x] Expose size-aware JS/single-Wasm and persistent-Worker planners as separate tree-shakeable
-        jsimd subpaths.
+  - [x] Select JavaScript below 16,384 values and Wasm above it for synchronous ingestion; select
+        the serial implementation below 65,536 values and persistent Workers above it for repeated
+        replacement. Expose both decisions for diagnostics and allow the runtime-dependent Worker
+        threshold to be overridden.
+  - [x] Expose synchronous and persistent-Worker planners as separate tree-shakeable jsimd subpaths;
+        verify that importing the synchronous path emits no Worker asset.
+  - [x] Require exact SIMD merge state to equal serial union ingestion; do not substitute byte max
+        for the rank-and-history register transition.
+  - [x] Include the Hash4j Apache-2.0 attribution in the tarball and smoke-test the packed Worker
+        URL in Node and Deno in addition to TypeScript/Vite builds.
   - [ ] Add pre-hashed 64-bit and byte/string ingestion, statistical accuracy tests, precision
         conversion, and browser measurements.
 - [ ] `SimdOrderedIndex` and semiring graph kernels: admit only after a layout-level workload wins.
