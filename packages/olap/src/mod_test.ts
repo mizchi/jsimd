@@ -171,6 +171,99 @@ Deno.test("ParallelI32GroupByU8Query composes pruning, filtering, and partial ag
   assert(parallel.groups.every((group) => group.group !== 7), "empty groups are omitted");
 });
 
+Deno.test("ParallelI32GroupByU8Query publishes immutable replacement generations", async () => {
+  const initial = {
+    filter: new Int32Array([1, 2, 3, 4, 5, 6]),
+    values: new Int32Array([10, 20, 30, 40, 50, 60]),
+    groups: new Uint8Array([0, 1, 0, 1, 0, 1]),
+  };
+  await using query = await ParallelI32GroupByU8Query.create(initial, {
+    groupCount: 2,
+    workerCount: 2,
+    pageRows: 2,
+  });
+  const initialGeneration = query.generation;
+  const replacement = {
+    filter: new Int32Array([10, 20, 30, 40, 50, 60]),
+    values: new Int32Array([1, 2, 3, 4, 5, 6]),
+    groups: new Uint8Array([1, 1, 0, 0, 1, 0]),
+  };
+
+  const generation = query.replace(replacement);
+  assert(generation > initialGeneration, "replacement publishes a newer generation");
+  assert(query.generation === generation, "generation getter observes publication");
+  const actual = await query.aggregateBetween(20, 60);
+  const expected = groupByBetweenReference(
+    replacement.filter,
+    replacement.values,
+    replacement.groups,
+    20,
+    60,
+    2,
+  );
+  assertGroupAggregates(actual.groups, expected.groups, "replacement snapshot");
+});
+
+Deno.test("ParallelI32GroupByU8Query cancels at page boundaries and remains reusable", async () => {
+  const length = 1 << 20;
+  const columns = {
+    filter: Int32Array.from({ length }, (_, index) => index & 1023),
+    values: Int32Array.from({ length }, (_, index) => (index & 255) - 128),
+    groups: Uint8Array.from({ length }, (_, index) => index & 7),
+  };
+  await using query = await ParallelI32GroupByU8Query.create(columns, {
+    groupCount: 8,
+    workerCount: 4,
+    pageRows: 256,
+  });
+
+  const pending = query.aggregateBetween(0, 1024);
+  assert(query.cancelCurrent(), "active group query cancellation is published");
+  try {
+    await pending;
+  } catch (error) {
+    assert(error instanceof DOMException && error.name === "AbortError", "AbortError contract");
+    const actual = await query.aggregateBetween(0, 1);
+    const expected = groupByBetweenReference(
+      columns.filter,
+      columns.values,
+      columns.groups,
+      0,
+      1,
+      8,
+    );
+    assertGroupAggregates(actual.groups, expected.groups, "query remains reusable");
+    return;
+  }
+  throw new Error("cancelled group query must reject");
+});
+
+Deno.test("ParallelI32GroupByU8Query restarts Workers without losing its snapshot", async () => {
+  const columns = {
+    filter: Int32Array.from({ length: 8_192 }, (_, index) => index - 4_096),
+    values: Int32Array.from({ length: 8_192 }, (_, index) => index & 255),
+    groups: Uint8Array.from({ length: 8_192 }, (_, index) => index % 7),
+  };
+  await using query = await ParallelI32GroupByU8Query.create(columns, {
+    groupCount: 8,
+    workerCount: 3,
+    pageRows: 128,
+  });
+  const generation = query.generation;
+  await query.restartWorkers();
+  assert(query.generation === generation, "restart preserves snapshot generation");
+  const actual = await query.aggregateBetween(-100, 100);
+  const expected = groupByBetweenReference(
+    columns.filter,
+    columns.values,
+    columns.groups,
+    -100,
+    100,
+    8,
+  );
+  assertGroupAggregates(actual.groups, expected.groups, "restarted Workers");
+});
+
 Deno.test("ParallelI32GroupByU8Query validates column and group contracts", async () => {
   try {
     await ParallelI32GroupByU8Query.create(

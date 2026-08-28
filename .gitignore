@@ -35,6 +35,7 @@ experiments/parallel-columnar-query/duckdb-comparison/dist/
 experiments/parallel-columnar-query/browser-physical-pipeline/dist/
 experiments/parallel-columnar-query/browser-adaptive-pipeline/dist/
 experiments/parallel-hybrid-query/kernels.wasm
+experiments/parallel-columnar-selection/kernels.wasm
 experiments/bitmap-grid-astar/tree-shake-fixture/dist/
 experiments/columnar-schema-engine/tree-shake-fixture/dist/
 experiments/columnar-schema-engine/browser-benchmark/dist/

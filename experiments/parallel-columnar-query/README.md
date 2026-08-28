@@ -38,10 +38,11 @@ There is no atomic `v128` operation. Immutability and exclusive page claims make
 safe; the only atomic operations are task publication, page claims, cancellation, completion, and
 result-epoch publication.
 
-Raw `replace()` writes the inactive snapshot and atomically publishes its generation. Active queries
-hold a reader guard over exactly one immutable generation. `cancelCurrent()` stops at page
-boundaries, and `restartWorkers()` orderly replaces the Worker pool without discarding the current
-snapshot.
+Range aggregate and dense-u8 group-by `replace()` write the inactive snapshot and atomically publish
+its generation. Active queries hold a reader guard over exactly one immutable generation.
+`cancelCurrent()` stops Worker execution at page boundaries, and `restartWorkers()` orderly replaces
+the Worker pool without discarding the current snapshot. Sparse-u32 group-by stays immutable because
+replacement can invalidate its caller-selected hash-table capacity.
 
 `SchemaEngine.readI32SnapshotPages()` pins one page generation and reads non-nullable i32 snapshot
 bytes directly from the backend without populating its host/Wasm resident cache.
@@ -93,6 +94,27 @@ The current scope includes immutable raw and adaptive i32 count/sum scans, a fus
 u8 group-by, and a page-pruned sparse u32 group-by with byte validities. Adaptive SchemaEngine input
 currently supports only non-nullable i32 snapshots and still lacks a reusable multi-column
 selection-mask pipeline.
+
+## Worker initialization
+
+The coordinator now compiles the shared runtime and OLAP kernel modules once, instantiates its own
+copies, and structured-clones the same `WebAssembly.Module` objects into every Worker. The previous
+per-realm `modulePromise` avoided repeat compilation only inside one Worker, not across Workers.
+
+Fresh module-Worker startup through both Wasm instantiations, Apple M5 / Deno 2.6.4, median of 11
+samples after three warmups:
+
+| Workers | compile in every Worker | clone coordinator modules | speedup |
+| ------: | ----------------------: | ------------------------: | ------: |
+|       1 |                11.05 ms |                   9.21 ms |   1.20x |
+|       2 |                16.19 ms |                  16.10 ms |   1.01x |
+|       4 |                30.46 ms |                  29.15 ms |   1.04x |
+|       8 |                63.03 ms |                  56.40 ms |   1.12x |
+
+The one-time coordinator compilation was 0.96 ms and is common work because the coordinator also
+instantiates both modules. Persistent query latency is unchanged; this optimization only reduces
+pool construction and restart cost. Raw samples are in
+[`benchmarks/worker-module-initialization.json`](./benchmarks/worker-module-initialization.json).
 
 ## Physical execution planning
 

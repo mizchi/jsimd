@@ -1,0 +1,228 @@
+{
+  "schemaVersion": 1,
+  "name": "parallel-columnar-query/worker-module-initialization",
+  "recordedAt": "2026-08-28T09:53:02.183Z",
+  "environment": {
+    "runtime": {
+      "name": "deno",
+      "version": "2.6.4",
+      "userAgent": "Deno/2.6.4"
+    },
+    "platform": "darwin-aarch64",
+    "logicalCpus": 10,
+    "cpu": "Apple M5",
+    "adapter": null
+  },
+  "timing": {
+    "warmups": 3,
+    "samples": 11,
+    "operationsPerSample": 1
+  },
+  "input": {
+    "shape": {
+      "workerCounts": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "modules": 2
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "checks": 112,
+    "summary": "every Worker instantiated both shared-memory Wasm modules and reported ready"
+  },
+  "measurements": [
+    {
+      "name": "per-worker-compile/1-workers",
+      "boundary": "construction-inclusive",
+      "unit": "ms",
+      "medianMs": 11.049791999999997,
+      "p95Ms": 12.038125000000008,
+      "minMs": 9.590375000000002,
+      "maxMs": 12.038125000000008,
+      "samplesMs": [
+        11.240500000000004,
+        10.524415999999995,
+        9.590375000000002,
+        11.221333999999999,
+        11.653834000000003,
+        10.466459,
+        10.089791000000005,
+        10.157374999999988,
+        12.038125000000008,
+        11.049791999999997,
+        11.60899999999998
+      ]
+    },
+    {
+      "name": "coordinator-module-clone/1-workers",
+      "boundary": "construction-inclusive",
+      "unit": "ms",
+      "medianMs": 9.214957999999967,
+      "p95Ms": 10.034291999999994,
+      "minMs": 8.847999999999956,
+      "maxMs": 10.034291999999994,
+      "samplesMs": [
+        10.034291999999994,
+        9.879041,
+        9.203541000000001,
+        9.54125000000002,
+        9.203750000000014,
+        9.107665999999995,
+        9.214957999999967,
+        9.703249999999969,
+        8.847999999999956,
+        9.452249999999992,
+        8.926458000000025
+      ]
+    },
+    {
+      "name": "per-worker-compile/2-workers",
+      "boundary": "construction-inclusive",
+      "unit": "ms",
+      "medianMs": 16.186541999999974,
+      "p95Ms": 17.186916999999994,
+      "minMs": 15.759208999999998,
+      "maxMs": 17.186916999999994,
+      "samplesMs": [
+        15.759208999999998,
+        16.21354100000002,
+        16.186541999999974,
+        17.186916999999994,
+        16.539250000000038,
+        16.04170799999997,
+        15.772583999999995,
+        15.970416,
+        16.581875000000025,
+        15.916707999999971,
+        16.445124999999962
+      ]
+    },
+    {
+      "name": "coordinator-module-clone/2-workers",
+      "boundary": "construction-inclusive",
+      "unit": "ms",
+      "medianMs": 16.098499999999945,
+      "p95Ms": 16.86866699999996,
+      "minMs": 15.302208000000064,
+      "maxMs": 16.86866699999996,
+      "samplesMs": [
+        16.86866699999996,
+        16.20541700000001,
+        16.41862500000002,
+        15.755042000000003,
+        15.93425000000002,
+        15.53891699999997,
+        15.302208000000064,
+        16.74412499999994,
+        16.098499999999945,
+        16.46270800000002,
+        15.949666999999977
+      ]
+    },
+    {
+      "name": "per-worker-compile/4-workers",
+      "boundary": "construction-inclusive",
+      "unit": "ms",
+      "medianMs": 30.463208999999893,
+      "p95Ms": 35.02175,
+      "minMs": 29.52774999999997,
+      "maxMs": 35.02175,
+      "samplesMs": [
+        30.463208999999893,
+        30.25654200000008,
+        35.02175,
+        34.69837499999994,
+        31.447208000000046,
+        30.24570899999992,
+        29.878917,
+        29.52774999999997,
+        29.894708000000037,
+        30.774832999999944,
+        30.585374999999885
+      ]
+    },
+    {
+      "name": "coordinator-module-clone/4-workers",
+      "boundary": "construction-inclusive",
+      "unit": "ms",
+      "medianMs": 29.151875000000018,
+      "p95Ms": 33.27358299999992,
+      "minMs": 28.537083000000166,
+      "maxMs": 33.27358299999992,
+      "samplesMs": [
+        33.27358299999992,
+        31.393834000000197,
+        29.377874999999904,
+        29.581292000000076,
+        30.332417000000078,
+        29.123624999999947,
+        29.143666000000167,
+        29.104542000000038,
+        28.746208999999908,
+        29.151875000000018,
+        28.537083000000166
+      ]
+    },
+    {
+      "name": "per-worker-compile/8-workers",
+      "boundary": "construction-inclusive",
+      "unit": "ms",
+      "medianMs": 63.0317500000001,
+      "p95Ms": 98.65224999999987,
+      "minMs": 55.46320800000012,
+      "maxMs": 98.65224999999987,
+      "samplesMs": [
+        56.13304199999993,
+        98.65224999999987,
+        66.09995900000013,
+        62.17858399999977,
+        64.31783300000006,
+        63.0317500000001,
+        63.47283399999969,
+        64.3146670000001,
+        56.3475840000001,
+        58.31641600000012,
+        55.46320800000012
+      ]
+    },
+    {
+      "name": "coordinator-module-clone/8-workers",
+      "boundary": "construction-inclusive",
+      "unit": "ms",
+      "medianMs": 56.40062499999976,
+      "p95Ms": 64.2308750000002,
+      "minMs": 54.08550000000014,
+      "maxMs": 64.2308750000002,
+      "samplesMs": [
+        54.08550000000014,
+        55.76066600000013,
+        54.58287500000006,
+        56.40062499999976,
+        54.478333999999904,
+        55.74895900000001,
+        57.80512499999986,
+        57.41899999999987,
+        58.300083000000086,
+        56.84437500000013,
+        64.2308750000002
+      ]
+    }
+  ],
+  "metrics": {
+    "coordinatorCompileMs": 0.9602080000000006,
+    "speedup_1_workers": 1.2,
+    "speedup_2_workers": 1.01,
+    "speedup_4_workers": 1.04,
+    "speedup_8_workers": 1.12
+  },
+  "notes": [
+    "Each sample creates fresh module Workers and waits until both Wasm instances are ready.",
+    "The per-Worker baseline compiles both modules independently inside every new Worker realm.",
+    "The clone path excludes the separately reported one-time coordinator compilation.",
+    "Shared memory construction and Worker module loading are included in both paths."
+  ]
+}

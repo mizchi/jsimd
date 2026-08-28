@@ -32,6 +32,7 @@ build:
     wasm-tools strip -a packages/jsimd/src/blocked-bloom-filter/kernels.wat -o packages/jsimd/src/blocked-bloom-filter/kernels.wasm
     wasm-tools strip -a packages/olap/src/kernels.wat -o packages/olap/src/kernels.wasm
     wasm-tools strip -a experiments/parallel-hybrid-query/kernels.wat -o experiments/parallel-hybrid-query/kernels.wasm
+    wasm-tools strip -a experiments/parallel-columnar-selection/kernels.wat -o experiments/parallel-columnar-selection/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/bytes/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/bitmap/kernels.wasm
@@ -65,6 +66,7 @@ build:
     wasm-tools validate --features simd packages/jsimd/src/blocked-bloom-filter/kernels.wasm
     wasm-tools validate --features threads,simd packages/olap/src/kernels.wasm
     wasm-tools validate --features threads,simd experiments/parallel-hybrid-query/kernels.wasm
+    wasm-tools validate --features threads,simd experiments/parallel-columnar-selection/kernels.wasm
     wasm-tools print packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm | rg -q 'scan_between_for|scan_between_raw|scan_between_rle|scan_between_dictionary|scan_between_sparse|gather_sparse|sum_sparse|mask_count'
     ! wasm-tools print packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm | rg -q 'find_byte|byte_swap32|json_token_starts|intersection_count|batched_matmul|build_rank_index|bitmap_and_count|decode_range|lookup_many|quantile_many|lower_bound_many|\(export "dot"|\(export "matmul"'
     wasm-tools print packages/jsimd/src/bytes/kernels.wasm | rg -q 'find_byte'
@@ -117,6 +119,7 @@ build:
     wasm-tools print packages/jsimd/src/blocked-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|merge|i32x4.all_true'
     wasm-tools print packages/olap/src/kernels.wasm | rg -q 'local_group_find|local_group_update_i32|local_group_aggregate_i32|local_group_aggregate_between_i32_u32|local_group_merge_partition|hash_join_build_u32|hash_join_count_u32|hash_join_probe_u32|merge_aggregate_state_blocks|scan_i32_between_aggregate|aggregate_i32_constant|scan_adaptive_i32_between_aggregate|scan_i32_between_group_by_u8|i64x2.add|i32x4.min_s|i32x4.max_s|i64x2.extend_low_i32x4_s|i32x4.bitmask|shared'
     wasm-tools print experiments/parallel-hybrid-query/kernels.wasm | rg -q 'scan_i32_between_mask|masked_squared_l2_top1_pdx64|masked_squared_l2_topk_pdx64|masked_squared_l2_topk_pdx64_pruned|masked_hamming_top1|masked_hamming_topk|pdx64_squared_l2_selected|i32x4.bitmask|f32x4.mul|i8x16.popcnt|shared'
+    wasm-tools print experiments/parallel-columnar-selection/kernels.wasm | rg -q 'scan_i32_between_mask|mask_and|aggregate_i32_mask|i32x4.bitmask|i64x2.add|shared'
 
 test-olap-package: build
     deno test -A packages/olap/src
@@ -125,6 +128,9 @@ test-parallel-columnar-query: test-olap-package
 
 test-parallel-hybrid-query: build
     deno test -A experiments/parallel-hybrid-query
+
+test-parallel-columnar-selection: build
+    deno test -A experiments/parallel-columnar-selection
 
 bench-record-vitest suite output:
     deno run -A packages/bench/src/record_vitest.ts {{suite}} {{output}}
@@ -161,6 +167,12 @@ bench-parallel-columnar-physical-pipeline: build
 
 bench-record-parallel-columnar-physical-pipeline: build
     JSIMD_PIPELINE_OUTPUT=experiments/parallel-columnar-query/benchmarks/physical-pipeline.json deno run -A experiments/parallel-columnar-query/physical_pipeline_bench.ts
+
+bench-parallel-columnar-worker-init: build
+    deno run -A experiments/parallel-columnar-query/worker_module_init_bench.ts
+
+bench-record-parallel-columnar-worker-init: build
+    JSIMD_INIT_OUTPUT=experiments/parallel-columnar-query/benchmarks/worker-module-initialization.json deno run -A experiments/parallel-columnar-query/worker_module_init_bench.ts
 
 bench-parallel-columnar-group-physical-pipeline: build
     deno run -A experiments/parallel-columnar-query/group_physical_pipeline_bench.ts
@@ -202,6 +214,12 @@ bench-record-parallel-columnar-log-group-by: build
 
 bench-parallel-hybrid-query: build
     deno run -A experiments/parallel-hybrid-query/bench.ts
+
+bench-parallel-columnar-selection: build
+    deno run -A experiments/parallel-columnar-selection/bench.ts
+
+bench-record-parallel-columnar-selection: build
+    JSIMD_SELECTION_OUTPUT=experiments/parallel-columnar-selection/benchmarks/reusable-mask.json deno run -A experiments/parallel-columnar-selection/bench.ts
 
 bench-parallel-hybrid-topk: build
     deno run -A experiments/parallel-hybrid-query/bench_topk.ts
@@ -333,6 +351,7 @@ check: test package-smoke
     pnpm exec vite build packages/olap/fixtures/vite
     test "$(find packages/olap/fixtures/vite/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "2"
     test "$(find packages/olap/fixtures/vite/dist/assets -name '*worker*.js' | wc -l | tr -d ' ')" = "1"
+    deno run -A tools/test-olap-browser.ts
     wasm-tools print packages/columnar/fixtures/tree-shake/dist/assets/*.wasm | rg -q 'scan_i32_between_for|scan_u32_between_for|scan_u8_eq|gather_i32_for|gather_u8|mask_positions_into'
     ! rg -q 'node:fs|node:path' packages/columnar/fixtures/tree-shake/dist/assets/*.js
     pnpm exec tsc -p packages/columnar/fixtures/browser-benchmark/tsconfig.json

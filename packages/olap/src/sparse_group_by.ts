@@ -1,5 +1,6 @@
 import { SharedBuffer } from "@mizchi/jsimd-shared";
 import { instantiateQueryKernels, type QueryKernels } from "./kernel.ts";
+import { compileOlapWorkerModules } from "./runtime_modules.ts";
 import { type LocalGroupEntryU32, LocalGroupHashTableU32 } from "./local_group_hash_table.ts";
 import {
   type LocalGroupHashScanResult,
@@ -92,14 +93,16 @@ export class SparseU32GroupByQuery implements AsyncDisposable {
     const validitiesOffset = valuesOffset + columns.values.byteLength;
     const requiredBytes = validitiesOffset + columns.validities.byteLength;
     const initialPages = Math.ceil((requiredBytes + 65_535) / 65_536);
+    const modules = await compileOlapWorkerModules();
     const shared = await SharedBuffer.create({
       initialPages,
       maximumPages: initialPages,
       maxWorkers: workerCount + 1,
+      module: modules.shared,
     });
     let pool: LocalGroupHashWorkerPool | null = null;
     try {
-      const kernels = await instantiateQueryKernels(shared.memory);
+      const kernels = await instantiateQueryKernels(shared.memory, modules.query);
       shared.int32Array(filterOffset, columns.filter.length).set(columns.filter);
       shared.uint32Array(keysOffset, columns.keys.length).set(columns.keys);
       shared.int32Array(valuesOffset, columns.values.length).set(columns.values);

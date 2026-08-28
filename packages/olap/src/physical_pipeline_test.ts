@@ -285,6 +285,28 @@ Deno.test("I32GroupByU8Pipeline applies an operator-specific direct/Worker plan"
   const forced = await pipeline.aggregateBetween(300, 340, { execution: "workers" });
   assert(forced.plan.execution === "workers", "group-by execution can be forced");
   assertGroupResults(forced.groups, expectedSelective.groups);
+
+  const replacement = {
+    filter: new Int32Array(filter.length).fill(10_000),
+    values: new Int32Array(values.length).fill(7),
+    groups,
+  };
+  const generation = pipeline.replace(replacement);
+  assert(pipeline.generation === generation, "group replacement publishes its generation");
+  const pruned = await pipeline.aggregateBetween(300, 340);
+  assert(pruned.plan.pagesScanned === 0, "replacement refreshes group-by pruning metadata");
+  assert(pruned.groups.length === 0, "replacement values are queried");
+  await pipeline.restartWorkers();
+  const restarted = await pipeline.aggregateBetween(10_000, 10_001, { execution: "workers" });
+  const expectedRestarted = groupByBetweenReference(
+    replacement.filter,
+    replacement.values,
+    replacement.groups,
+    10_000,
+    10_001,
+    8,
+  );
+  assertGroupResults(restarted.groups, expectedRestarted.groups);
 });
 
 Deno.test("Deno group-by calibration keeps the recorded 16/32-page crossover", () => {

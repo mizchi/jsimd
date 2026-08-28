@@ -1,4 +1,9 @@
-import { SHARED_BUFFER_ABI_VERSION, SHARED_BUFFER_CACHE_LINE_BYTES, SharedBuffer } from "./mod.ts";
+import {
+  compileSharedBufferModule,
+  SHARED_BUFFER_ABI_VERSION,
+  SHARED_BUFFER_CACHE_LINE_BYTES,
+  SharedBuffer,
+} from "./mod.ts";
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -38,6 +43,15 @@ Deno.test("SharedBuffer defines an aligned versioned shared-memory ABI", async (
   assert(shared.maxWorkers === 4, "worker capacity");
   assert(shared.workerId === 0, "creator worker ID");
   assert(shared.activeWorkers === 1, "creator lease");
+});
+
+Deno.test("SharedBuffer reuses a coordinator-compiled Wasm module", async () => {
+  const module = await compileSharedBufferModule();
+  using owner = await SharedBuffer.create({ maxWorkers: 2, module });
+  using attached = await SharedBuffer.attach(owner.memory, { module });
+
+  assert(owner.activeWorkers === 2, "both leases must use the injected module");
+  assert(attached.memory === owner.memory, "attach must preserve shared memory identity");
 });
 
 Deno.test("SharedBuffer attaches, releases, and reuses worker leases", async () => {

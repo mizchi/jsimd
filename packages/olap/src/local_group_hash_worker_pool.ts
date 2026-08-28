@@ -6,6 +6,7 @@ import type {
   LocalGroupHashWorkerResponse,
 } from "./local_group_hash_protocol.ts";
 import type { LocalGroupHashTableU32 } from "./local_group_hash_table.ts";
+import { compileOlapWorkerModules } from "./runtime_modules.ts";
 
 export interface LocalGroupHashResidentInput {
   readonly filterByteOffset?: number;
@@ -54,6 +55,7 @@ export class LocalGroupHashWorkerPool implements AsyncDisposable {
       throw new RangeError("partial and output tables require the same power-of-two Worker count");
     }
     validateInput(shared, input);
+    const modules = await compileOlapWorkerModules();
     const pages = createPages(shared, input);
     const capacity = partials[0]!.capacity;
     if (
@@ -72,6 +74,7 @@ export class LocalGroupHashWorkerPool implements AsyncDisposable {
           await startWorker({
             type: "init",
             memory: shared.memory,
+            modules,
             partialOffset: partials[worker]!.byteOffset,
             outputOffset: outputs[worker]!.byteOffset,
             sourceOffsets,

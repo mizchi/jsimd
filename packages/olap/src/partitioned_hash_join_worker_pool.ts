@@ -5,6 +5,7 @@ import type {
   PartitionedHashJoinWorkerOperation,
   PartitionedHashJoinWorkerResponse,
 } from "./partitioned_hash_join_protocol.ts";
+import { compileOlapWorkerModules } from "./runtime_modules.ts";
 
 export interface PartitionedHashJoinProbeInput {
   readonly keysByteOffset: number;
@@ -47,6 +48,7 @@ export class PartitionedHashJoinWorkerPool implements AsyncDisposable {
     shared.uint32Array(input.rowIdsByteOffset, input.rowCount);
     PartitionedHashJoinTableU32.attach(shared, table.byteOffset);
     validateOutputs(shared, table, input, outputs);
+    const modules = await compileOlapWorkerModules();
     const shardRows = Math.ceil(input.rowCount / outputs.length);
     const controls: WorkerControl[] = [];
     try {
@@ -57,6 +59,7 @@ export class PartitionedHashJoinWorkerPool implements AsyncDisposable {
           await startWorker({
             type: "init",
             memory: shared.memory,
+            modules,
             tableOffset: table.byteOffset,
             probeKeysOffset: input.keysByteOffset,
             probeRowIdsOffset: input.rowIdsByteOffset,

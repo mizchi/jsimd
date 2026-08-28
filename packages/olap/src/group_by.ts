@@ -8,6 +8,7 @@ import {
   VersionedBuffer,
 } from "@mizchi/jsimd-shared";
 import { instantiateQueryKernels, type QueryKernels } from "./kernel.ts";
+import { compileOlapWorkerModules, type OlapWorkerModules } from "./runtime_modules.ts";
 import { AggregateStateBlock } from "./aggregate_state.ts";
 import {
   GROUP_STOP_TASK,
@@ -95,9 +96,10 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
   readonly #layout: Layout;
   readonly #waitGroup: SharedWaitGroup;
   readonly #kernels: QueryKernels;
+  readonly #modules: OlapWorkerModules;
   readonly #snapshots: VersionedBuffer;
-  readonly #producers: SpscProducerU32[];
-  readonly #workers: WorkerControl[];
+  #producers: SpscProducerU32[];
+  #workers: WorkerControl[];
   #epoch = 0;
   #busy = false;
   #disposed = false;
@@ -111,6 +113,7 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
     layout: Layout,
     waitGroup: SharedWaitGroup,
     kernels: QueryKernels,
+    modules: OlapWorkerModules,
     snapshots: VersionedBuffer,
     producers: SpscProducerU32[],
     workers: WorkerControl[],
@@ -124,6 +127,7 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
     this.#layout = layout;
     this.#waitGroup = waitGroup;
     this.#kernels = kernels;
+    this.#modules = modules;
     this.#snapshots = snapshots;
     this.#producers = producers;
     this.#workers = workers;
@@ -149,6 +153,7 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
     if (workerCount > 254) throw new RangeError("workerCount must be at most 254");
     const pageRows = positiveInteger(options.pageRows ?? 65_536, "pageRows");
     const layout = createLayout(columns.filter.length, pageRows, workerCount, groupCount);
+    const modules = await compileOlapWorkerModules();
     const maxWorkers = workerCount + 1;
     const sharedHeaderBytes = SHARED_BUFFER_CACHE_LINE_BYTES * (1 + maxWorkers);
     const pages = Math.max(1, Math.ceil((sharedHeaderBytes + layout.byteLength) / WASM_PAGE_BYTES));
@@ -156,6 +161,7 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
       initialPages: pages,
       maximumPages: pages,
       maxWorkers,
+      module: modules.shared,
     });
     const producers: SpscProducerU32[] = [];
     const workers: WorkerControl[] = [];
@@ -171,7 +177,7 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
         initializeSnapshot(writer.bytes, layout, columns, pageRows);
         writer.publish();
       }
-      const kernels = await instantiateQueryKernels(shared.memory);
+      const kernels = await instantiateQueryKernels(shared.memory, modules.query);
       for (let workerIndex = 0; workerIndex < workerCount; workerIndex++) {
         const ring = SpscRingBufferU32.initialize(
           shared,
@@ -181,6 +187,7 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
         producers.push(ring.producer());
         workers.push(startWorker({
           memory: shared.memory,
+          modules,
           ringOffset: layout.ringOffsets[workerIndex]!,
           waitGroupOffset: layout.waitGroupOffset,
           queryOffset: layout.queryOffset,
@@ -201,6 +208,7 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
         layout,
         SharedWaitGroup.attach(shared, layout.waitGroupOffset),
         kernels,
+        modules,
         snapshots,
         producers,
         workers,
@@ -210,6 +218,50 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
       for (const producer of producers) producer[Symbol.dispose]();
       shared[Symbol.dispose]();
       throw error;
+    }
+  }
+
+  get disposed(): boolean {
+    return this.#disposed;
+  }
+
+  get generation(): number {
+    this.#assertAlive();
+    using snapshot = this.#snapshots.acquire();
+    return snapshot.generation;
+  }
+
+  /** Publishes a complete immutable replacement without changing the shared-memory layout. */
+  replace(columns: GroupByColumns): number {
+    this.#assertIdle();
+    validateColumns(columns);
+    if (columns.filter.length !== this.length) {
+      throw new RangeError("replacement length must match the existing columns");
+    }
+    for (const group of columns.groups) {
+      if (group >= this.groupCount) throw new RangeError("group key must be less than groupCount");
+    }
+    using writer = this.#snapshots.beginWrite();
+    initializeSnapshot(writer.bytes, this.#layout, columns, this.pageRows);
+    return writer.publish();
+  }
+
+  /** Requests cancellation of the active generation at the next row-group boundary. */
+  cancelCurrent(): boolean {
+    if (this.#disposed || !this.#busy) return false;
+    const query = this.#shared.int32Array(this.#layout.queryOffset, GROUP_QUERY_WORDS);
+    Atomics.store(query, GROUP_QUERY_CANCEL_EPOCH_INDEX, this.#epoch);
+    return true;
+  }
+
+  /** Replaces every Worker while preserving the published snapshot. */
+  async restartWorkers(): Promise<void> {
+    this.#assertIdle();
+    this.#busy = true;
+    try {
+      await this.#replaceWorkerPool();
+    } finally {
+      this.#busy = false;
     }
   }
 
@@ -223,13 +275,18 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
       for (const producer of this.#producers) {
         if (!producer.tryPush(epoch)) throw new Error("group worker task queue unexpectedly full");
       }
-      await Promise.race([
-        this.#waitGroup.waitAsync(),
-        Promise.race(this.#workers.map((control) => control.failure)).then((error) => {
-          throw error;
-        }),
-      ]);
-      return mergeResults(
+      try {
+        await Promise.race([
+          this.#waitGroup.waitAsync(),
+          Promise.race(this.#workers.map((control) => control.failure)).then((error) => {
+            throw error;
+          }),
+        ]);
+      } catch (error) {
+        await this.#replaceWorkerPool();
+        throw error;
+      }
+      const result = mergeResults(
         this.#shared,
         this.#kernels,
         this.#layout.resultOffsets,
@@ -237,6 +294,11 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
         this.groupCount,
         epoch,
       );
+      const query = this.#shared.int32Array(this.#layout.queryOffset, GROUP_QUERY_WORDS);
+      if ((Atomics.load(query, GROUP_QUERY_CANCEL_EPOCH_INDEX) >>> 0) === epoch) {
+        throw new DOMException("The query was cancelled", "AbortError");
+      }
+      return result;
     } finally {
       this.#busy = false;
     }
@@ -270,20 +332,59 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
   async [Symbol.asyncDispose](): Promise<void> {
     if (this.#disposed) return;
     this.#disposed = true;
-    if (this.#waitGroup.count !== 0) await this.#waitGroup.waitAsync();
-    await Promise.allSettled(
-      this.#producers.map((producer) => producer.pushAsync(GROUP_STOP_TASK)),
-    );
+    if (this.#waitGroup.count !== 0) {
+      await Promise.race([
+        this.#waitGroup.waitAsync(),
+        Promise.race(this.#workers.map((control) => control.failure)),
+      ]);
+    }
+    await this.#stopWorkerPool();
+    this.#shared[Symbol.dispose]();
+  }
+
+  async #replaceWorkerPool(): Promise<void> {
+    await this.#stopWorkerPool();
+    const remaining = this.#waitGroup.count;
+    if (remaining !== 0) this.#waitGroup.add(-remaining);
+
+    const producers: SpscProducerU32[] = [];
+    const workers: WorkerControl[] = [];
+    try {
+      for (let workerIndex = 0; workerIndex < this.workerCount; workerIndex++) {
+        const ring = SpscRingBufferU32.initialize(
+          this.#shared,
+          this.#layout.ringOffsets[workerIndex]!,
+          RING_CAPACITY,
+        );
+        producers.push(ring.producer());
+        workers.push(startWorker(this.#workerInit(workerIndex)));
+      }
+      await Promise.all(workers.map((control) => control.ready));
+      this.#producers = producers;
+      this.#workers = workers;
+    } catch (error) {
+      for (const worker of workers) worker.worker.terminate();
+      for (const producer of producers) producer[Symbol.dispose]();
+      throw error;
+    }
+  }
+
+  async #stopWorkerPool(): Promise<void> {
+    const workers = this.#workers;
+    const producers = this.#producers;
+    this.#workers = [];
+    this.#producers = [];
+    await Promise.allSettled(producers.map((producer) => producer.pushAsync(GROUP_STOP_TASK)));
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
-        Promise.allSettled(this.#workers.map((control) => control.stopped)),
+        Promise.allSettled(workers.map((control) => control.stopped)),
         new Promise<void>((resolve) => timeout = setTimeout(resolve, 100)),
       ]);
     } finally {
       clearTimeout(timeout);
     }
-    for (const control of this.#workers) {
+    for (const control of workers) {
       control.worker.terminate();
       if (
         control.lease !== undefined && this.#shared.isLeaseTokenActive(control.lease.leaseToken)
@@ -291,8 +392,22 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
         this.#shared.reclaimTerminatedWorker(control.lease);
       }
     }
-    for (const producer of this.#producers) producer[Symbol.dispose]();
-    this.#shared[Symbol.dispose]();
+    for (const producer of producers) producer[Symbol.dispose]();
+  }
+
+  #workerInit(workerIndex: number): GroupQueryWorkerInit {
+    return {
+      memory: this.#shared.memory,
+      modules: this.#modules,
+      ringOffset: this.#layout.ringOffsets[workerIndex]!,
+      waitGroupOffset: this.#layout.waitGroupOffset,
+      queryOffset: this.#layout.queryOffset,
+      snapshotOffset: this.#layout.snapshotOffset,
+      snapshotDescriptorOffset: this.#layout.snapshotDescriptorOffset,
+      pageCount: this.#layout.pageCount,
+      resultOffset: this.#layout.resultOffsets[workerIndex]!,
+      groupCount: this.groupCount,
+    };
   }
 
   #publishQuery(minimum: number, maximum: number): number {
@@ -309,8 +424,12 @@ export class ParallelI32GroupByU8Query implements AsyncDisposable {
   }
 
   #assertIdle(): void {
-    if (this.#disposed) throw new Error("ParallelI32GroupByU8Query has been disposed");
+    this.#assertAlive();
     if (this.#busy) throw new Error("concurrent queries are not supported");
+  }
+
+  #assertAlive(): void {
+    if (this.#disposed) throw new Error("ParallelI32GroupByU8Query has been disposed");
   }
 }
 

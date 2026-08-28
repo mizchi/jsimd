@@ -14,3 +14,18 @@ export async function aggregateBetween(
 }
 
 Object.assign(globalThis, { aggregateBetween });
+
+if (new URLSearchParams(location.search).has("smoke")) {
+  const values = Int32Array.from({ length: 1_024 }, (_, index) => index);
+  aggregateBetween(values, 100, 200).then(async (result) => {
+    await fetch("/__jsimd_result", {
+      method: "POST",
+      body: JSON.stringify({ count: result.count, sum: result.sum.toString() }),
+    });
+  }).catch(async (error) => {
+    await fetch("/__jsimd_result", {
+      method: "POST",
+      body: JSON.stringify({ error: error instanceof Error ? error.stack : String(error) }),
+    });
+  });
+}

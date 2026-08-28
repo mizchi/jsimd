@@ -1,7 +1,7 @@
 # `@mizchi/jsimd-olap`
 
-Small, specialized OLAP kernels for browsers: the recorded `range-aggregate` Vite fixture is 19.78
-KiB gzip in total (17.26 KiB JavaScript + 2.52 KiB Wasm). The package combines WebAssembly SIMD with
+Small, specialized OLAP kernels for browsers: the recorded `range-aggregate` Vite fixture is 20.08
+KiB gzip in total (17.56 KiB JavaScript + 2.52 KiB Wasm). The package combines WebAssembly SIMD with
 persistent Web Workers over resident typed columns, and stays small by providing focused analytical
 operators rather than a SQL parser or a general database.
 
@@ -61,6 +61,23 @@ await using pipeline = await I32GroupByU8Pipeline.create(
 const result = await pipeline.aggregateBetween(start, end);
 ```
 
+Both resident pipelines expose the same lifecycle controls. `replace()` atomically publishes a
+same-shaped immutable snapshot, `cancelCurrent()` interrupts active Worker execution at a page
+boundary, and `restartWorkers()` replaces the Worker pool without rebuilding the snapshot. Direct
+single-thread execution is synchronous and therefore cannot be interrupted from JavaScript.
+
+```ts
+const generation = pipeline.replace({ filter, values, groups });
+const pending = pipeline.aggregateBetween(start, end, { execution: "workers" });
+pipeline.cancelCurrent();
+try {
+  await pending;
+} catch (error) {
+  if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
+}
+await pipeline.restartWorkers();
+```
+
 ## Sparse-u32 group-by
 
 Use the sparse path when keys cover the full `u32` range but the selected result has a bounded
@@ -75,6 +92,10 @@ await using query = await SparseU32GroupByQuery.create(
 );
 const result = await query.aggregateBetween(1_000, 2_000);
 ```
+
+The sparse query remains an immutable create/use/dispose object. Replacing its columns also changes
+the bounded hash-table workload and may require a different capacity, so it does not pretend to
+offer the same-shaped snapshot replacement contract.
 
 ## Performance boundary
 
@@ -111,14 +132,14 @@ and
 | Current operations      | Range aggregate, dense-u8 group-by, bounded sparse-u32 group-by              | General filters, joins, grouping, sorting, windows, and SQL expressions |
 | Execution               | Direct Wasm SIMD or persistent Web Workers selected by a physical cost model | Single-threaded `eh` or experimental threaded `coi` bundle              |
 | Best fit                | Repeated scans over resident typed columns with small aggregate results      | General analytical queries and dynamic SQL                              |
-| Recorded fixture assets | 17.26 KiB JavaScript + 2.52 KiB Wasm gzip for range aggregate                | 7.42-7.49 MiB Wasm + 186-356 KiB Worker JavaScript gzip                 |
+| Recorded fixture assets | 17.56 KiB JavaScript + 2.52 KiB Wasm gzip for range aggregate                | 7.42-7.49 MiB Wasm + 186-356 KiB Worker JavaScript gzip                 |
 
 The asset sizes are not feature-equivalent: DuckDB includes a complete analytical database while the
 jsimd fixture includes only the imported kernels and runtime.
 
 The isolated Vite fixture for `range-aggregate` produces one query Worker and two Wasm assets (the
-shared runtime and OLAP kernels): 17.26 KiB JavaScript and 2.52 KiB Wasm gzip in total. The npm
-tarball containing all three entrypoints is about 38.0 KiB compressed. Subpath exports are
+shared runtime and OLAP kernels): 17.56 KiB JavaScript and 2.52 KiB Wasm gzip in total. The npm
+tarball containing all three entrypoints is about 41.0 KiB compressed. Subpath exports are
 intentional: importing `range-aggregate` does not emit the group-by Workers.
 
 This package is unlikely to win when initialization is included in a one-shot query, only a few

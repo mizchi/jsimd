@@ -1,6 +1,6 @@
 import type { SharedBuffer, VersionedBuffer } from "@mizchi/jsimd-shared";
 import type { QueryKernels } from "./kernel.ts";
-import type { GroupQueryWorkerInit } from "./group_protocol.ts";
+import type { GroupQueryWorkerLayout } from "./group_protocol.ts";
 import { AggregateStateBlock } from "./aggregate_state.ts";
 
 export const GROUP_PAGE_DESCRIPTOR_WORDS = 8;
@@ -36,7 +36,7 @@ export function scanAvailableGroupPages(
   shared: SharedBuffer,
   kernels: QueryKernels,
   snapshots: VersionedBuffer,
-  layout: GroupQueryWorkerInit,
+  layout: GroupQueryWorkerLayout,
   epoch: number,
 ): void {
   const query = shared.int32Array(layout.queryOffset, GROUP_QUERY_WORDS);

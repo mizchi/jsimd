@@ -1,6 +1,9 @@
+import type { OlapWorkerModules } from "./runtime_modules.ts";
+
 export interface PartitionedHashJoinWorkerInit {
   readonly type: "init";
   readonly memory: WebAssembly.Memory;
+  readonly modules: OlapWorkerModules;
   readonly tableOffset: number;
   readonly probeKeysOffset: number;
   readonly probeRowIdsOffset: number;

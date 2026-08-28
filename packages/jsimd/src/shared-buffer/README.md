@@ -34,15 +34,29 @@ keeping independent ownership words off the same cache line. The packed token su
 Worker slots. Payload starts at the next 64-byte boundary and all Wasm-facing offsets remain at
 least 16-byte aligned.
 
-Every realm asynchronously compiles the prebuilt Wasm asset once, then imports the same shared
-`WebAssembly.Memory` into its own kernel instance. `instantiateSharedModule` exposes the synchronous
-module-plus-memory step for later data-structure kernels. Compilation uses the asset URL in Vite and
-Deno and Node 24's built-in file access for local ESM. The memory has an explicit maximum because
-shared Wasm memory requires one.
+By default, every realm asynchronously compiles the prebuilt Wasm asset once, then imports the same
+shared `WebAssembly.Memory` into its own kernel instance. A coordinator that creates several Workers
+can instead call `compileSharedBufferModule()` once and pass the structured-cloneable module to
+`SharedBuffer.create({ module })` and `SharedBuffer.attach(memory, { module })`.
+`instantiateSharedModule` exposes the synchronous module-plus-memory step for later data-structure
+kernels. Compilation uses the asset URL in Vite and Deno and Node 24's built-in file access for
+local ESM. The memory has an explicit maximum because shared Wasm memory requires one.
 
 `uint8Array` and `uint32Array` return shared typed-array views relative to the payload. Existing
 views should not be retained across `grow`; obtain a fresh view from the `SharedBuffer` after
 growth.
+
+## Published selection masks
+
+`SharedSelectionMask` is a cache-line-aligned packed bitmap for connecting predicate producers to
+downstream Worker operators. One exclusive writer fills the words and publishes a generation;
+readers attach to the same offset and reject unpublished or stale generations. The API deliberately
+does not expose concurrent mutation as a snapshot: task publication must happen after mask
+publication, and the next writer invalidates the prior view.
+
+The padded word span and `dataByteOffset` are public kernel ABI values, allowing SIMD code to write
+or consume the packed words directly. Scalar `set` and `clear` exist for control paths and tests,
+not as the intended bulk construction path.
 
 ## Synchronization views
 
@@ -484,8 +498,8 @@ Sources:
 
 ## Standalone build size
 
-The isolated Vite 8.2 fixture emits 26.65 kB gzip of JavaScript across its separate main and Worker
-chunks plus one 0.33 kB gzip shared-memory Wasm asset. No unrelated jsimd Wasm is included. The
+The isolated Vite 8.2 fixture emits 28.27 kB gzip of JavaScript across its separate main and Worker
+chunks plus one 0.31 kB gzip shared-memory Wasm asset. No unrelated jsimd Wasm is included. The
 duplicated wrapper cost is a current trade-off of compiling and attaching one kernel instance in
 each realm.
 

@@ -365,6 +365,17 @@ export class I32AggregatePipeline implements AsyncDisposable {
     return generation;
   }
 
+  /** Requests cancellation of an active Worker scan at its next page boundary. */
+  cancelCurrent(): boolean {
+    return this.#query.cancelCurrent();
+  }
+
+  /** Replaces the persistent Worker pool without rebuilding the resident snapshot. */
+  async restartWorkers(): Promise<void> {
+    this.#assertAlive();
+    await this.#query.restartWorkers();
+  }
+
   async aggregateBetween(
     minimum: number,
     maximum: number,

@@ -95,7 +95,7 @@ product-facing query engine to a separate repository once the boundary is stable
         constants universally. Deno i32 count+sum separates constant/raw/FOR row costs, dense u8
         group-by has its own measured 16/32-page crossover, and Chromium has independent dispatch
         plus Worker page-claim costs verified against raw and adaptive constant/FOR/raw scans.
-- [ ] Measure whether coordinator-side Wasm compilation can reduce persistent-Worker startup time.
+- [x] Measure whether coordinator-side Wasm compilation can reduce persistent-Worker startup time.
   - [x] Audit the current design against the
         [WebAssembly Threads overview](https://github.com/WebAssembly/threads/blob/main-legacy/proposals/threads/Overview.md):
         the coordinator already waits with `Atomics.waitAsync`, Workers block with `Atomics.wait`,
@@ -104,16 +104,33 @@ product-facing query engine to a separate repository once the boundary is stable
   - [x] Confirm that the OLAP and shared-runtime WAT modules contain no data segments. The
         proposal's separate one-time data-initialization module therefore does not remove work here;
         the shared header and snapshot payload are already initialized once before Workers attach.
-  - [ ] Compile the OLAP and shared-runtime `WebAssembly.Module` objects once in the coordinator,
-        structured-clone them in each Worker init message, and benchmark initialization separately
-        from instantiation. The current `modulePromise` cache is per agent, so every new Worker
-        still compiles both modules in its own realm.
+  - [x] Compile the OLAP and shared-runtime `WebAssembly.Module` objects once in the coordinator and
+        structured-clone them in each Worker init message. On Apple M5 / Deno 2.6.4, fresh-Worker
+        ready latency improved 1.20x / 1.01x / 1.04x / 1.12x for 1 / 2 / 4 / 8 Workers. The one-time
+        coordinator compilation took 0.96 ms and was already required for its own two instances, so
+        the clone path adds no new compilation phase.
+- [x] Make lifecycle guarantees symmetric across the public resident range-aggregate and dense-u8
+      group-by pipelines: same-shaped immutable replacement, page-boundary cancellation, Worker
+      restart, stale-lease reclamation, and post-operation reuse all share one contract. Keep the
+      capacity-bounded sparse-u32 group-by immutable because replacement may require rebuilding it
+      with a different hash-table capacity.
+- [x] Promote the generation-checked `SharedSelectionMask` from the hybrid experiment into the
+      shared runtime. It provides exclusive writer ownership, stale-generation rejection, a padded
+      SIMD-aligned word ABI, and row-ID-free handoff to downstream Workers.
+- [x] Build the first multi-column selection admission experiment on that shared ABI: two i32
+      predicates compose into one published mask reused by masked count/sum/min/max. The corrected
+      baseline uses the faster of unrolled and looped fused JavaScript: at 11.9% selectivity SIMD is
+      1.04x faster for one measure, at parity for two/four, and 1.12x slower for eight. The result
+      is not a robust admission win, so it remains outside the OLAP package.
+- [x] Do not adopt the reusable-mask selection pipeline or pursue its downstream-Worker variant. The
+      corrected comparison has no robust win over fused JavaScript; keep the implementation as a
+      reproducible negative experiment and retain only the independently useful shared-mask ABI.
 - [ ] Add `RadixSortBlockU32/U64` only if group merge, join partitioning, or order/top-k repays its
       construction and materialization cost.
 
 ### P2: hybrid and vector search
 
-The shared selection-mask and binary-rerank work remains under
+The binary-rerank work remains under
 [`experiments/parallel-hybrid-query`](./experiments/parallel-hybrid-query/README.md).
 
 - [x] Define a representative embedding distribution before testing learned or rotated binary

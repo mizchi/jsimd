@@ -1,3 +1,10 @@
+export {
+  SharedSelectionMask,
+  type SharedSelectionMaskBuffer,
+  type SharedSelectionMaskView,
+  type SharedSelectionMaskWriter,
+} from "./selection_mask.ts";
+
 export const SHARED_BUFFER_ABI_VERSION = 2;
 export const SHARED_BUFFER_CACHE_LINE_BYTES = 64;
 export const SHARED_BUFFER_ALIGNMENT = 16;
@@ -50,6 +57,13 @@ export interface SharedBufferOptions {
   readonly initialPages?: number;
   readonly maximumPages?: number;
   readonly maxWorkers?: number;
+  /** Reuses a module compiled by the coordinator instead of compiling in this agent. */
+  readonly module?: WebAssembly.Module;
+}
+
+export interface SharedBufferAttachOptions {
+  /** Reuses a module compiled by the coordinator instead of compiling in this agent. */
+  readonly module?: WebAssembly.Module;
 }
 
 /** Opaque proof that a particular generation owned a worker slot. */
@@ -148,12 +162,15 @@ export class SharedBuffer {
     Atomics.store(header, ACTIVE_WORKERS_INDEX, 0);
     Atomics.store(header, READY_INDEX, 1);
     Atomics.store(header, MAGIC_INDEX, MAGIC);
-    return await SharedBuffer.attach(memory);
+    return await SharedBuffer.attach(memory, { module: options.module });
   }
 
-  static async attach(memory: WebAssembly.Memory): Promise<SharedBuffer> {
+  static async attach(
+    memory: WebAssembly.Memory,
+    options: SharedBufferAttachOptions = {},
+  ): Promise<SharedBuffer> {
     const header = readHeader(memory);
-    const module = await loadKernelsModule();
+    const module = options.module ?? await compileSharedBufferModule();
     const workerStates = workerStateView(memory, header.maxWorkers);
     for (let workerId = 0; workerId < header.maxWorkers; workerId++) {
       const index = workerId * (WORKER_SLOT_BYTES / Int32Array.BYTES_PER_ELEMENT);
@@ -539,7 +556,8 @@ function alignTo(value: number, alignment: number): number {
 
 let kernelsModulePromise: Promise<WebAssembly.Module> | undefined;
 
-function loadKernelsModule(): Promise<WebAssembly.Module> {
+/** Compiles and caches the shared runtime so it can be cloned into Web Workers. */
+export function compileSharedBufferModule(): Promise<WebAssembly.Module> {
   return kernelsModulePromise ??= compileWasmModule(new URL("./kernels.wasm", import.meta.url));
 }
 

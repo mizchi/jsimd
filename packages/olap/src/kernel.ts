@@ -184,9 +184,14 @@ let modulePromise: Promise<WebAssembly.Module> | undefined;
 
 export async function instantiateQueryKernels(
   memory: WebAssembly.Memory,
+  module?: WebAssembly.Module,
 ): Promise<QueryKernels> {
-  modulePromise ??= compileModule(new URL("./kernels.wasm", import.meta.url));
-  return instantiateSharedModule<QueryKernels>(await modulePromise, memory);
+  return instantiateSharedModule<QueryKernels>(module ?? await compileQueryModule(), memory);
+}
+
+/** Compiles and caches the query kernel so the coordinator can clone it into Web Workers. */
+export function compileQueryModule(): Promise<WebAssembly.Module> {
+  return modulePromise ??= compileModule(new URL("./kernels.wasm", import.meta.url));
 }
 
 async function compileModule(url: URL): Promise<WebAssembly.Module> {

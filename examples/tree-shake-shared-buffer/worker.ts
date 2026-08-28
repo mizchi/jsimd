@@ -6,6 +6,7 @@ import {
   SharedBlockPool,
   SharedBuffer,
   SharedMutex,
+  SharedSelectionMask,
   SharedSlotMap,
   SharedWaitGroup,
   SpscRingBufferU32,
@@ -29,6 +30,8 @@ self.onmessage = async (
     histogramOffset: number;
     versionedBufferOffset: number;
     dequeOffset: number;
+    selectionMaskOffset: number;
+    selectionGeneration: number;
     poolOffset: number;
   }>,
 ) => {
@@ -63,6 +66,12 @@ self.onmessage = async (
   }
   const deque = WorkStealingDequeU32.attach(shared, event.data.dequeOffset);
   if (deque.trySteal() !== 0x5753_4451) throw new Error("unexpected stolen task");
+  const selection = SharedSelectionMask.attach(shared, event.data.selectionMaskOffset).read(
+    event.data.selectionGeneration,
+  );
+  if (!selection.has(9) || !selection.has(97) || selection.countOnes() !== 2) {
+    throw new Error("unexpected shared selection mask");
+  }
   const slot = slots.get(handle);
   if (slot === undefined || slot.uint32Array(0, 2)[0] !== 0x534c_4f54) {
     throw new Error("unexpected SharedSlotMap handle");

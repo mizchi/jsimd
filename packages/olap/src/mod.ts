@@ -11,6 +11,7 @@ import type { I32SnapshotPages } from "@mizchi/jsimd-columnar";
 import { parseAdaptiveI32Snapshot, type ParsedAdaptiveI32Page } from "./adaptive_i32_snapshot.ts";
 import { instantiateQueryKernels, type QueryKernels } from "./kernel.ts";
 import { type QueryWorkerInit, type QueryWorkerMessage, STOP_TASK } from "./protocol.ts";
+import { compileOlapWorkerModules, type OlapWorkerModules } from "./runtime_modules.ts";
 import {
   PAGE_DESCRIPTOR_WORDS,
   QUERY_CANCEL_EPOCH_INDEX,
@@ -85,6 +86,7 @@ export class ParallelI32Query implements AsyncDisposable {
   readonly #layout: Layout;
   readonly #waitGroup: SharedWaitGroup;
   readonly #kernels: QueryKernels;
+  readonly #modules: OlapWorkerModules;
   readonly #snapshots: VersionedBuffer;
   readonly #supportsRawReplacement: boolean;
   #producers: SpscProducerU32[];
@@ -101,6 +103,7 @@ export class ParallelI32Query implements AsyncDisposable {
     layout: Layout,
     waitGroup: SharedWaitGroup,
     kernels: QueryKernels,
+    modules: OlapWorkerModules,
     snapshots: VersionedBuffer,
     producers: SpscProducerU32[],
     workers: WorkerControl[],
@@ -116,6 +119,7 @@ export class ParallelI32Query implements AsyncDisposable {
     this.#layout = layout;
     this.#waitGroup = waitGroup;
     this.#kernels = kernels;
+    this.#modules = modules;
     this.#snapshots = snapshots;
     this.#producers = producers;
     this.#workers = workers;
@@ -183,6 +187,7 @@ export class ParallelI32Query implements AsyncDisposable {
     persistedGeneration: string | undefined,
     supportsRawReplacement: boolean,
   ): Promise<ParallelI32Query> {
+    const modules = await compileOlapWorkerModules();
     const maxWorkers = workerCount + 1;
     const sharedHeaderBytes = SHARED_BUFFER_CACHE_LINE_BYTES * (1 + maxWorkers);
     const pages = Math.max(
@@ -193,6 +198,7 @@ export class ParallelI32Query implements AsyncDisposable {
       initialPages: pages,
       maximumPages: pages,
       maxWorkers,
+      module: modules.shared,
     });
     const producers: SpscProducerU32[] = [];
     const workers: WorkerControl[] = [];
@@ -208,7 +214,7 @@ export class ParallelI32Query implements AsyncDisposable {
         initialize(writer.bytes);
         writer.publish();
       }
-      const kernels = await instantiateQueryKernels(shared.memory);
+      const kernels = await instantiateQueryKernels(shared.memory, modules.query);
       for (let workerIndex = 0; workerIndex < workerCount; workerIndex++) {
         const ring = SpscRingBufferU32.initialize(
           shared,
@@ -218,6 +224,7 @@ export class ParallelI32Query implements AsyncDisposable {
         producers.push(ring.producer());
         workers.push(startWorker({
           memory: shared.memory,
+          modules,
           ringOffset: layout.ringOffsets[workerIndex]!,
           waitGroupOffset: layout.waitGroupOffset,
           queryOffset: layout.queryOffset,
@@ -237,6 +244,7 @@ export class ParallelI32Query implements AsyncDisposable {
         layout,
         SharedWaitGroup.attach(shared, layout.waitGroupOffset),
         kernels,
+        modules,
         snapshots,
         producers,
         workers,
@@ -428,6 +436,7 @@ export class ParallelI32Query implements AsyncDisposable {
   #workerInit(workerIndex: number): QueryWorkerInit {
     return {
       memory: this.#shared.memory,
+      modules: this.#modules,
       ringOffset: this.#layout.ringOffsets[workerIndex]!,
       waitGroupOffset: this.#layout.waitGroupOffset,
       queryOffset: this.#layout.queryOffset,

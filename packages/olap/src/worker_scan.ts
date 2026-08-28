@@ -1,6 +1,6 @@
 import type { SharedBuffer, VersionedBuffer } from "@mizchi/jsimd-shared";
 import type { QueryKernels } from "./kernel.ts";
-import type { QueryWorkerInit } from "./protocol.ts";
+import type { QueryWorkerLayout } from "./protocol.ts";
 
 export const PAGE_DESCRIPTOR_WORDS = 8;
 export const RESULT_SLOT_BYTES = 64;
@@ -34,7 +34,7 @@ export function scanAvailablePages(
   shared: SharedBuffer,
   kernels: QueryKernels,
   snapshots: VersionedBuffer,
-  layout: QueryWorkerInit,
+  layout: QueryWorkerLayout,
   epoch: number,
 ): void {
   const query = shared.int32Array(layout.queryOffset, QUERY_WORDS);

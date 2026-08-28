@@ -22,8 +22,8 @@ workerScope.onmessage = async (event) => {
   workerScope.onmessage = null;
   try {
     const init = event.data;
-    shared = await SharedBuffer.attach(init.memory);
-    const kernels = await instantiateQueryKernels(shared.memory);
+    shared = await SharedBuffer.attach(init.memory, { module: init.modules.shared });
+    const kernels = await instantiateQueryKernels(shared.memory, init.modules.query);
     const partial = LocalGroupHashTableU32.attach(shared, init.partialOffset);
     const output = LocalGroupHashTableU32.attach(shared, init.outputOffset);
     const sources = init.sourceOffsets.map((offset) =>

@@ -1,8 +1,9 @@
 import type { SharedWorkerLease } from "@mizchi/jsimd-shared";
+import type { OlapWorkerModules } from "./runtime_modules.ts";
 
 export const GROUP_STOP_TASK = 0xffff_ffff;
 
-export interface GroupQueryWorkerInit {
+export interface GroupQueryWorkerLayout {
   readonly memory: WebAssembly.Memory;
   readonly ringOffset: number;
   readonly waitGroupOffset: number;
@@ -12,6 +13,10 @@ export interface GroupQueryWorkerInit {
   readonly pageCount: number;
   readonly resultOffset: number;
   readonly groupCount: number;
+}
+
+export interface GroupQueryWorkerInit extends GroupQueryWorkerLayout {
+  readonly modules: OlapWorkerModules;
 }
 
 export type GroupQueryWorkerMessage =

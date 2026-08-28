@@ -7,6 +7,7 @@ import {
   SharedBlockPool,
   SharedBuffer,
   SharedMutex,
+  SharedSelectionMask,
   SharedSlotMap,
   SharedWaitGroup,
   SpscRingBufferU32,
@@ -32,7 +33,8 @@ async function main(): Promise<void> {
   const versionedBufferOffset = histogramOffset +
     StripedHistogram.byteLengthFor({ bucketCount: 8, stripeCount: 1 });
   const dequeOffset = versionedBufferOffset + VersionedBuffer.byteLengthFor(16);
-  const poolOffset = dequeOffset + WorkStealingDequeU32.byteLengthFor(8);
+  const selectionMaskOffset = dequeOffset + WorkStealingDequeU32.byteLengthFor(8);
+  const poolOffset = selectionMaskOffset + SharedSelectionMask.byteLengthFor(128);
   SharedMutex.initialize(shared, mutexOffset);
   const waitGroup = SharedWaitGroup.initialize(shared, waitGroupOffset, 1);
   const ring = SpscRingBufferU32.initialize(shared, ringOffset, 8);
@@ -59,6 +61,15 @@ async function main(): Promise<void> {
   const deque = WorkStealingDequeU32.initialize(shared, dequeOffset, 8);
   using dequeOwner = deque.owner();
   dequeOwner.tryPush(0x5753_4451);
+  const selectionMask = SharedSelectionMask.initialize(shared, selectionMaskOffset, 128);
+  let selectionGeneration: number;
+  {
+    using writer = selectionMask.claimWriter();
+    writer.clearAll();
+    writer.set(9);
+    writer.set(97);
+    selectionGeneration = writer.publish();
+  }
   SharedBlockPool.initialize(shared, poolOffset);
   const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
   try {
@@ -80,6 +91,8 @@ async function main(): Promise<void> {
       histogramOffset,
       versionedBufferOffset,
       dequeOffset,
+      selectionMaskOffset,
+      selectionGeneration,
       poolOffset,
     });
     await waitGroup.waitAsync();

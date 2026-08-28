@@ -11,8 +11,10 @@ import { scanAvailablePages } from "./worker_scan.ts";
 self.onmessage = async (event: MessageEvent<QueryWorkerInit>) => {
   self.onmessage = null;
   try {
-    using shared = await SharedBuffer.attach(event.data.memory);
-    const kernels = await instantiateQueryKernels(shared.memory);
+    using shared = await SharedBuffer.attach(event.data.memory, {
+      module: event.data.modules.shared,
+    });
+    const kernels = await instantiateQueryKernels(shared.memory, event.data.modules.query);
     const ring = SpscRingBufferU32.attach(shared, event.data.ringOffset);
     using consumer = ring.consumer();
     const waitGroup = SharedWaitGroup.attach(shared, event.data.waitGroupOffset);

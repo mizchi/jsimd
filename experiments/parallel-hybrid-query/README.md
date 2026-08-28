@@ -2,9 +2,10 @@
 
 Status: experimental and not exported from `@mizchi/jsimd`.
 
-This experiment defines the first shared selection-mask ABI between column filters and vector search
-kernels. An i32 filter writes packed bits directly into shared Wasm memory. PDX64 Float32 and
-fixed-width binary kernels consume those words without returning selected row IDs to JavaScript.
+This experiment uses the shared runtime's generation-checked selection-mask ABI between column
+filters and vector search kernels. An i32 filter writes packed bits directly into shared Wasm
+memory. PDX64 Float32 and fixed-width binary kernels consume those words without returning selected
+row IDs to JavaScript.
 
 ```text
 shared i32 column

@@ -35,7 +35,7 @@ export class I32GroupByU8Pipeline implements AsyncDisposable {
   readonly pageRows: number;
   readonly groupCount: number;
   readonly planner: PhysicalExecutionPlanner;
-  readonly chunk: ExecutionChunkI32;
+  #chunk: ExecutionChunkI32;
   readonly #query: ParallelI32GroupByU8Query;
   #disposed = false;
 
@@ -45,7 +45,7 @@ export class I32GroupByU8Pipeline implements AsyncDisposable {
     planner: PhysicalExecutionPlanner,
   ) {
     this.#query = query;
-    this.chunk = chunk;
+    this.#chunk = chunk;
     this.planner = planner;
     this.workerCount = query.workerCount;
     this.pageRows = query.pageRows;
@@ -69,6 +69,39 @@ export class I32GroupByU8Pipeline implements AsyncDisposable {
     return new I32GroupByU8Pipeline(query, chunk, planner);
   }
 
+  get chunk(): ExecutionChunkI32 {
+    this.#assertAlive();
+    return this.#chunk;
+  }
+
+  get generation(): number {
+    this.#assertAlive();
+    return this.#query.generation;
+  }
+
+  /** Publishes a complete immutable replacement and refreshes its pruning metadata. */
+  replace(columns: GroupByColumns): number {
+    this.#assertAlive();
+    if (columns.filter.length !== this.#chunk.length) {
+      throw new RangeError("replacement length must match the existing columns");
+    }
+    const nextChunk = ExecutionChunkI32.from(columns.filter, this.pageRows);
+    const generation = this.#query.replace(columns);
+    this.#chunk = nextChunk;
+    return generation;
+  }
+
+  /** Requests cancellation of an active Worker aggregation at its next page boundary. */
+  cancelCurrent(): boolean {
+    return this.#query.cancelCurrent();
+  }
+
+  /** Replaces the persistent Worker pool without rebuilding the resident snapshot. */
+  async restartWorkers(): Promise<void> {
+    this.#assertAlive();
+    await this.#query.restartWorkers();
+  }
+
   async aggregateBetween(
     minimum: number,
     maximum: number,
@@ -76,7 +109,7 @@ export class I32GroupByU8Pipeline implements AsyncDisposable {
   ): Promise<PhysicalGroupByResult> {
     this.#assertAlive();
     const plan = this.planner.plan(
-      this.chunk.estimateBetween(minimum, maximum),
+      this.#chunk.estimateBetween(minimum, maximum),
       this.workerCount,
       options.execution ?? "auto",
     );

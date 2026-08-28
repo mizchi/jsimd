@@ -1,6 +1,9 @@
+import type { OlapWorkerModules } from "./runtime_modules.ts";
+
 export interface LocalGroupHashWorkerInit {
   readonly type: "init";
   readonly memory: WebAssembly.Memory;
+  readonly modules: OlapWorkerModules;
   readonly partialOffset: number;
   readonly outputOffset: number;
   readonly sourceOffsets: readonly number[];

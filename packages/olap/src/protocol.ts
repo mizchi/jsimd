@@ -1,8 +1,9 @@
 import type { SharedWorkerLease } from "@mizchi/jsimd-shared";
+import type { OlapWorkerModules } from "./runtime_modules.ts";
 
 export const STOP_TASK = 0xffff_ffff;
 
-export interface QueryWorkerInit {
+export interface QueryWorkerLayout {
   readonly memory: WebAssembly.Memory;
   readonly ringOffset: number;
   readonly waitGroupOffset: number;
@@ -12,6 +13,10 @@ export interface QueryWorkerInit {
   readonly pageCount: number;
   readonly resultOffset: number;
   readonly workerIndex: number;
+}
+
+export interface QueryWorkerInit extends QueryWorkerLayout {
+  readonly modules: OlapWorkerModules;
 }
 
 export type QueryWorkerMessage =

@@ -15,6 +15,8 @@ Deno.test("public entry point executes range, dense group-by, and sparse group-b
   });
   const range = await aggregate.aggregateBetween(100, 200, { execution: "direct" });
   assert(range.count === 100 && range.sum === 14_950n, "range aggregate");
+  assert(!aggregate.cancelCurrent(), "idle range query is not cancelled");
+  await aggregate.restartWorkers();
 
   const values = Int32Array.from({ length: filter.length }, (_, index) => index & 15);
   const groups = Uint8Array.from({ length: filter.length }, (_, index) => index & 3);
@@ -24,6 +26,14 @@ Deno.test("public entry point executes range, dense group-by, and sparse group-b
   );
   const denseResult = await dense.aggregateBetween(100, 200, { execution: "direct" });
   assert(denseResult.groups.length === 4, "dense group count");
+  assert(!dense.cancelCurrent(), "idle dense group query is not cancelled");
+  const denseGeneration = dense.replace({
+    filter: new Int32Array(filter.length).fill(1),
+    values,
+    groups,
+  });
+  assert(dense.generation === denseGeneration, "dense replacement generation");
+  await dense.restartWorkers();
 
   const keys = Uint32Array.from({ length: filter.length }, (_, index) => index & 7);
   const validities = new Uint8Array(filter.length).fill(1);
