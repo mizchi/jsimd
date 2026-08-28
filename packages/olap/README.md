@@ -77,8 +77,42 @@ const result = await query.aggregateBetween(1_000, 2_000);
 ## Performance boundary
 
 The intended case is repeated scans over large resident numeric columns, page-prunable predicates,
-fused aggregates, and small result states. Recorded Chrome benchmarks against DuckDB-Wasm showed
-3.84x to 23.66x lower warm-query latency for the equivalent specialized operations.
+fused aggregates, and small result states.
+
+### DuckDB-Wasm comparison
+
+The following table reports warm-query medians from cross-origin-isolated Chrome 152 on an Apple M5.
+Each jsimd result uses the specialized physical operator equivalent to the DuckDB query. The speedup
+compares eight persistent jsimd Workers with the faster of DuckDB-Wasm `eh` and `coi` for that
+workload.
+
+| workload                      | input                                  | jsimd direct | jsimd 8 Workers | DuckDB `eh` | DuckDB `coi` | speedup vs fastest DuckDB |
+| :---------------------------- | :------------------------------------- | -----------: | --------------: | ----------: | -----------: | ------------------------: |
+| Q6-shaped range `count + sum` | 33.6M rows, 25% selected               |      4.10 ms |         1.25 ms |    29.58 ms |     61.17 ms |                    23.66x |
+| Q1-shaped dense group-by      | 16.8M rows, 8 groups, 50% selected     |     14.64 ms |         3.29 ms |    51.02 ms |     54.80 ms |                    15.51x |
+| ZoneMap-pruned log group-by   | 16.8M rows, 8 groups, 10% selected     |      2.62 ms |        0.675 ms |    11.02 ms |      5.88 ms |                     8.70x |
+| Nullable sparse-u32 group-by  | 16.8M rows, 2,048 groups, 10% selected |     13.33 ms |         3.87 ms |    22.17 ms |     14.86 ms |                     3.84x |
+
+These are repeated-query measurements over already constructed resident input: initialization,
+Worker startup, and DuckDB table construction are excluded. Returned aggregate state is included,
+including materializing and sorting all 2,048 groups in the sparse case. Five warmups precede the
+median of 11 samples. The raw records are available for
+[Q6](../../experiments/parallel-columnar-query/benchmarks/duckdb-browser.json),
+[Q1](../../experiments/parallel-columnar-query/benchmarks/duckdb-browser-q1.json),
+[the pruned log workload](../../experiments/parallel-columnar-query/benchmarks/duckdb-browser-logs.json),
+and
+[sparse grouping](../../experiments/parallel-columnar-query/benchmarks/duckdb-browser-sparse.json).
+
+|                         | `@mizchi/jsimd-olap`                                                         | DuckDB-Wasm                                                             |
+| :---------------------- | :--------------------------------------------------------------------------- | :---------------------------------------------------------------------- |
+| Interface               | Typed, fixed-purpose TypeScript APIs                                         | SQL, relational tables, and Arrow integration                           |
+| Current operations      | Range aggregate, dense-u8 group-by, bounded sparse-u32 group-by              | General filters, joins, grouping, sorting, windows, and SQL expressions |
+| Execution               | Direct Wasm SIMD or persistent Web Workers selected by a physical cost model | Single-threaded `eh` or experimental threaded `coi` bundle              |
+| Best fit                | Repeated scans over resident typed columns with small aggregate results      | General analytical queries and dynamic SQL                              |
+| Recorded fixture assets | 17.26 KiB JavaScript + 2.52 KiB Wasm gzip for range aggregate                | 7.42-7.49 MiB Wasm + 186-356 KiB Worker JavaScript gzip                 |
+
+The asset sizes are not feature-equivalent: DuckDB includes a complete analytical database while the
+jsimd fixture includes only the imported kernels and runtime.
 
 The isolated Vite fixture for `range-aggregate` produces one query Worker and two Wasm assets (the
 shared runtime and OLAP kernels): 17.26 KiB JavaScript and 2.52 KiB Wasm gzip in total. The npm
