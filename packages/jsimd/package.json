@@ -1,7 +1,7 @@
 {
   "name": "@mizchi/jsimd",
   "version": "0.2.3",
-  "description": "Prebuilt WebAssembly SIMD kernels and Wasm-resident data structures for JavaScript",
+  "description": "Small WebAssembly SIMD kernels, resident data structures, and dynamic Float32 fusion for JavaScript",
   "type": "module",
   "exports": {
     "./bytes": "./dist/bytes/mod.js",
@@ -16,6 +16,7 @@
     "./bit-sliced-column": "./dist/bit-sliced-column/mod.js",
     "./endian": "./dist/endian/mod.js",
     "./elias-fano-sequence": "./dist/elias-fano-sequence/mod.js",
+    "./f32-fusion": "./dist/f32-fusion/mod.js",
     "./f32-vector": "./dist/f32-vector/mod.js",
     "./flat-hash": "./dist/flat-hash/mod.js",
     "./flat-hash-fixed16": "./dist/flat-hash-fixed16/mod.js",

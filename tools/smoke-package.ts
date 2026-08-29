@@ -22,6 +22,9 @@ try {
   const expression =
     `import { indexOf } from "${metadata.name}/bytes"; import { DenseBitmap } from "${metadata.name}/bitmap"; import { BitHistogram32 } from "${metadata.name}/bit-histogram32"; import { RankSelectBitVector } from "${metadata.name}/rank-select-bit-vector"; import { RoaringBitmap } from "${metadata.name}/roaring-bitmap"; import { SHARED_SYNC_BYTE_LENGTH, SharedBlockPool, SharedBuffer, SharedMutex, SpscRingBufferU32 } from "${metadata.name}/shared-buffer"; import { AdaptiveU32Column, SelectionMask } from "${metadata.name}/columnar"; import { BlockedVectorArray } from "${metadata.name}/blocked-vector-array"; import { WaveletMatrixUint16 } from "${metadata.name}/wavelet-matrix-uint16"; using bits = DenseBitmap.from(128, [1, 10]); using histogram = new BitHistogram32(); using ranked = RankSelectBitVector.from(128, [1, 10]); using roaring = RoaringBitmap.from([1, 10]); using shared = await SharedBuffer.create({maxWorkers: 2}); const sharedMutex = SharedMutex.initialize(shared, 0); sharedMutex.lock(); sharedMutex.unlock(); const sharedPool = SharedBlockPool.initialize(shared, SHARED_SYNC_BYTE_LENGTH * 2); { using block = sharedPool.allocate(256); block.uint8Array()[0] = 1; } const ring = SpscRingBufferU32.initialize(shared, SHARED_SYNC_BYTE_LENGTH * 8, 8); using producer = ring.producer(); using consumer = ring.consumer(); producer.push(42); using column = AdaptiveU32Column.from(new Uint32Array([0xffffffff, 1, 2])); using selected = new SelectionMask(3); using vectors = BlockedVectorArray.from(new Float32Array([0, 1, 1, 0]), 2, 2); using wavelet = WaveletMatrixUint16.from(new Uint16Array([3, 1, 2, 1])); const counts = new Uint32Array(32); histogram.add(new Uint32Array([1, 3])).writeInto(counts); const sharedCounter = shared.uint32Array(SHARED_SYNC_BYTE_LENGTH, 1); Atomics.add(sharedCounter, 0, 1); const distances = new Float32Array(2); const nearestIds = new Uint32Array(1); const nearestDistances = new Float32Array(1); column.scanLt(3, selected); vectors.squaredDistanceMany(new Float32Array([0, 0]), distances); vectors.topKInto(new Float32Array([0, 0]), nearestIds, nearestDistances); if (indexOf(new Uint8Array([1, 2, 3]), 2) !== 1 || counts[0] !== 2 || bits.countOnes() !== 2 || ranked.rank1(128) !== 2 || roaring.size !== 2 || sharedPool.outstandingBlocks !== 0 || consumer.pop() !== 42 || Atomics.load(sharedCounter, 0) !== 1 || selected.countOnes() !== 2 || distances[0] !== 1 || distances[1] !== 1 || nearestIds[0] !== 0 || wavelet.rank(1, 4) !== 2) throw new Error("unexpected SIMD result");`;
   await run("node", ["--input-type=module", "--eval", expression], temporaryDirectory);
+  const fusionExpression =
+    `import { add, constant, createF32FusionCompiler, input, multiply } from "${metadata.name}/f32-fusion"; using compiler = createF32FusionCompiler({maxModules: 2}); const compiled = await compiler.compile(add(multiply(input(0), constant(2)), constant(1)), 1); const memory = new WebAssembly.Memory({initial: 1}); new Float32Array(memory.buffer, 0, 4).set([1, 2, 3, 4]); const kernel = await compiled.instantiate(memory); kernel.run([0], 64, 4); const output = new Float32Array(memory.buffer, 64, 4); if (output[0] !== 3 || output[3] !== 9) throw new Error("unexpected f32 fusion result");`;
+  await run("node", ["--input-type=module", "--eval", fusionExpression], temporaryDirectory);
   const queueExpression =
     `import { AtomicDenseBitmap, MpmcRingBufferU32, MpmcRingBufferU64, SharedBuffer, SharedSlotMap, ShardedBitmap, StripedHistogram, VersionedBuffer, WorkStealingDequeU32 } from "${metadata.name}/shared-buffer"; using shared = await SharedBuffer.create(); const queue = MpmcRingBufferU32.initialize(shared, 0, 8); queue.push(42); const handles = MpmcRingBufferU64.initialize(shared, 256, 8); const slots = SharedSlotMap.initialize(shared, 576, {capacity: 1, payloadByteLength: 16}); const bitmap = AtomicDenseBitmap.initialize(shared, 832, 65); bitmap.set(64); const sharded = ShardedBitmap.initialize(shared, 960, {capacity: 65, shardCount: 2}); { using shard = sharded.claimShard(0); shard.set(64); } const histogram = StripedHistogram.initialize(shared, 1280, {bucketCount: 5, stripeCount: 2}); { using stripe = histogram.claimStripe(0); stripe.add(2, 7); } const histogramOutput = new Uint32Array(5); histogram.reduceInto(histogramOutput); const versions = VersionedBuffer.initialize(shared, 1600, 16); { using writer = versions.beginWrite(); writer.bytes[0] = 9; writer.publish(); } using snapshot = versions.acquire(); const deque = WorkStealingDequeU32.initialize(shared, 1920, 8); { using owner = deque.owner(); owner.tryPush(44); } { using slot = slots.allocate(); slot.uint32Array(0, 1)[0] = 43; handles.push(slot.handle); if (handles.pop() !== slot.handle || slots.get(slot.handle)?.uint32Array(0, 1)[0] !== 43) throw new Error("unexpected slot result"); } if (queue.pop() !== 42 || slots.outstandingSlots !== 0 || !bitmap.has(64) || !sharded.reduceOr().has(64) || histogramOutput[2] !== 7 || snapshot.bytes[0] !== 9 || deque.trySteal() !== 44) throw new Error("unexpected shared result");`;
   await run("node", ["--input-type=module", "--eval", queueExpression], temporaryDirectory);
@@ -68,6 +71,8 @@ try {
     `${temporaryDirectory}/node_modules/${metadata.name}/dist/ultra-log-log/mod.js`;
   const installedParallelUltraLogLogModule =
     `${temporaryDirectory}/node_modules/${metadata.name}/dist/ultra-log-log-parallel/mod.js`;
+  const installedF32FusionModule =
+    `${temporaryDirectory}/node_modules/${metadata.name}/dist/f32-fusion/mod.js`;
   const denoExpression = `import { DenseBitmap } from ${
     JSON.stringify(installedModule)
   }; import { indexOf } from ${
@@ -76,6 +81,10 @@ try {
     JSON.stringify(installedSharedBufferModule)
   }; using bits = DenseBitmap.from(128, [1, 10]); using shared = await SharedBuffer.create({maxWorkers: 2}); const mutex = SharedMutex.initialize(shared, 0); mutex.lock(); mutex.unlock(); const pool = SharedBlockPool.initialize(shared, SHARED_SYNC_BYTE_LENGTH * 2); { using block = pool.allocate(256); block.uint8Array()[0] = 1; } const ring = SpscRingBufferU32.initialize(shared, SHARED_SYNC_BYTE_LENGTH * 8, 8); using producer = ring.producer(); using consumer = ring.consumer(); producer.push(42); const counter = shared.uint32Array(SHARED_SYNC_BYTE_LENGTH, 1); Atomics.add(counter, 0, 1); if (bits.countOnes() !== 2 || pool.outstandingBlocks !== 0 || consumer.pop() !== 42 || Atomics.load(counter, 0) !== 1 || indexOf(new Uint8Array([1, 2, 3]), 2) !== 1) throw new Error("unexpected SIMD result");`;
   await run("deno", ["eval", denoExpression], temporaryDirectory);
+  const denoFusionExpression = `import { add, constant, createF32FusionCompiler, input } from ${
+    JSON.stringify(installedF32FusionModule)
+  }; using compiler = createF32FusionCompiler(); const compiled = await compiler.compile(add(input(0), constant(1)), 1); const memory = new WebAssembly.Memory({initial: 1}); new Float32Array(memory.buffer, 0, 1)[0] = 2; const kernel = await compiled.instantiate(memory); kernel.run([0], 16, 1); if (new Float32Array(memory.buffer, 16, 1)[0] !== 3) throw new Error("unexpected f32 fusion result");`;
+  await run("deno", ["eval", denoFusionExpression], temporaryDirectory);
   const denoQueueExpression =
     `import { AtomicDenseBitmap, MpmcRingBufferU32, MpmcRingBufferU64, SharedBuffer, SharedSlotMap, ShardedBitmap, StripedHistogram, VersionedBuffer, WorkStealingDequeU32 } from ${
       JSON.stringify(installedSharedBufferModule)
@@ -100,9 +109,13 @@ import { BlockedVectorArray } from "${metadata.name}/blocked-vector-array";
 import { WaveletMatrixUint16 } from "${metadata.name}/wavelet-matrix-uint16";
 import { UltraLogLogU32 } from "${metadata.name}/ultra-log-log";
 import { ParallelUltraLogLogU32, type UltraLogLogExecutionStrategy } from "${metadata.name}/ultra-log-log-parallel";
+import { add, constant, createF32FusionCompiler, input } from "${metadata.name}/f32-fusion";
 using bits = DenseBitmap.from(128, [1, 10]);
 using ranked = RankSelectBitVector.from(128, [1, 10]);
 using roaring = RoaringBitmap.from([1, 10]);
+using fusionCompiler = createF32FusionCompiler({ maxModules: 2 });
+const fusionPlan = await fusionCompiler.compile(add(input(0), constant(1)), 1);
+const fusionInputCount: number = fusionPlan.inputCount;
 using shared = await SharedBuffer.create({ maxWorkers: 2 });
 const sharedMutex = SharedMutex.initialize(shared, 0);
 sharedMutex.lock();
@@ -212,6 +225,7 @@ void snapshotGeneration;
 void stolenTask;
 void cardinality;
 void parallelStrategy;
+void fusionInputCount;
 `,
   );
   await run(
@@ -237,7 +251,14 @@ void parallelStrategy;
   await Deno.writeTextFile(
     `${temporaryDirectory}/vite-consumer.ts`,
     `import { indexOf } from "${metadata.name}/bytes";\n` +
-      `document.body.textContent = String(indexOf(new Uint8Array([1, 2, 3]), 2));\n`,
+      `import { add, constant, createF32FusionCompiler, input } from "${metadata.name}/f32-fusion";\n` +
+      `using compiler = createF32FusionCompiler();\n` +
+      `const compiled = await compiler.compile(add(input(0), constant(1)), 1);\n` +
+      `const memory = new WebAssembly.Memory({ initial: 1 });\n` +
+      `new Float32Array(memory.buffer, 0, 1)[0] = 2;\n` +
+      `const kernel = await compiled.instantiate(memory);\n` +
+      `kernel.run([0], 16, 1);\n` +
+      `document.body.textContent = String(indexOf(new Uint8Array([1, 2, 3]), 2) + new Float32Array(memory.buffer, 16, 1)[0]);\n`,
   );
   await Deno.writeTextFile(
     `${temporaryDirectory}/vite.config.ts`,

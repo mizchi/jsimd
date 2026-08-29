@@ -560,6 +560,10 @@ check: test package-smoke check-dynamic-wasm-fusion-bundle-size
     test "$(find examples/tree-shake-f32-vector/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"
     wasm-tools print examples/tree-shake-f32-vector/dist/assets/*.wasm | rg -q 'squared_distance|norm|cosine_similarity|\(export "dot"'
     ! wasm-tools print examples/tree-shake-f32-vector/dist/assets/*.wasm | rg -q 'find_byte|byte_swap32|intersection_count|matmul'
+    pnpm exec tsc -p examples/tree-shake-f32-fusion/tsconfig.json
+    pnpm exec vite build examples/tree-shake-f32-fusion
+    test "$(find examples/tree-shake-f32-fusion/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "0"
+    rg -q 'WebAssembly.compile' examples/tree-shake-f32-fusion/dist/assets/*.js
     pnpm exec tsc -p examples/tree-shake-i32-array/tsconfig.json
     pnpm exec vite build examples/tree-shake-i32-array
     test "$(find examples/tree-shake-i32-array/dist/assets -name '*.wasm' | wc -l | tr -d ' ')" = "1"

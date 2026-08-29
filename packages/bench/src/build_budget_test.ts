@@ -45,6 +45,35 @@ Deno.test("build budget measures gzip assets and enforces deterministic ceilings
   }
 });
 
+Deno.test("build budget permits an explicit zero-Wasm dynamic compiler fixture", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "jsimd-js-only-budget-" });
+  const root = new URL(`file://${directory}/`);
+  try {
+    await Deno.mkdir(new URL("fixture/dist/assets/", root), { recursive: true });
+    await Deno.writeTextFile(
+      new URL("fixture/dist/assets/index.js", root),
+      "export const compile = WebAssembly.compile;",
+    );
+    await Deno.writeTextFile(new URL("primary_test.ts", root), "// correctness contract\n");
+    const measured = await measureFixtureGzip(new URL("fixture/dist/assets/", root));
+    assert(measured.jsGzipBytes > 0, "JavaScript gzip size");
+    assert(measured.wasmGzipBytes === 0, "no static Wasm asset");
+    const summaries = await checkBuildBudgets(root, {
+      schemaVersion: 1,
+      fixtures: [{
+        name: "fixture",
+        path: "fixture/dist/assets",
+        jsMaxGzipBytes: measured.jsGzipBytes,
+        wasmMaxGzipBytes: 0,
+      }],
+      requiredCorrectnessTests: ["primary_test.ts"],
+    }, ["./fixture"]);
+    assert(summaries.length === 1, "JS-only fixture checked");
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 async function assertRejects(operation: () => Promise<unknown>): Promise<void> {
   try {
     await operation();

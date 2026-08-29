@@ -86,6 +86,12 @@
       "wasmMaxGzipBytes": 300
     },
     {
+      "name": "f32-fusion",
+      "path": "examples/tree-shake-f32-fusion/dist/assets",
+      "jsMaxGzipBytes": 4000,
+      "wasmMaxGzipBytes": 0
+    },
+    {
       "name": "f32-vector",
       "path": "examples/tree-shake-f32-vector/dist/assets",
       "jsMaxGzipBytes": 2500,

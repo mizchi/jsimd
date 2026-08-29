@@ -25,8 +25,8 @@ export async function measureFixtureGzip(directory: URL): Promise<FixtureGzipSiz
     if (file.pathname.endsWith(".js")) jsGzipBytes += gzipBytes;
     if (file.pathname.endsWith(".wasm")) wasmGzipBytes += gzipBytes;
   }
-  if (jsGzipBytes === 0 || wasmGzipBytes === 0) {
-    throw new Error(`${directory.pathname} must contain JavaScript and Wasm assets`);
+  if (jsGzipBytes === 0) {
+    throw new Error(`${directory.pathname} must contain a JavaScript asset`);
   }
   return Object.freeze({ jsGzipBytes, wasmGzipBytes });
 }
@@ -45,7 +45,7 @@ export async function checkBuildBudgets(
   const summaries: string[] = [];
   for (const fixture of manifest.fixtures) {
     positiveInteger(fixture.jsMaxGzipBytes, `${fixture.name} JS budget`);
-    positiveInteger(fixture.wasmMaxGzipBytes, `${fixture.name} Wasm budget`);
+    nonNegativeInteger(fixture.wasmMaxGzipBytes, `${fixture.name} Wasm budget`);
     const size = await measureFixtureGzip(new URL(`${fixture.path.replace(/\/$/, "")}/`, root));
     if (size.jsGzipBytes > fixture.jsMaxGzipBytes) {
       throw new Error(
@@ -84,5 +84,11 @@ async function* files(directory: URL): AsyncGenerator<URL> {
 function positiveInteger(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new RangeError(`${name} must be a positive integer`);
+  }
+}
+
+function nonNegativeInteger(value: number, name: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${name} must be a non-negative integer`);
   }
 }

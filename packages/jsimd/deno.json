@@ -14,6 +14,7 @@
     "./bit-sliced-column": "./src/bit-sliced-column/mod.ts",
     "./endian": "./src/endian/mod.ts",
     "./elias-fano-sequence": "./src/elias-fano-sequence/mod.ts",
+    "./f32-fusion": "./src/f32-fusion/mod.ts",
     "./f32-vector": "./src/f32-vector/mod.ts",
     "./flat-hash": "./src/flat-hash/mod.ts",
     "./flat-hash-fixed16": "./src/flat-hash-fixed16/mod.ts",

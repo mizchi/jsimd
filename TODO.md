@@ -160,10 +160,12 @@ product-facing query engine to a separate repository once the boundary is stable
 - [x] Bound dynamic module retention with compiler-owned LRU caches, reject complete K unrolling
       above 256, and split map/GEMM contracts so map-only imports do not retain the GEMM emitter.
       The measured minified gzip payload is 2.28 kB for map-only and 4.30 kB for GEMM-only.
-- [x] Decide the adoption boundary. Move only restricted element-wise `f32` fusion toward a public
-      opt-in experimental subpath. Keep shape-specialized GEMM under `experiments/`; retain relaxed
-      FMA, packed B, and full unrolling as explicit options, and do not add automatic MR selection,
-      KC, a generated packer, or Workers without a new winning consumer workload.
+- [x] Decide and apply the adoption boundary. Restricted element-wise `f32` fusion is public as the
+      opt-in `@mizchi/jsimd/f32-fusion` subpath with a disposable bounded compiler, CSP probe,
+      validated pointer contract, and a 3.34 kB gzip / zero-static-Wasm fixture. Keep
+      shape-specialized GEMM under `experiments/`; retain relaxed FMA, packed B, and full unrolling
+      as explicit options, and do not add automatic MR selection, KC, a generated packer, or Workers
+      without a new winning consumer workload.
 - [x] Benchmark TPC-H Q1/Q6-shaped kernels and log filter/group-by against optimized JavaScript,
       default DuckDB-Wasm, and a reproducible threaded DuckDB-Wasm build.
   - [x] Record Q1/Q6-shaped JavaScript, direct SIMD, persistent Worker, DuckDB `eh`, and DuckDB

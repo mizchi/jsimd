@@ -352,17 +352,19 @@ The direct-binary technique is worth adopting, but not as one automatic BLAS rep
 | NC/KC cache blocking                      | do not adopt automatically                 | NC and shared-B batch traversal improved the complete boundary by at most 1.03x; KC has no measured justification                        |
 | generated packer or persistent Workers    | do not implement yet                       | neither can repay itself before a single-core packed/blocking workload wins                                                              |
 
-Accordingly, the element-wise compiler is the only part ready to move toward a public experimental
-`jsimd` subpath. GEMM should remain in `experiments/` until the same explicit plan wins in Node,
-Deno, and Chromium and a real consumer supplies stable shapes with enough reuse. The emitter, binary
-encoding, cache, and feature detection remain implementation details rather than public low-level
-APIs.
+Accordingly, the element-wise compiler has been promoted to the public experimental
+[`@mizchi/jsimd/f32-fusion`](../../packages/jsimd/src/f32-fusion/README.md) subpath. Its isolated
+public wrapper is 3.34 kB gzip and includes pointer/range validation plus a CSP capability probe;
+the 2.28 kB figure above is the lower-level experiment entry. GEMM remains in `experiments/` until
+the same explicit plan wins in Node, Deno, and Chromium and a real consumer supplies stable shapes
+with enough reuse. The emitter, binary encoding, cache, and feature detection remain implementation
+details rather than public low-level APIs.
 
 Dynamic compilation also requires `WebAssembly.compile()` permission. A CSP that denies dynamic Wasm
 compilation cannot use an arbitrary expression compiler, and there is no finite prebuilt Wasm
-fallback for arbitrary expression trees. A future public subpath must report this capability clearly
-and let the application choose a predeclared static kernel or JavaScript fallback; it must not imply
-that every browser sandbox is supported.
+fallback for arbitrary expression trees. The public subpath reports this through
+`supportsF32Fusion()` and requires the application to choose a predeclared static kernel or
+JavaScript fallback; it does not imply that every browser sandbox is supported.
 
 The relaxed FMA opcode and its non-deterministic rounding contract come from the official
 [WebAssembly Relaxed SIMD proposal](https://github.com/WebAssembly/relaxed-simd/blob/main/proposals/relaxed-simd/Overview.md).

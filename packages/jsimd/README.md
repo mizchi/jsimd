@@ -1,7 +1,7 @@
 # @mizchi/jsimd
 
-Small prebuilt WebAssembly SIMD kernels and Wasm-resident data structures for data-parallel
-JavaScript hot paths.
+Small WebAssembly SIMD kernels, Wasm-resident data structures, and an opt-in dynamic Float32 fusion
+compiler for data-parallel JavaScript hot paths.
 
 ## Goal
 
@@ -36,6 +36,10 @@ All supported environments use the same entrypoints. Existing single-threaded en
 synchronous operations after ESM Integration instantiates their Wasm modules. `shared-buffer` is the
 exception: its asynchronous factories compile the same kernel in each Worker against caller-owned
 shared memory. Consumers must also enable explicit resource management (`using` / `Symbol.dispose`).
+
+`f32-fusion` is another explicit exception: it ships no static Wasm asset and asynchronously emits
+and compiles a restricted SIMD expression at runtime. It requires CSP permission for
+`WebAssembly.compile()`; use `supportsF32Fusion()` when deployment policy is unknown.
 
 ## Usage
 
@@ -120,6 +124,12 @@ so each structure has one public name.
 | [`endian`](./src/endian/README.md) | Batched `u32` decoding   | 1.0–2.2x         | Small inputs were at parity   | 1.11 kB + 0.18 kB        |
 | [`json`](./src/json/README.md)     | JSON token-start scanner | 1.1–3.5x         | Long strings were near parity | 1.00 kB + 0.28 kB        |
 
+### Dynamic kernels
+
+| export                                     | purpose                              | observed speedup | trade-off                                       | minified JS + Wasm, gzip |
+| :----------------------------------------- | :----------------------------------- | :--------------- | :---------------------------------------------- | :----------------------- |
+| [`f32-fusion`](./src/f32-fusion/README.md) | Runtime-generated fused Float32 pass | 3.76x resident   | Cold compile, resident memory, and CSP required | 3.34 kB + 0 kB           |
+
 ### How to read the numbers
 
 Performance results were recorded on Apple M5 with Node 24 or Deno 2.6 as documented by each linked
@@ -132,11 +142,12 @@ Admission is based on the documented primary workload, not on every convenience 
 reports a slower JS case is retained only when a separate, representative bulk workload wins; that
 slower operation is outside the performance contract.
 
-Build sizes come from isolated Vite 8.2 production fixtures. Each cell reports only the gzip sizes
-of the minified JavaScript output and its independently emitted, stripped Wasm asset. Importing a
-subpath does not pull in another feature's Wasm. A real application may share wrapper code or add
-other runtime code, so these figures are marginal fixtures rather than a prediction of total bundle
-size. Raw sizes remain available in each feature README.
+Build sizes come from isolated Vite 8.2 production fixtures. Each cell reports the gzip sizes of the
+minified JavaScript output and its independently emitted, stripped Wasm asset. `f32-fusion` reports
+zero Wasm because it generates the module at runtime. Importing a subpath does not pull in another
+feature's Wasm. A real application may share wrapper code or add other runtime code, so these
+figures are marginal fixtures rather than a prediction of total bundle size. Raw sizes remain
+available in each feature README.
 
 The package is distributed as one npm package with subpath exports. npm releases contain compiled
 JavaScript and adjacent declarations; consumers do not need TypeScript runtime transformation for
