@@ -1,6 +1,6 @@
 {
   "name": "@mizchi/jsimd",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "exports": {
     "./bytes": "./src/bytes/mod.ts",
     "./adaptive-simd-page-i32": "./src/adaptive-simd-page-i32/mod.ts",
