@@ -34,6 +34,8 @@ experiments/parallel-columnar-query/kernels.wasm
 experiments/parallel-columnar-query/duckdb-comparison/dist/
 experiments/parallel-columnar-query/browser-physical-pipeline/dist/
 experiments/parallel-columnar-query/browser-adaptive-pipeline/dist/
+experiments/dynamic-wasm-fusion/browser-gemm-tiles/dist/
+experiments/dynamic-wasm-fusion/fixtures/dist/
 experiments/parallel-hybrid-query/kernels.wasm
 experiments/parallel-columnar-selection/kernels.wasm
 experiments/parallel-bloom-filter/kernels.wasm

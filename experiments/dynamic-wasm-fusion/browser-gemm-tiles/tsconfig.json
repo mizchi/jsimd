@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "allowArbitraryExtensions": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "erasableSyntaxOnly": true,
+    "lib": ["DOM", "ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ESNext",
+    "types": ["vite/client"],
+    "verbatimModuleSyntax": true
+  },
+  "include": ["../*.ts", "src.ts"],
+  "exclude": ["../*_test.ts", "../*_bench.ts", "../bench.ts", "../gemm_tile_candidate.ts"]
+}

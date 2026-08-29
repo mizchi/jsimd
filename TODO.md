@@ -107,6 +107,26 @@ OLTP indexes are out of scope: their scalar point operations, durability boundar
 control do not exercise the project's primary advantage. A future database may consume these OLAP
 primitives, but transactional storage belongs in a separate repository.
 
+Direct-binary dynamic fusion is promising when it removes complete intermediate-array passes. The
+first restricted `f32` expression compiler emits a 246-byte SIMD module without WAT or Binaryen. On
+Apple M5 / Deno 2.6.4 over 1,048,579 values, its resident fused pass was 3.76x faster than an
+optimized JavaScript fused loop and 2.24x faster than three generated Wasm passes; cold compile plus
+instantiate cost about 3.25 ms, or seven calls at that shape. Its first non-elementwise consumer is
+an eight-accumulator shape-specialized GEMM: 64–256 square matrices were 6.52–6.61x faster than a
+four-column JavaScript loop and 2.51–2.57x faster than the existing generic Matrix2D kernel. Fusing
+alpha, column bias, and ReLU over a separate generated epilogue added only 0.98–1.03x; register
+tiling and pointer induction, not fusion alone, caused the large GEMM win. Follow-up experiments
+found 1.16–1.20x from opt-in relaxed FMA. Factor-four K unrolling retained 1.14–1.21x at K=16–128 in
+a roughly 3.3 KiB module, while full unrolling grew to 62.2 KiB at K=128 without improving the
+large-K result. Isolated runtime measurement found that multi-row MR×NR tiles are not portable: Deno
+chose MR=2 at 1.19–1.21x for medium shapes, while Node 24 and Chromium chose MR=1 for the same
+inputs. Packed B panels were neutral to 1.05x below 1 MiB and reached 1.19x with an 8 MiB wide B;
+JavaScript packing made every one-shot case slower and required 39 reuses even there. NC=8–256 then
+changed resident compute by only 1.00–1.01x through a 16 MiB B matrix, so no automatic cache-block
+selection is justified. Keep this under
+[`experiments/dynamic-wasm-fusion`](./experiments/dynamic-wasm-fusion/README.md) until browser and
+rectangular/batched crossovers, cache bounds, and CSP fallback are measured.
+
 ### P1: parallel OLAP and storage
 
 The physical execution hypothesis is recorded in
@@ -116,6 +136,34 @@ product-facing query engine to a separate repository once the boundary is stable
 
 - [x] Compose row-group pruning, filter, count/sum/min/max, low-cardinality group-by, and
       partial-result reduction over immutable pages.
+- [x] Extend the direct-binary fusion prototype to a shape-specialized GEMM microkernel with fused
+      alpha/beta, bias, clamp/ReLU epilogues. Compare it with the existing generic Matrix2D kernel,
+      optimized JavaScript, and separate Wasm epilogue passes; retain dynamic compilation only where
+      repeated resident execution repays compilation.
+- [x] Replace full K unrolling with bounded factor-two/factor-four unrolling and pointer induction;
+      retain full unrolling only for explicitly hot fixed shapes.
+- [x] Benchmark packed B panels at one-shot and resident boundaries. Keep packing opt-in: resident
+      compute was 0.99–1.19x, while JavaScript pack plus one compute was always slower.
+- [x] Evaluate packed-B NC blocking. NC=8–256 produced only 1.00–1.01x best speedup from 256 KiB
+      through 16 MiB B matrices, so it remains explicit and experimental rather than automatic.
+- [x] Evaluate NC traversal across shared-B batches. Flattening independent A/C matrices into one
+      call retained each 8–16 MiB B column block across the whole batch, but the best complete path
+      was only 1.01–1.03x faster than separate calls. This still does not justify KC splitting.
+- [ ] Add KC splitting only after a new shape or batched workload demonstrates B-working-set
+      pressure. Current NC results do not justify its repeated partial-C traffic or a generated Wasm
+      packer.
+- [x] Isolate each MR×NR candidate in a fresh process/profile and repeat in Node, Deno, and
+      Chromium. Keep MR=1 as the default: Deno favored MR=2 for medium shapes, while both V8
+      runtimes favored MR=1. Do not cache a runtime selector from one machine/version sample.
+- [x] Add proactive relaxed-SIMD detection and an explicit strict fallback result through
+      `compileF32GemmWithFallback()`.
+- [x] Bound dynamic module retention with compiler-owned LRU caches, reject complete K unrolling
+      above 256, and split map/GEMM contracts so map-only imports do not retain the GEMM emitter.
+      The measured minified gzip payload is 2.28 kB for map-only and 4.30 kB for GEMM-only.
+- [x] Decide the adoption boundary. Move only restricted element-wise `f32` fusion toward a public
+      opt-in experimental subpath. Keep shape-specialized GEMM under `experiments/`; retain relaxed
+      FMA, packed B, and full unrolling as explicit options, and do not add automatic MR selection,
+      KC, a generated packer, or Workers without a new winning consumer workload.
 - [x] Benchmark TPC-H Q1/Q6-shaped kernels and log filter/group-by against optimized JavaScript,
       default DuckDB-Wasm, and a reproducible threaded DuckDB-Wasm build.
   - [x] Record Q1/Q6-shaped JavaScript, direct SIMD, persistent Worker, DuckDB `eh`, and DuckDB

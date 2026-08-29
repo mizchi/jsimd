@@ -162,6 +162,88 @@ bench-ultra-log-log: build
 bench-record-ultra-log-log: build
     JSIMD_ULL_OUTPUT=experiments/ultra-log-log/benchmarks/isolated-build-merge.json deno run -A experiments/ultra-log-log/bench.ts
 
+test-dynamic-wasm-fusion:
+    deno test -A experiments/dynamic-wasm-fusion
+
+bench-dynamic-wasm-fusion:
+    deno run -A experiments/dynamic-wasm-fusion/bench.ts
+
+bench-record-dynamic-wasm-fusion:
+    JSIMD_FUSION_OUTPUT=experiments/dynamic-wasm-fusion/benchmarks/baseline.json deno run -A experiments/dynamic-wasm-fusion/bench.ts
+
+bench-dynamic-wasm-fusion-gemm: build
+    deno run -A experiments/dynamic-wasm-fusion/gemm_bench.ts
+
+bench-record-dynamic-wasm-fusion-gemm: build
+    JSIMD_FUSION_GEMM_OUTPUT=experiments/dynamic-wasm-fusion/benchmarks/gemm.json deno run -A experiments/dynamic-wasm-fusion/gemm_bench.ts
+
+bench-dynamic-wasm-fusion-gemm-tiles:
+    deno run -A experiments/dynamic-wasm-fusion/gemm_tile_bench.ts
+
+bench-record-dynamic-wasm-fusion-gemm-tiles:
+    JSIMD_FUSION_TILE_OUTPUT=experiments/dynamic-wasm-fusion/benchmarks/gemm-row-tiles.json deno run -A experiments/dynamic-wasm-fusion/gemm_tile_bench.ts
+
+bench-dynamic-wasm-fusion-gemm-tiles-isolated-deno:
+    JSIMD_FUSION_TILE_RUNTIME=deno deno run -A experiments/dynamic-wasm-fusion/gemm_tile_isolated_bench.ts
+
+bench-record-dynamic-wasm-fusion-gemm-tiles-isolated-deno:
+    JSIMD_FUSION_TILE_RUNTIME=deno JSIMD_FUSION_TILE_ISOLATED_OUTPUT=experiments/dynamic-wasm-fusion/benchmarks/gemm-row-tiles-isolated-deno.json deno run -A experiments/dynamic-wasm-fusion/gemm_tile_isolated_bench.ts
+
+bench-dynamic-wasm-fusion-gemm-tiles-isolated-node:
+    JSIMD_FUSION_TILE_RUNTIME=node deno run -A experiments/dynamic-wasm-fusion/gemm_tile_isolated_bench.ts
+
+bench-record-dynamic-wasm-fusion-gemm-tiles-isolated-node:
+    JSIMD_FUSION_TILE_RUNTIME=node JSIMD_FUSION_TILE_ISOLATED_OUTPUT=experiments/dynamic-wasm-fusion/benchmarks/gemm-row-tiles-isolated-node.json deno run -A experiments/dynamic-wasm-fusion/gemm_tile_isolated_bench.ts
+
+bench-dynamic-wasm-fusion-gemm-tiles-isolated-browser:
+    pnpm exec tsc -p experiments/dynamic-wasm-fusion/browser-gemm-tiles/tsconfig.json
+    pnpm exec vite build experiments/dynamic-wasm-fusion/browser-gemm-tiles
+    deno run -A experiments/dynamic-wasm-fusion/gemm_tile_browser_bench.ts
+
+bench-record-dynamic-wasm-fusion-gemm-tiles-isolated-browser:
+    pnpm exec tsc -p experiments/dynamic-wasm-fusion/browser-gemm-tiles/tsconfig.json
+    pnpm exec vite build experiments/dynamic-wasm-fusion/browser-gemm-tiles
+    JSIMD_FUSION_TILE_BROWSER_OUTPUT=experiments/dynamic-wasm-fusion/benchmarks/gemm-row-tiles-isolated-chromium.json deno run -A experiments/dynamic-wasm-fusion/gemm_tile_browser_bench.ts
+
+bench-dynamic-wasm-fusion-gemm-relaxed:
+    deno run -A experiments/dynamic-wasm-fusion/gemm_relaxed_bench.ts
+
+bench-record-dynamic-wasm-fusion-gemm-relaxed:
+    JSIMD_FUSION_RELAXED_OUTPUT=experiments/dynamic-wasm-fusion/benchmarks/gemm-relaxed-madd.json deno run -A experiments/dynamic-wasm-fusion/gemm_relaxed_bench.ts
+
+bench-dynamic-wasm-fusion-gemm-unroll:
+    deno run -A experiments/dynamic-wasm-fusion/gemm_unroll_bench.ts
+
+bench-record-dynamic-wasm-fusion-gemm-unroll:
+    JSIMD_FUSION_UNROLL_OUTPUT=experiments/dynamic-wasm-fusion/benchmarks/gemm-inner-unroll.json deno run -A experiments/dynamic-wasm-fusion/gemm_unroll_bench.ts
+
+bench-dynamic-wasm-fusion-gemm-packing:
+    deno run -A experiments/dynamic-wasm-fusion/gemm_packing_bench.ts
+
+bench-record-dynamic-wasm-fusion-gemm-packing:
+    JSIMD_FUSION_PACK_OUTPUT=experiments/dynamic-wasm-fusion/benchmarks/gemm-packed-b.json deno run -A experiments/dynamic-wasm-fusion/gemm_packing_bench.ts
+
+bench-dynamic-wasm-fusion-gemm-blocking:
+    deno run -A experiments/dynamic-wasm-fusion/gemm_cache_blocking_bench.ts
+
+bench-record-dynamic-wasm-fusion-gemm-blocking:
+    JSIMD_FUSION_BLOCK_OUTPUT=experiments/dynamic-wasm-fusion/benchmarks/gemm-cache-blocking.json deno run -A experiments/dynamic-wasm-fusion/gemm_cache_blocking_bench.ts
+
+bench-dynamic-wasm-fusion-gemm-shared-b-batch:
+    deno run -A experiments/dynamic-wasm-fusion/gemm_shared_b_batch_bench.ts
+
+bench-record-dynamic-wasm-fusion-gemm-shared-b-batch:
+    JSIMD_FUSION_BATCH_OUTPUT=experiments/dynamic-wasm-fusion/benchmarks/gemm-shared-b-batch.json deno run -A experiments/dynamic-wasm-fusion/gemm_shared_b_batch_bench.ts
+
+check-dynamic-wasm-fusion-bundle-size:
+    mkdir -p experiments/dynamic-wasm-fusion/fixtures/dist
+    pnpm exec esbuild experiments/dynamic-wasm-fusion/fixtures/map-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/dynamic-wasm-fusion/fixtures/dist/map.js
+    pnpm exec esbuild experiments/dynamic-wasm-fusion/fixtures/gemm-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/dynamic-wasm-fusion/fixtures/dist/gemm.js
+    pnpm exec esbuild experiments/dynamic-wasm-fusion/mod.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/dynamic-wasm-fusion/fixtures/dist/mod.js
+    test "$(gzip -9 -c experiments/dynamic-wasm-fusion/fixtures/dist/map.js | wc -c | tr -d ' ')" -le 2400
+    test "$(gzip -9 -c experiments/dynamic-wasm-fusion/fixtures/dist/gemm.js | wc -c | tr -d ' ')" -le 4500
+    test "$(gzip -9 -c experiments/dynamic-wasm-fusion/fixtures/dist/mod.js | wc -c | tr -d ' ')" -le 5600
+
 test-striped-roaring-bitmap: build
     deno test -A experiments/striped-roaring-bitmap
 
@@ -374,7 +456,7 @@ test: build
 bench: build
     deno bench -A
 
-check: test package-smoke
+check: test package-smoke check-dynamic-wasm-fusion-bundle-size
     test "$(find packages/jsimd/dist -name '*_test.js' -o -name '*_test.d.ts' | wc -l | tr -d ' ')" = "0"
     deno fmt --check
     deno lint
@@ -385,6 +467,8 @@ check: test package-smoke
     pnpm exec vite build experiments/parallel-columnar-query/browser-physical-pipeline
     pnpm exec tsc -p experiments/parallel-columnar-query/browser-adaptive-pipeline/tsconfig.json
     pnpm exec vite build experiments/parallel-columnar-query/browser-adaptive-pipeline
+    pnpm exec tsc -p experiments/dynamic-wasm-fusion/browser-gemm-tiles/tsconfig.json
+    pnpm exec vite build experiments/dynamic-wasm-fusion/browser-gemm-tiles
     deno eval 'const p = JSON.parse(await Deno.readTextFile("packages/jsimd/package.json")); const d = JSON.parse(await Deno.readTextFile("packages/jsimd/deno.json")); if (p.version !== d.version || JSON.stringify(Object.keys(p.exports)) !== JSON.stringify(Object.keys(d.exports))) throw new Error("package.json and deno.json release metadata differ")'
     pnpm exec tsc -p examples/tree-shake-blocked-bloom-filter/tsconfig.json
     pnpm exec vite build examples/tree-shake-blocked-bloom-filter
