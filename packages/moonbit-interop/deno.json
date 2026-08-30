@@ -1,0 +1,9 @@
+{
+  "name": "@mizchi/jsimd-moonbit-interop",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./array-view": "./src/array_view.ts",
+    "./string-view": "./src/string_view.ts"
+  }
+}

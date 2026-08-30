@@ -13,6 +13,7 @@
     "@mizchi/jsimd": "workspace:*",
     "@mizchi/jsimd-bench": "workspace:*",
     "@mizchi/jsimd-columnar": "workspace:*",
+    "@mizchi/jsimd-moonbit-interop": "workspace:*",
     "@mizchi/jsimd-olap": "workspace:*",
     "@mizchi/jsimd-shared": "workspace:*",
     "@types/node": "^24.13.3",

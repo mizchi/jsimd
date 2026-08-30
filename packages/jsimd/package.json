@@ -1,6 +1,6 @@
 {
   "name": "@mizchi/jsimd",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Small WebAssembly SIMD kernels, resident data structures, and dynamic Float32 fusion for JavaScript",
   "type": "module",
   "exports": {

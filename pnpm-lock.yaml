@@ -20,6 +20,9 @@ importers:
       '@mizchi/jsimd-columnar':
         specifier: workspace:*
         version: link:packages/columnar
+      '@mizchi/jsimd-moonbit-interop':
+        specifier: workspace:*
+        version: link:packages/moonbit-interop
       '@mizchi/jsimd-olap':
         specifier: workspace:*
         version: link:packages/olap
@@ -56,6 +59,12 @@ importers:
         version: link:../bench
 
   packages/jsimd: {}
+
+  packages/moonbit-interop:
+    dependencies:
+      '@mizchi/jsimd':
+        specifier: workspace:^
+        version: link:../jsimd
 
   packages/olap:
     dependencies:

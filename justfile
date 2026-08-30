@@ -432,13 +432,16 @@ build-jsimd-package: build
 build-shared-package: build-jsimd-package
     deno run -A tools/build-typescript-package.ts shared
 
+build-moonbit-interop-package: build-jsimd-package
+    deno run -A tools/build-typescript-package.ts moonbit-interop
+
 build-columnar-package: build-jsimd-package
     deno run -A tools/build-typescript-package.ts columnar
 
 build-olap-package: build-jsimd-package build-shared-package build-columnar-package
     deno run -A tools/build-typescript-package.ts olap
 
-build-package: build-shared-package build-columnar-package build-olap-package
+build-package: build-shared-package build-moonbit-interop-package build-columnar-package build-olap-package
 
 memory-profile: build
     node --no-warnings --expose-gc tools/profile-memory.ts
@@ -448,6 +451,7 @@ snapshot-transport: build
 
 package-smoke: build-package
     deno run -A tools/smoke-package.ts
+    deno run -A tools/smoke-moonbit-interop-package.ts
     deno run -A tools/smoke-olap-package.ts
 
 test: build

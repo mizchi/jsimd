@@ -1,6 +1,9 @@
 const packageName = Deno.args[0];
-if (packageName !== "shared" && packageName !== "columnar" && packageName !== "olap") {
-  throw new TypeError("expected package name: shared, columnar, or olap");
+if (
+  packageName !== "shared" && packageName !== "columnar" && packageName !== "olap" &&
+  packageName !== "moonbit-interop"
+) {
+  throw new TypeError("expected package name: shared, columnar, moonbit-interop, or olap");
 }
 
 const packageDirectory = `packages/${packageName}`;

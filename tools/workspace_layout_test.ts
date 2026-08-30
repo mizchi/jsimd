@@ -7,6 +7,7 @@ Deno.test("workspace packages keep explicit public boundaries", async () => {
   const expectedPackages = new Map([
     ["jsimd", "@mizchi/jsimd"],
     ["shared", "@mizchi/jsimd-shared"],
+    ["moonbit-interop", "@mizchi/jsimd-moonbit-interop"],
     ["columnar", "@mizchi/jsimd-columnar"],
     ["bench", "@mizchi/jsimd-bench"],
   ]);
@@ -20,7 +21,7 @@ Deno.test("workspace packages keep explicit public boundaries", async () => {
 });
 
 Deno.test("every publishable package rebuilds its payload before packing", async () => {
-  for (const directory of ["jsimd", "shared", "columnar"]) {
+  for (const directory of ["jsimd", "shared", "moonbit-interop", "columnar"]) {
     const manifest = await readJson<{
       files?: readonly string[];
       private?: boolean;
@@ -35,6 +36,7 @@ Deno.test("every publishable package rebuilds its payload before packing", async
 Deno.test("implementation sources live behind their package boundaries", async () => {
   await assertFile(new URL("packages/jsimd/src/bitmap/mod.ts", root));
   await assertFile(new URL("packages/shared/src/mod.ts", root));
+  await assertFile(new URL("packages/moonbit-interop/src/mod.ts", root));
   await assertFile(new URL("packages/columnar/src/mod.ts", root));
   await assertFile(new URL("packages/bench/src/result.ts", root));
 });

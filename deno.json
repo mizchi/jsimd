@@ -2,6 +2,7 @@
   "workspace": [
     "./packages/jsimd",
     "./packages/shared",
+    "./packages/moonbit-interop",
     "./packages/columnar",
     "./packages/olap",
     "./packages/bench"

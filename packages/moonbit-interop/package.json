@@ -1,0 +1,30 @@
+{
+  "name": "@mizchi/jsimd-moonbit-interop",
+  "version": "0.1.0",
+  "description": "MoonBit JS-backend adapters for prebuilt jsimd WebAssembly SIMD kernels",
+  "type": "module",
+  "exports": {
+    ".": "./dist/mod.js",
+    "./array-view": "./dist/array_view.js",
+    "./string-view": "./dist/string_view.js"
+  },
+  "types": "./dist/mod.d.ts",
+  "sideEffects": false,
+  "files": ["dist/", "README.md"],
+  "scripts": {
+    "build": "cd ../.. && just build-moonbit-interop-package",
+    "prepack": "cd ../.. && just build-moonbit-interop-package",
+    "test": "deno test -A src"
+  },
+  "dependencies": { "@mizchi/jsimd": "workspace:^" },
+  "license": "MIT",
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mizchi/jsimd.git",
+    "directory": "packages/moonbit-interop"
+  },
+  "homepage": "https://github.com/mizchi/jsimd/tree/main/packages/moonbit-interop#readme",
+  "bugs": "https://github.com/mizchi/jsimd/issues",
+  "keywords": ["moonbit", "simd", "wasm", "webassembly"]
+}
