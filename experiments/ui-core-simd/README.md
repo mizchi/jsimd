@@ -473,6 +473,11 @@ stress fixture, not a substitute for INP measurements in a real Luna application
 
 ### Pixel Lab: conservative material cells
 
+The next pixel-physics experiment, its backend contract, TDD stages, benchmark matrix, and bundle
+gates are recorded in [`PIXEL_PHYSICS_PROTOTYPE.md`](./PIXEL_PHYSICS_PROTOTYPE.md). It keeps the
+current pair-pass implementation as the control group and starts with a Margolus-style 2 x 2 block
+solver.
+
 The optional `?run=pixel` route broadens the Canvas experiment from a uniform Life rule to a
 material cellular automaton. Its v0 cell ABI is one `u32`: material, temperature, flags, and variant
 each occupy one byte. Empty, wall, sand, and water are implemented; temperature is reserved but is
