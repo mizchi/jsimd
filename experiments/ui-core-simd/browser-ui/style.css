@@ -280,6 +280,55 @@ body.life-mode {
   background: #101d18;
 }
 
+.life-runtime {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+  margin-bottom: 18px;
+  padding: 4px;
+  border: 1px solid #29443a;
+  border-radius: 12px;
+  background: #0b1512;
+}
+
+.life-runtime a {
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #789185;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-align: center;
+  text-decoration: none;
+}
+
+.life-runtime a.active {
+  color: #102016;
+  background: #9dff73;
+  box-shadow: 0 5px 18px rgb(157 255 115 / 12%);
+}
+
+.life-size {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: -8px 0 18px;
+}
+
+.life-size a {
+  padding: 5px;
+  border-bottom: 1px solid #29443a;
+  color: #617c70;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.62rem;
+  text-align: center;
+  text-decoration: none;
+}
+
+.life-size a.active {
+  border-color: #9dff73;
+  color: #b8d2c2;
+}
+
 .life-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

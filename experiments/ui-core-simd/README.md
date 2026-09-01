@@ -415,8 +415,28 @@ The interactive `?run=life` route turns this bridge into a 256 × 160 Conway's G
 Worker owns all 40,960 cells, simulation steps, and drag-line reconstruction. `pointermove` events
 overwrite the latest slot, while `pointerdown/up/cancel` remain ordered in the discrete ring.
 Finished boards are published through a separate double-buffered `SharedArrayBuffer`; the main
-thread snapshots them into one reusable `ImageData`. Run `just dev-ui-comparison`, then open the
-printed local URL with `?run=life`.
+thread snapshots them into one reusable `ImageData`. The route accepts
+`?run=life&runtime=simd|scalar&size=256|512|1024`; the height remains 5/8 of the width. It also
+reports the rolling step median, input-to-frame latency, paint rate, and exact compute allocation.
+Run `just dev-ui-comparison`, then open the printed local URL with `?run=life&runtime=simd`.
+
+The optional Life kernel is 664 raw / 368 gzip bytes and uses `i8x16` addition and comparison for
+the contiguous interior of each row. Sixteen wraparound/tail cells per row stay scalar, avoiding a
+halo copy or a strided board. Its two generations live directly in Worker-owned Wasm memory; only a
+completed generation is copied to the shared display buffer. `just bench-ui-life-kernel` produced
+these Apple M5/Deno medians:
+
+|       grid |   cells |  Scalar JS | Wasm SIMD | speedup |
+| ---------: | ------: | ---------: | --------: | ------: |
+|  256 × 160 |  40,960 |   111.7 µs |   10.0 µs |  11.13× |
+|  512 × 320 | 163,840 |   526.0 µs |   28.9 µs |  18.18× |
+| 1024 × 640 | 655,360 | 2,483.3 µs |   97.5 µs |  25.46× |
+
+The browser autorun waits for 20 generations and reports rolling medians from 11 sequential pointer
+taps. Local Chrome produced 25 µs SIMD versus 380 µs Scalar JS at 256 × 160, and 155 µs versus
+3,920 µs at 1024 × 640. Input-to-frame stayed 4.9–7.3 ms across both runtimes and sizes with no
+dropped records. The 1024 × 640 Canvas painted about 26–28 fps at the default 30 Hz, so display
+conversion becomes the next bottleneck even though the SIMD compute remains below 0.2 ms.
 
 ### Browser memory and event-loop profile
 

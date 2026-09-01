@@ -23,6 +23,8 @@ const HEADER = {
   viewportWidth: 14,
   viewportHeight: 15,
   rate: 16,
+  inputTimeMicros: 17,
+  inputSequence: 18,
 } as const;
 
 export const LIFE_COMMAND = {
@@ -109,6 +111,14 @@ export class LifeSharedBoard {
     return Atomics.load(this.#header, HEADER.stepMicros) >>> 0;
   }
 
+  get inputTimeMicros(): number {
+    return Atomics.load(this.#header, HEADER.inputTimeMicros) >>> 0;
+  }
+
+  get inputSequence(): number {
+    return Atomics.load(this.#header, HEADER.inputSequence) >>> 0;
+  }
+
   get running(): boolean {
     return Atomics.load(this.#header, HEADER.running) !== 0;
   }
@@ -170,12 +180,21 @@ export class LifeSharedBoard {
     return { index, cells: this.#boards[index] };
   }
 
-  publish(index: 0 | 1, liveCount: number, stepMicros: number): void {
+  publish(
+    index: 0 | 1,
+    liveCount: number,
+    stepMicros: number,
+    inputTimeMicros?: number,
+  ): void {
     if ((Atomics.load(this.#header, HEADER.sequence) & 1) === 0) {
       throw new Error("life shared-board publish requires beginWrite");
     }
     Atomics.store(this.#header, HEADER.liveCount, liveCount | 0);
     Atomics.store(this.#header, HEADER.stepMicros, Math.max(0, Math.round(stepMicros)) | 0);
+    if (inputTimeMicros !== undefined) {
+      Atomics.store(this.#header, HEADER.inputTimeMicros, inputTimeMicros | 0);
+      Atomics.add(this.#header, HEADER.inputSequence, 1);
+    }
     Atomics.store(this.#header, HEADER.front, index);
     Atomics.add(this.#header, HEADER.generation, 1);
     Atomics.add(this.#header, HEADER.sequence, 1);

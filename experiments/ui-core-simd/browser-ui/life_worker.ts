@@ -4,24 +4,31 @@ import {
   AtomicInputBuffer,
 } from "../atomic_input.ts";
 import { cellFromFixedPoint, countLiveCells, drawLifeLine, stepLife } from "../life_game.ts";
+import { type LifeRuntime, WasmSimdLife } from "../life_kernel.ts";
 import { LIFE_COMMAND, LifeSharedBoard } from "../life_shared.ts";
 
 interface InitMessage {
   readonly type: "init";
   readonly inputBuffer: SharedArrayBuffer;
   readonly boardBuffer: SharedArrayBuffer;
+  readonly runtime: LifeRuntime;
 }
 
 self.onmessage = (event: MessageEvent<InitMessage>) => {
   if (event.data.type !== "init") return;
   const input = AtomicInputBuffer.attach(event.data.inputBuffer);
   const board = LifeSharedBoard.attach(event.data.boardBuffer);
-  initialize(input, board);
+  void initialize(input, board, event.data.runtime);
 };
 
-function initialize(input: AtomicInputBuffer, board: LifeSharedBoard): void {
-  let current = new Uint8Array(board.cellCount);
-  let next = new Uint8Array(board.cellCount);
+async function initialize(
+  input: AtomicInputBuffer,
+  board: LifeSharedBoard,
+  runtime: LifeRuntime,
+): Promise<void> {
+  const simd = runtime === "simd" ? await WasmSimdLife.create(board.width, board.height) : null;
+  let current: Uint8Array = simd?.cells ?? new Uint8Array(board.cellCount);
+  let next: Uint8Array | null = simd === null ? new Uint8Array(board.cellCount) : null;
   const latest = new Int32Array(ATOMIC_INPUT_RECORD_WORDS);
   const discrete = new Int32Array(input.capacity * ATOMIC_INPUT_RECORD_WORDS);
   let latestSequence = 0;
@@ -40,10 +47,20 @@ function initialize(input: AtomicInputBuffer, board: LifeSharedBoard): void {
       current[index] = (seed >>> 0) % 100 < 22 ? 1 : 0;
     }
   };
-  const publish = (stepMicros = 0): void => {
+  const advance = (): number => {
+    if (simd !== null) {
+      const live = simd.step();
+      current = simd.cells;
+      return live;
+    }
+    const live = stepLife(current, next!, board.width, board.height);
+    [current, next] = [next!, current];
+    return live;
+  };
+  const publish = (stepMicros = 0, inputTimeMicros?: number): void => {
     const write = board.beginWrite();
     write.cells.set(current);
-    board.publish(write.index, countLiveCells(current), stepMicros);
+    board.publish(write.index, countLiveCells(current), stepMicros, inputTimeMicros);
   };
   const point = (records: Int32Array, offset: number) =>
     cellFromFixedPoint(
@@ -63,6 +80,7 @@ function initialize(input: AtomicInputBuffer, board: LifeSharedBoard): void {
     let nextStepAt = performance.now();
     while (true) {
       let changed = false;
+      let changedInputTimeMicros: number | undefined;
       const nextCommandSequence = board.commandSequence;
       if (nextCommandSequence !== commandSequence) {
         commandSequence = nextCommandSequence;
@@ -74,8 +92,7 @@ function initialize(input: AtomicInputBuffer, board: LifeSharedBoard): void {
           case LIFE_COMMAND.step: {
             board.running = false;
             const started = performance.now();
-            const live = stepLife(current, next, board.width, board.height);
-            [current, next] = [next, current];
+            const live = advance();
             const write = board.beginWrite();
             write.cells.set(current);
             board.publish(write.index, live, (performance.now() - started) * 1_000);
@@ -106,6 +123,7 @@ function initialize(input: AtomicInputBuffer, board: LifeSharedBoard): void {
           lastY = cell.y;
           current[lastY * board.width + lastX] = dragValue;
           changed = true;
+          changedInputTimeMicros = discrete[offset + 6]! >>> 0;
         } else if (kind === ATOMIC_INPUT_KIND.pointerUp) {
           if (dragging) {
             const cell = point(discrete, offset);
@@ -120,6 +138,7 @@ function initialize(input: AtomicInputBuffer, board: LifeSharedBoard): void {
               dragValue,
             );
             changed = true;
+            changedInputTimeMicros = discrete[offset + 6]! >>> 0;
           }
           dragging = false;
         } else if (kind === ATOMIC_INPUT_KIND.pointerCancel) {
@@ -147,18 +166,18 @@ function initialize(input: AtomicInputBuffer, board: LifeSharedBoard): void {
         lastX = cell.x;
         lastY = cell.y;
         changed = true;
+        changedInputTimeMicros = latest[6]! >>> 0;
       } else if (nextLatestSequence !== 0) {
         latestSequence = nextLatestSequence;
       }
 
-      if (changed) publish();
+      if (changed) publish(0, changedInputTimeMicros);
 
       const now = performance.now();
       const interval = 1_000 / board.rate;
       if (board.running && now >= nextStepAt) {
         const started = performance.now();
-        const live = stepLife(current, next, board.width, board.height);
-        [current, next] = [next, current];
+        const live = advance();
         const write = board.beginWrite();
         write.cells.set(current);
         board.publish(write.index, live, (performance.now() - started) * 1_000);

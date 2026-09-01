@@ -38,6 +38,7 @@ build:
     wasm-tools strip -a experiments/parallel-bloom-filter/kernels.wat -o experiments/parallel-bloom-filter/kernels.wasm
     wasm-tools strip -a experiments/ui-core-simd/signals.wat -o experiments/ui-core-simd/signals.wasm
     wasm-tools strip -a experiments/ui-core-simd/patch_tape.wat -o experiments/ui-core-simd/patch_tape.wasm
+    wasm-tools strip -a experiments/ui-core-simd/life_step.wat -o experiments/ui-core-simd/life_step.wasm
     wasm-tools strip -a experiments/radix-sort-block/kernels.wat -o experiments/radix-sort-block/kernels.wasm
     wasm-tools strip -a experiments/ultra-log-log/kernels.wat -o experiments/ultra-log-log/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm
@@ -79,6 +80,7 @@ build:
     wasm-tools validate --features threads,simd experiments/parallel-bloom-filter/kernels.wasm
     wasm-tools validate --features simd experiments/ui-core-simd/signals.wasm
     wasm-tools validate --features simd experiments/ui-core-simd/patch_tape.wasm
+    wasm-tools validate --features simd experiments/ui-core-simd/life_step.wasm
     wasm-tools validate --features simd experiments/radix-sort-block/kernels.wasm
     wasm-tools validate --features simd experiments/ultra-log-log/kernels.wasm
     wasm-tools print packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm | rg -q 'scan_between_for|scan_between_raw|scan_between_rle|scan_between_dictionary|scan_between_sparse|gather_sparse|sum_sparse|mask_count'
@@ -142,6 +144,7 @@ build:
     wasm-tools print experiments/ui-core-simd/signals.wasm | rg -q 'union_subscriber_rows|v128.or'
     ! wasm-tools print experiments/ui-core-simd/signals.wasm | rg -q 'classify_nodes|i32x4.ne'
     wasm-tools print experiments/ui-core-simd/patch_tape.wasm | rg -q 'collect_changed|i32x4.ne|i32x4.bitmask'
+    wasm-tools print experiments/ui-core-simd/life_step.wasm | rg -q 'i8x16.add|i8x16.eq|i8x16.bitmask'
 
 test-olap-package: build
     deno test -A packages/olap/src
@@ -195,6 +198,7 @@ check-ui-core-entrypoints:
     test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/signals-patch-tape-text.js | wc -c | tr -d ' ')" -le 3500
     test "$(wc -c < experiments/ui-core-simd/signals.wasm | tr -d ' ')" -le 220
     test "$(wc -c < experiments/ui-core-simd/patch_tape.wasm | tr -d ' ')" -le 420
+    test "$(wc -c < experiments/ui-core-simd/life_step.wasm | tr -d ' ')" -le 700
     test ! -e experiments/ui-core-simd/reconciler.ts
     test ! -e experiments/ui-core-simd/reconciler.wasm
     test ! -e experiments/ui-core-simd/packed_list.ts
@@ -214,6 +218,9 @@ bench-ui-core-atomics: build
 
 bench-ui-core-atomic-input:
     deno bench -A experiments/ui-core-simd/atomic_input_bench.ts
+
+bench-ui-life-kernel: build
+    deno run -A experiments/ui-core-simd/life_kernel_bench.ts
 
 build-ui-comparison:
     pnpm --config.verify-deps-before-run=false exec tsc -p experiments/ui-core-simd/browser-ui/tsconfig.json

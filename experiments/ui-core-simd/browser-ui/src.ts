@@ -32,6 +32,7 @@ import {
 import { mountRuntimeProfilePage, type ProfileRuntime } from "./profile.ts";
 import { runAtomicInputDemo } from "./input_demo.ts";
 import { mountLifeDemo } from "./life_demo.ts";
+import type { LifeRuntime } from "../life_kernel.ts";
 
 interface Comparison {
   readonly size: number;
@@ -111,9 +112,13 @@ benchmarkGlobal.__jsimdUiBench = { ready: true, results: null, runAll: runAndRen
 const benchmarkParams = new URLSearchParams(location.search);
 if (benchmarkParams.get("run") === "life") {
   runButton.disabled = true;
+  const width = parseLifeWidth(benchmarkParams.get("size"));
   const result = await mountLifeDemo(
     document.querySelector("main")!,
     benchmarkParams.get("autorun") === "1",
+    parseLifeRuntime(benchmarkParams.get("runtime")),
+    width,
+    width * 5 / 8,
   );
   if (result !== null) report({ life: result });
 } else if (benchmarkParams.get("run") === "input") {
@@ -151,6 +156,18 @@ if (benchmarkParams.get("run") === "life") {
 } else {
   runButton.addEventListener("click", () => void runAndRender());
   if (benchmarkParams.has("run")) void runAndRender();
+}
+
+function parseLifeRuntime(value: string | null): LifeRuntime {
+  if (value === null || value === "simd") return "simd";
+  if (value === "scalar") return "scalar";
+  throw new TypeError(`unknown Life runtime: ${value}`);
+}
+
+function parseLifeWidth(value: string | null): number {
+  const width = value === null ? 256 : Number(value);
+  if (width === 256 || width === 512 || width === 1_024) return width;
+  throw new RangeError(`unsupported Life width: ${value}`);
 }
 
 function parseProfileRuntime(value: string | null): ProfileRuntime {

@@ -31,6 +31,21 @@ Deno.test("LifeSharedBoard publishes a complete back buffer", () => {
   assertEquals(reader.stepMicros, 275);
 });
 
+Deno.test("LifeSharedBoard associates an input timestamp with its published frame", () => {
+  const writer = LifeSharedBoard.create(4, 3);
+  const reader = LifeSharedBoard.attach(writer.buffer);
+  const first = writer.beginWrite();
+  writer.publish(first.index, 1, 25, 123_456);
+
+  assertEquals(reader.inputSequence, 1);
+  assertEquals(reader.inputTimeMicros, 123_456);
+
+  const simulation = writer.beginWrite();
+  writer.publish(simulation.index, 1, 20);
+  assertEquals(reader.inputSequence, 1);
+  assertEquals(reader.inputTimeMicros, 123_456);
+});
+
 Deno.test("LifeSharedBoard rejects snapshots while a write is active", () => {
   const board = LifeSharedBoard.create(2, 2);
   board.beginWrite();

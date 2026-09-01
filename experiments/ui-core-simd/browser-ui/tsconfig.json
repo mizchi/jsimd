@@ -21,6 +21,7 @@
     "../complex_tree.ts",
     "../layered_graph.ts",
     "../life_game.ts",
+    "../life_kernel.ts",
     "../life_shared.ts",
     "../patch_tape.ts",
     "../patch_tape_kernel.ts",
