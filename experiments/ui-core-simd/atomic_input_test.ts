@@ -4,7 +4,11 @@ import {
   AtomicInputBuffer,
   decodeAtomicInputRecord,
 } from "./atomic_input.ts";
-import { writeDiscretePointerEvent, writeLatestPointerEvent } from "./atomic_input_dom.ts";
+import {
+  writeDiscretePointerEvent,
+  writeLatestPointerEvent,
+  writeLatestPointerEventAt,
+} from "./atomic_input_dom.ts";
 
 function assertEquals(actual: unknown, expected: unknown, message: string): void {
   if (actual !== expected) throw new Error(`${message}: expected ${expected}, got ${actual}`);
@@ -91,6 +95,30 @@ Deno.test("DOM adapter extracts only packed pointer data", () => {
   assertEquals(latest.shiftKey, true, "shift modifier");
   assertEquals(latest.altKey, true, "alt modifier");
   assertEquals(latest.timeMicros, 12_345, "microsecond timestamp");
+});
+
+Deno.test("DOM adapter can pack target-local coordinates independently of page position", () => {
+  const input = AtomicInputBuffer.create(4);
+  const event = {
+    clientX: 1_012.5,
+    clientY: 804.25,
+    pointerId: 7,
+    buttons: 1,
+    button: 0,
+    shiftKey: false,
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+    timeStamp: 1,
+    pressure: 0.5,
+  };
+  writeLatestPointerEventAt(input, ATOMIC_INPUT_KIND.pointerMove, 1, 12.5, 4.25, event);
+  const output = new Int32Array(ATOMIC_INPUT_RECORD_WORDS);
+  input.readLatestInto(output);
+  const local = decodeAtomicInputRecord(output);
+
+  assertEquals(local.xFixed, 800, "local x ignores viewport offset");
+  assertEquals(local.yFixed, 272, "local y ignores viewport offset");
 });
 
 Deno.test("shared wake sequence releases a blocking Worker consumer", async () => {

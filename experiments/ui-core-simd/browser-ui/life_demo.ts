@@ -1,5 +1,5 @@
 import { ATOMIC_INPUT_KIND, AtomicInputBuffer } from "../atomic_input.ts";
-import { writeDiscretePointerEvent, writeLatestPointerEvent } from "../atomic_input_dom.ts";
+import { writeDiscretePointerEventAt, writeLatestPointerEventAt } from "../atomic_input_dom.ts";
 import { LIFE_COMMAND, LifeSharedBoard } from "../life_shared.ts";
 import { SimdUi, type UiContainer, type UiDocument } from "../signals.ts";
 
@@ -116,12 +116,11 @@ export async function mountLifeDemo(
 
   await requestReady(worker, input, board);
   const updateViewport = (): void => {
-    const rect = canvas.getBoundingClientRect();
     board.setViewportFixed(
-      Math.round(rect.left * 64),
-      Math.round(rect.top * 64),
-      Math.round(rect.width * 64),
-      Math.round(rect.height * 64),
+      0,
+      0,
+      Math.round(canvas.clientWidth * 64),
+      Math.round(canvas.clientHeight * 64),
     );
   };
   updateViewport();
@@ -129,18 +128,46 @@ export async function mountLifeDemo(
   resizeObserver.observe(canvas);
 
   canvas.addEventListener("pointermove", (event) => {
-    writeLatestPointerEvent(input, ATOMIC_INPUT_KIND.pointerMove, TARGET_ID, event);
+    writeLatestPointerEventAt(
+      input,
+      ATOMIC_INPUT_KIND.pointerMove,
+      TARGET_ID,
+      event.offsetX,
+      event.offsetY,
+      event,
+    );
   });
   canvas.addEventListener("pointerdown", (event) => {
     event.preventDefault();
     if (event.isTrusted) canvas.setPointerCapture(event.pointerId);
-    writeDiscretePointerEvent(input, ATOMIC_INPUT_KIND.pointerDown, TARGET_ID, event);
+    writeDiscretePointerEventAt(
+      input,
+      ATOMIC_INPUT_KIND.pointerDown,
+      TARGET_ID,
+      event.offsetX,
+      event.offsetY,
+      event,
+    );
   });
   canvas.addEventListener("pointerup", (event) => {
-    writeDiscretePointerEvent(input, ATOMIC_INPUT_KIND.pointerUp, TARGET_ID, event);
+    writeDiscretePointerEventAt(
+      input,
+      ATOMIC_INPUT_KIND.pointerUp,
+      TARGET_ID,
+      event.offsetX,
+      event.offsetY,
+      event,
+    );
   });
   canvas.addEventListener("pointercancel", (event) => {
-    writeDiscretePointerEvent(input, ATOMIC_INPUT_KIND.pointerCancel, TARGET_ID, event);
+    writeDiscretePointerEventAt(
+      input,
+      ATOMIC_INPUT_KIND.pointerCancel,
+      TARGET_ID,
+      event.offsetX,
+      event.offsetY,
+      event,
+    );
   });
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 

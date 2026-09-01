@@ -25,11 +25,23 @@ export function writeLatestPointerEvent(
   targetId: number,
   event: PointerEventData,
 ): number {
+  return writeLatestPointerEventAt(input, kind, targetId, event.clientX, event.clientY, event);
+}
+
+/** Allocation-free extraction with caller-provided target-local coordinates. */
+export function writeLatestPointerEventAt(
+  input: AtomicInputBuffer,
+  kind: AtomicInputKind,
+  targetId: number,
+  x: number,
+  y: number,
+  event: PointerEventData,
+): number {
   return input.publishLatest(
     kind,
     targetId,
-    fixedCoordinate(event.clientX),
-    fixedCoordinate(event.clientY),
+    fixedCoordinate(x),
+    fixedCoordinate(y),
     event.pointerId,
     packFlags(event),
     timestampMicros(event.timeStamp),
@@ -44,11 +56,23 @@ export function writeDiscretePointerEvent(
   targetId: number,
   event: PointerEventData,
 ): boolean {
+  return writeDiscretePointerEventAt(input, kind, targetId, event.clientX, event.clientY, event);
+}
+
+/** Allocation-free discrete extraction with caller-provided target-local coordinates. */
+export function writeDiscretePointerEventAt(
+  input: AtomicInputBuffer,
+  kind: AtomicInputKind,
+  targetId: number,
+  x: number,
+  y: number,
+  event: PointerEventData,
+): boolean {
   return input.push(
     kind,
     targetId,
-    fixedCoordinate(event.clientX),
-    fixedCoordinate(event.clientY),
+    fixedCoordinate(x),
+    fixedCoordinate(y),
     event.pointerId,
     packFlags(event),
     timestampMicros(event.timeStamp),
