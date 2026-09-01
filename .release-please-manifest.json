@@ -1,4 +1,4 @@
 {
-  "packages/validator": "0.1.0",
-  "packages/validator-compiler": "0.1.0"
+  "packages/validator": "0.1.1",
+  "packages/validator-compiler": "0.1.3"
 }

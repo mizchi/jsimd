@@ -15,7 +15,7 @@ if (
   packageMetadata.name !== denoMetadata.name || packageMetadata.version !== denoMetadata.version ||
   JSON.stringify(Object.keys(packageMetadata.exports)) !== JSON.stringify(["."]) ||
   JSON.stringify(packageMetadata.bin) !==
-    JSON.stringify({ "jsimd-validator-compiler": "./dist/cli.js" }) ||
+    JSON.stringify({ "jsimd-validator-compiler": "./bin/jsimd-validator-compiler.js" }) ||
   denoMetadata.exports !== "./src/mod.ts"
 ) throw new Error("validator compiler package.json and deno.json release metadata differ");
 
@@ -144,6 +144,52 @@ try {
   if (!wasmDeclaration.includes("WasmBooleanValidator")) {
     throw new Error("generated Wasm declaration is missing its instantiation contract");
   }
+  const batchOutput = `${temporaryDirectory}/batch`;
+  const pathSeparator = Deno.build.os === "windows" ? ";" : ":";
+  const binaryDirectory = new URL("../node_modules/.bin/", import.meta.url).pathname;
+  const batchCli = await new Deno.Command("node", {
+    args: [
+      new URL("dist/cli.js", packageDirectory).pathname,
+      new URL("fixtures/batch-schemas.mjs", packageDirectory).pathname,
+      "--out",
+      batchOutput,
+      "--wasm-opt",
+    ],
+    env: {
+      PATH: `${binaryDirectory}${pathSeparator}${Deno.env.get("PATH") ?? ""}`,
+    },
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  if (!batchCli.success) throw new Error(new TextDecoder().decode(batchCli.stderr));
+  const batchWasm = await Deno.readFile(`${batchOutput}.wasm`);
+  if (!WebAssembly.validate(batchWasm as Uint8Array<ArrayBuffer>)) {
+    throw new Error("batch CLI generated invalid optimized Wasm");
+  }
+  const batchFactory = await import(
+    `${pathToFileUrl(batchOutput + ".js")}?smoke=${crypto.randomUUID()}`
+  );
+  const batch = batchFactory.instantiate(batchWasm);
+  const packet = Object.fromEntries(
+    Array.from({ length: 32 }, (_, index) => [`value${index}`, index + 50]),
+  );
+  const telemetry = Object.fromEntries(
+    Array.from({ length: 32 }, (_, index) => [`value${index}`, index + 150]),
+  );
+  if (
+    !batch.Packet.is(packet) || !batch.Telemetry.is(telemetry) ||
+    batch.Telemetry.is({ ...telemetry, value0: 99 })
+  ) {
+    throw new Error("batch CLI generated validators with the wrong semantics");
+  }
+  const batchDeclaration = await Deno.readTextFile(`${batchOutput}.d.ts`);
+  for (
+    const expected of ["export interface Outputs", "export type Packet", "export type Telemetry"]
+  ) {
+    if (!batchDeclaration.includes(expected)) {
+      throw new Error(`batch declaration is missing ${expected}`);
+    }
+  }
   for (const exportName of ["ZodUser", "ValibotUser"]) {
     const standardOutput = `${temporaryDirectory}/${exportName.toLowerCase()}`;
     const standardCli = await new Deno.Command("node", {
@@ -173,8 +219,11 @@ try {
     `${temporaryDirectory}/consumer.ts`,
     'import type { StandardSchemaV1 } from "@standard-schema/spec";\n' +
       'import schema, { type Output } from "./user.js";\n' +
+      'import type { Packet, Telemetry } from "./batch.js";\n' +
       "const compatible: StandardSchemaV1<unknown, Output> = schema;\n" +
-      "void compatible;\n",
+      "const packet = {} as Packet;\n" +
+      "const telemetry = {} as Telemetry;\n" +
+      "void compatible; void packet; void telemetry;\n",
   );
   const typecheck = await new Deno.Command("pnpm", {
     args: [
@@ -216,6 +265,7 @@ const [{ files, size, unpackedSize }] = JSON.parse(new TextDecoder().decode(pack
 const paths = new Set(files.map((file) => file.path));
 for (
   const required of [
+    "bin/jsimd-validator-compiler.js",
     "dist/cli.d.ts",
     "dist/cli.js",
     "dist/generate.d.ts",
@@ -228,6 +278,11 @@ for (
     "dist/normalize.js",
     "dist/types.d.ts",
     "dist/types.js",
+    "dist/wasm_opt.d.ts",
+    "dist/wasm_opt.js",
+    "docs/backends.md",
+    "docs/performance.md",
+    "docs/schema-support.md",
     "LICENSE",
     "README.md",
   ]

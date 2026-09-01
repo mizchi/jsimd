@@ -92,6 +92,14 @@ export interface CompiledArtifact {
   readonly ir: SchemaIR;
 }
 
+export interface CompiledBatchArtifact {
+  readonly backend: "wasm";
+  readonly files: CompiledFiles;
+  readonly code: string;
+  readonly declaration: string;
+  readonly ir: Readonly<Record<string, SchemaIR>>;
+}
+
 export interface CompiledFiles {
   readonly javascript: string;
   readonly typescript: string;

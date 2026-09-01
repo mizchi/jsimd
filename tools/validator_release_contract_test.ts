@@ -4,7 +4,9 @@ interface PackageMetadata {
   readonly name: string;
   readonly version: string;
   readonly description: string;
+  readonly bin?: Readonly<Record<string, string>>;
   readonly engines?: { readonly node?: string };
+  readonly files?: readonly string[];
   readonly keywords?: readonly string[];
 }
 
@@ -25,7 +27,16 @@ Deno.test("validator packages expose a Wasm-first release contract", async () =>
   const compiler = await readJson<PackageMetadata>("packages/validator-compiler/package.json");
   const runtime = await readJson<PackageMetadata>("packages/validator/package.json");
 
-  assertMatch(compiler.description, /Wasm SIMD AOT/);
+  assertMatch(compiler.description, /Binary-oriented.*Wasm SIMD AOT/);
+  assertEquals(compiler.bin, {
+    "jsimd-validator-compiler": "./bin/jsimd-validator-compiler.js",
+  });
+  const compilerBin = await readText(
+    "packages/validator-compiler/bin/jsimd-validator-compiler.js",
+  );
+  assertMatch(compilerBin, /from "\.\.\/dist\/cli\.js"/);
+  assertMatch(compilerBin, /await main\(/);
+  assert(compiler.files?.includes("docs/"), "compiler package must publish its linked docs");
   assertEquals(compiler.engines?.node, ">=24");
   assertEquals(runtime.engines?.node, ">=24");
   for (const keyword of ["wasm", "simd", "aot", "validation", "standard-schema"]) {
@@ -38,19 +49,89 @@ Deno.test("validator packages expose a Wasm-first release contract", async () =>
   const javascriptFallback = readme.indexOf("## JavaScript AOT fallback");
   assert(wasmQuickStart >= 0, "compiler README is missing the Wasm quick start");
   assert(
-    fitGuide >= 0 && fitGuide < wasmQuickStart,
-    "compiler README must explain fit and non-goals before the quick start",
+    fitGuide > wasmQuickStart,
+    "compiler README must lead with the primary Wasm AOT workflow before selection guidance",
   );
   assert(
     javascriptFallback > wasmQuickStart,
     "JavaScript fallback must appear after the primary Wasm workflow",
   );
   assertMatch(readme, /pnpm add -D @mizchi\/jsimd-validator-compiler/);
+  assertMatch(readme, /pnpm exec jsimd-validator-compiler/);
+  assertMatch(readme, /from "\.\/generated\/packet\.js"/);
+  assertMatch(readme, /new URL\("\.\/generated\/packet\.wasm"/);
+  assertMatch(readme, /Binary-oriented AOT validator/);
+  assertMatch(readme, /## Compile all exported schemas/);
+  assertMatch(readme, /validators\.Packet\.is\(input\)/);
+  assertMatch(readme, /--wasm-opt/);
   assertMatch(readme, /Wasm SIMD AOT is the CLI and programmatic default/);
   assertMatch(readme, /Instantiate once and reuse/);
   assertMatch(readme, /Choose JavaScript AOT instead/);
   assertMatch(readme, /--javascript/);
-  assert(!readme.includes("--wasm"), "the redundant --wasm compatibility flag must stay removed");
+  assert(
+    !/(^|\s)--wasm(?:\s|$)/m.test(readme),
+    "the redundant --wasm compatibility flag must stay removed",
+  );
+  assert(
+    !/[ぁ-んァ-ン一-龯]/u.test(readme),
+    "the published compiler README must be written in English",
+  );
+  assert(
+    !/abandoned|prototype|legacy|was tested and rejected/i.test(readme),
+    "the published compiler README must not read like an implementation history",
+  );
+  assert(
+    readme.split("\n").length <= 180,
+    "the compiler README must remain a concise entry point",
+  );
+  assertMatch(readme, /\.\/docs\/schema-support\.md/);
+  assertMatch(readme, /\.\/docs\/backends\.md/);
+  assertMatch(readme, /\.\/docs\/performance\.md/);
+  assertMatch(readme, /## Performance snapshot/);
+  assertMatch(readme, /32 \/ valid.*114\.1 ns/);
+  assertMatch(readme, /3\.47 kB.*1\.01 kB/);
+  assertMatch(readme, /Shared batch.*12\.47 kB.*1\.67 kB/);
+
+  const detailedDocs = await Promise.all(
+    ["schema-support", "backends", "performance"].map((name) =>
+      readText(`packages/validator-compiler/docs/${name}.md`)
+    ),
+  );
+  for (const document of detailedDocs) {
+    assert(
+      !/[ぁ-んァ-ン一-龯]/u.test(document),
+      "published compiler docs must be written in English",
+    );
+  }
+  const performance = detailedDocs[2]!;
+  assert(
+    !performance.includes("| JavaScript AOT |"),
+    "the compiler performance comparison must focus on the primary Wasm backend",
+  );
+  assertMatch(performance, /## Build size/);
+  assertMatch(performance, /Zod Mini compile/);
+  assertMatch(performance, /gzip total/i);
+  assertMatch(performance, /wasm-opt -Oz --enable-simd/);
+  assertMatch(performance, /Shared batch/);
+
+  const runtimeReadme = await readText("packages/validator/README.md");
+  const runtimeQuickStart = runtimeReadme.indexOf("## Quick start");
+  const runtimeScope = runtimeReadme.indexOf("## Scope");
+  assert(runtimeQuickStart >= 0, "runtime README is missing its quick start");
+  assert(
+    runtimeScope > runtimeQuickStart,
+    "runtime README must lead with usage before selection guidance",
+  );
+  assertMatch(runtimeReadme, /from "@mizchi\/jsimd-validator"/);
+  assertMatch(runtimeReadme, /from "@mizchi\/jsimd-validator\/debug"/);
+  assert(
+    !/[ぁ-んァ-ン一-龯]/u.test(runtimeReadme),
+    "the published runtime README must be written in English",
+  );
+  assert(
+    !/previous|formerly|legacy|internal asset|experiment/i.test(runtimeReadme),
+    "the published runtime README must not read like an implementation history",
+  );
 
   const smoke = await readText("tools/smoke-validator-compiler-package.ts");
   assertMatch(smoke, /--pack-destination/);

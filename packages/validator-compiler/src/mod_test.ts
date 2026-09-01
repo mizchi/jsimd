@@ -1,5 +1,6 @@
 import {
   compileSchema,
+  compileSchemas,
   type GeneratedValidatorModule,
   normalizeSchema,
   UnsupportedSchemaError,
@@ -656,6 +657,83 @@ Deno.test("generates a schema-specialized Wasm SIMD predicate for wide numeric o
   }
   assert(incompatible instanceof TypeError, "Wasm backend rejects parser options");
 });
+
+Deno.test("batches exported schemas into shared Wasm and glue", async () => {
+  const packet = numericSchema(8, 0);
+  const telemetry = numericSchema(16, 100);
+  const artifact = compileSchemas({ Packet: packet, Telemetry: telemetry });
+
+  assert(artifact.files.wasm !== undefined, "batch emits Wasm");
+  assert(
+    WebAssembly.validate(artifact.files.wasm as Uint8Array<ArrayBuffer>),
+    "batch Wasm validates",
+  );
+  const generated = await importArtifact(artifact.files.javascript) as unknown as {
+    instantiate(source: Uint8Array): {
+      Packet: { is(input: unknown): boolean };
+      Telemetry: { is(input: unknown): boolean };
+    };
+  };
+  const validators = generated.instantiate(artifact.files.wasm);
+  const packetValue = numericValue(8, 0);
+  const telemetryValue = numericValue(16, 100);
+  assert(validators.Packet.is(packetValue), "first exported schema accepts valid input");
+  assert(!validators.Packet.is({ ...packetValue, value7: 108 }), "first schema enforces bounds");
+  assert(validators.Telemetry.is(telemetryValue), "second exported schema accepts valid input");
+  assert(
+    !validators.Telemetry.is({ ...telemetryValue, value0: 99 }),
+    "second schema enforces its own bounds",
+  );
+  assert(
+    artifact.files.typescript.includes("export interface Outputs") &&
+      artifact.files.typescript.includes("export type Packet") &&
+      artifact.files.typescript.includes("export type Telemetry"),
+    "batch declaration exposes every output type",
+  );
+
+  const separate = [compileSchema(packet), compileSchema(telemetry)];
+  assert(
+    artifact.files.javascript.length < separate.reduce((sum, item) => sum + item.code.length, 0),
+    "batch shares JavaScript glue",
+  );
+  assert(
+    artifact.files.wasm.byteLength <
+      separate.reduce((sum, item) => sum + item.files.wasm!.byteLength, 0),
+    "batch shares Wasm module sections",
+  );
+
+  let unsupported: unknown;
+  try {
+    compileSchemas({ Packet: packet, NotASchema: 42 });
+  } catch (error) {
+    unsupported = error;
+  }
+  assert(
+    unsupported instanceof TypeError && unsupported.message.includes("NotASchema"),
+    "invalid exports fail with their export name",
+  );
+});
+
+function numericSchema(width: number, offset: number): object {
+  const properties = Object.fromEntries(
+    Array.from({ length: width }, (_, index) => [
+      `value${index}`,
+      { type: "number", minimum: offset + index, maximum: offset + index + 100 },
+    ]),
+  );
+  return {
+    type: "object",
+    properties,
+    required: Object.keys(properties),
+    additionalProperties: false,
+  };
+}
+
+function numericValue(width: number, offset: number): Record<string, number> {
+  return Object.fromEntries(
+    Array.from({ length: width }, (_, index) => [`value${index}`, offset + index + 50]),
+  );
+}
 
 async function importArtifact(code: string): Promise<GeneratedValidatorModule> {
   return await import(`data:text/javascript,${encodeURIComponent(code)}#${crypto.randomUUID()}`);

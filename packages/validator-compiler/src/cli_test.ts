@@ -4,6 +4,15 @@ Deno.test("CLI defaults to Wasm and requires an explicit JavaScript fallback", (
   const wasm = parseArgs(["schema.json", "--out", "generated/schema"]);
   assertEquals(wasm.backend, "wasm");
   assertEquals(wasm.target, "boolean");
+  assertEquals(wasm.wasmOpt, false);
+
+  const optimized = parseArgs([
+    "schemas.ts",
+    "--out",
+    "generated/schemas",
+    "--wasm-opt",
+  ]);
+  assertEquals(optimized.wasmOpt, true);
 
   const javascript = parseArgs([
     "schema.json",
@@ -17,6 +26,17 @@ Deno.test("CLI defaults to Wasm and requires an explicit JavaScript fallback", (
   assertThrows(
     () => parseArgs(["schema.json", "--out", "generated/schema", "--wasm"]),
     "unknown option: --wasm",
+  );
+  assertThrows(
+    () =>
+      parseArgs([
+        "schema.json",
+        "--out",
+        "generated/schema",
+        "--javascript",
+        "--wasm-opt",
+      ]),
+    "--wasm-opt requires the Wasm backend",
   );
 });
 

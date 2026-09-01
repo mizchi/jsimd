@@ -1,4 +1,6 @@
-import { compileSchema } from "../packages/validator-compiler/src/mod.ts";
+import { resolve } from "node:path";
+import { compileSchema, compileSchemas } from "../packages/validator-compiler/src/mod.ts";
+import { optimizeWasm } from "../packages/validator-compiler/src/wasm_opt.ts";
 import { numericObjectSchema } from "../packages/validator-compiler/benchmarks/_wasm_library_comparison.ts";
 
 const width = 32;
@@ -9,14 +11,16 @@ const fixtureDirectory = new URL(
 await Deno.mkdir(fixtureDirectory, { recursive: true });
 
 const schema = numericObjectSchema(width);
-const javascriptArtifact = compileSchema(schema, { backend: "javascript", target: "boolean" });
 const wasmArtifact = compileSchema(schema);
 const wasmBytes = wasmArtifact.files.wasm!;
+const wasmOptCommand = resolve("node_modules/.bin/wasm-opt");
+const optimizedWasmBytes = await optimizeWasm(wasmBytes, { command: wasmOptCommand });
 
 await Promise.all([
-  Deno.writeTextFile(new URL("jsimd-javascript-aot.ts", fixtureDirectory), javascriptArtifact.code),
   Deno.writeTextFile(new URL("jsimd-wasm-aot.ts", fixtureDirectory), wasmArtifact.code),
+  Deno.writeTextFile(new URL("jsimd-wasm-aot-opt.ts", fixtureDirectory), wasmArtifact.code),
   Deno.writeFile(new URL("jsimd-wasm-aot.wasm", fixtureDirectory), wasmBytes),
+  Deno.writeFile(new URL("jsimd-wasm-aot-opt.wasm", fixtureDirectory), optimizedWasmBytes),
   ...Object.entries(librarySources(width)).map(([name, source]) =>
     Deno.writeTextFile(new URL(`${name}.ts`, fixtureDirectory), source)
   ),
@@ -31,8 +35,8 @@ interface SizeRow {
 }
 
 const entries = [
-  ["jsimd JavaScript AOT", "jsimd-javascript-aot"],
   ["jsimd Wasm SIMD AOT", "jsimd-wasm-aot"],
+  ["jsimd Wasm SIMD AOT + wasm-opt", "jsimd-wasm-aot-opt"],
   ["Zod compile", "zod"],
   ["Zod Mini compile", "zod-mini"],
   ["Valibot is", "valibot"],
@@ -61,7 +65,11 @@ for (const [name, entry] of entries) {
   if (!result.success) throw new Error(new TextDecoder().decode(result.stderr));
 
   const javascript = await Deno.readFile(output);
-  const wasm = entry === "jsimd-wasm-aot" ? wasmBytes : new Uint8Array();
+  const wasm = entry === "jsimd-wasm-aot"
+    ? wasmBytes
+    : entry === "jsimd-wasm-aot-opt"
+    ? optimizedWasmBytes
+    : new Uint8Array();
   rows.push({
     name,
     javascript: javascript.byteLength,
@@ -89,6 +97,42 @@ console.log(
   }`,
 );
 
+const batchSchemas = Object.fromEntries(
+  Array.from({ length: 4 }, (_, index) => [
+    `Schema${index}`,
+    numericObjectSchema(width, index * 100),
+  ]),
+);
+const batchArtifact = compileSchemas(batchSchemas);
+const batchWasm = await optimizeWasm(batchArtifact.files.wasm!, { command: wasmOptCommand });
+const batchJavascript = await bundleGenerated("batch", batchArtifact.code);
+const separate = await Promise.all(
+  Object.entries(batchSchemas).map(async ([name, entrySchema]) => {
+    const artifact = compileSchema(entrySchema);
+    return {
+      javascript: await bundleGenerated(`separate-${name}`, artifact.code),
+      wasm: await optimizeWasm(artifact.files.wasm!, { command: wasmOptCommand }),
+    };
+  }),
+);
+const separateJavascript = separate.reduce((sum, item) => sum + item.javascript.byteLength, 0);
+const separateWasm = separate.reduce((sum, item) => sum + item.wasm.byteLength, 0);
+const separateGzip = await sumGzip(separate.flatMap((item) => [item.javascript, item.wasm]));
+const batchGzip = await sumGzip([batchJavascript, batchWasm]);
+console.log("\n4 x 32-field schemas after wasm-opt -Oz --enable-simd");
+console.log("| layout | minified JS | Wasm | total | gzip total |");
+console.log("| --- | ---: | ---: | ---: | ---: |");
+console.log(
+  `| separate artifacts | ${format(separateJavascript)} | ${format(separateWasm)} | ${
+    format(separateJavascript + separateWasm)
+  } | ${format(separateGzip)} |`,
+);
+console.log(
+  `| shared batch | ${format(batchJavascript.byteLength)} | ${format(batchWasm.byteLength)} | ${
+    format(batchJavascript.byteLength + batchWasm.byteLength)
+  } | ${format(batchGzip)} |`,
+);
+
 function librarySources(fieldCount: number): Record<string, string> {
   return {
     zod: `import * as z from "zod";
@@ -112,6 +156,34 @@ const schema=type(shape).onUndeclaredKey("reject");
 export const validate=input=>schema.allows(input);
 `,
   };
+}
+
+async function bundleGenerated(name: string, source: string): Promise<Uint8Array> {
+  const input = new URL(`${name}.ts`, fixtureDirectory);
+  const output = new URL(`${name}.bundle.js`, fixtureDirectory);
+  await Deno.writeTextFile(input, source);
+  const result = await new Deno.Command("pnpm", {
+    args: [
+      "exec",
+      "esbuild",
+      input.pathname,
+      "--bundle",
+      "--format=esm",
+      "--minify",
+      "--platform=browser",
+      "--target=es2022",
+      `--outfile=${output.pathname}`,
+    ],
+    stdout: "null",
+    stderr: "piped",
+  }).output();
+  if (!result.success) throw new Error(new TextDecoder().decode(result.stderr));
+  return await Deno.readFile(output);
+}
+
+async function sumGzip(entries: readonly Uint8Array[]): Promise<number> {
+  const compressed = await Promise.all(entries.map(gzip));
+  return compressed.reduce((sum, item) => sum + item.byteLength, 0);
 }
 
 async function gzip(bytes: Uint8Array): Promise<Uint8Array> {

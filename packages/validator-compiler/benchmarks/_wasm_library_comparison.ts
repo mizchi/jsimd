@@ -24,11 +24,15 @@ export interface StrictNumericComparison {
   ) => GeneratedBooleanModule;
 }
 
-export function numericObjectSchema(width: number) {
+export function numericObjectSchema(width: number, offset = 0) {
   const properties = Object.fromEntries(
     Array.from({ length: width }, (_, index) => [
       `value${index}`,
-      { type: "number" as const, minimum: index, maximum: index + 100 },
+      {
+        type: "number" as const,
+        minimum: offset + index,
+        maximum: offset + index + 100,
+      },
     ]),
   );
   return {

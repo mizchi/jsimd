@@ -1,5 +1,6 @@
 import type {
   CompiledArtifact,
+  CompiledBatchArtifact,
   CompileSchemaOptions,
   NumberIR,
   ObjectIR,
@@ -41,7 +42,7 @@ export function generateWasmValidator(
     throw new TypeError("Wasm backend does not support JSON parsing or diagnostics");
   }
   const plan = analyze(ir);
-  const wasm = encodeModule(plan.lanes);
+  const wasm = encodeModule([{ exportName: "is", lanes: plan.lanes }]);
   const javascript = glue(plan);
   const typescript = declaration(plan);
   return {
@@ -50,6 +51,41 @@ export function generateWasmValidator(
     code: javascript,
     declaration: typescript,
     ir,
+  };
+}
+
+export function generateWasmValidators(
+  entries: readonly { readonly name: string; readonly ir: SchemaIR }[],
+  options: CompileSchemaOptions,
+): CompiledBatchArtifact {
+  if (options.target !== "boolean") {
+    throw new TypeError('Wasm backend currently requires target: "boolean"');
+  }
+  if (options.jsonParser === "native" || options.diagnosticMode === "single-pass") {
+    throw new TypeError("Wasm backend does not support JSON parsing or diagnostics");
+  }
+  if (entries.length === 0 || entries.length > 256) {
+    throw new TypeError("Wasm batch requires 1 to 256 exported schemas");
+  }
+  const plans = entries.map(({ name, ir }) => {
+    try {
+      return { name, ir, plan: analyze(ir) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new TypeError(`Export ${JSON.stringify(name)}: ${message}`, { cause: error });
+    }
+  });
+  const wasm = encodeModule(
+    plans.map(({ plan }, index) => ({ exportName: `v${index}`, lanes: plan.lanes })),
+  );
+  const javascript = batchGlue(plans);
+  const typescript = batchDeclaration(plans);
+  return {
+    backend: "wasm",
+    files: { javascript, typescript, wasm },
+    code: javascript,
+    declaration: typescript,
+    ir: Object.fromEntries(plans.map(({ name, ir }) => [name, ir])),
   };
 }
 
@@ -151,17 +187,54 @@ function collectStaticNumbers(
   }
 }
 
-function encodeModule(lanes: readonly NumericLane[]): Uint8Array<ArrayBuffer> {
-  const parameters = lanes.map(() => 0x7c);
-  const type = [0x60, ...u32(parameters.length), ...parameters, 0x01, 0x7f];
-  const typeSection = section(0x01, vector([type]));
-  const functionSection = section(0x03, vector([[0x00]]));
-  const name = new TextEncoder().encode("is");
+function encodeModule(
+  functions: readonly {
+    readonly exportName: string;
+    readonly lanes: readonly NumericLane[];
+  }[],
+): Uint8Array<ArrayBuffer> {
+  const types: number[][] = [];
+  const typeByArity = new Map<number, number>();
+  const functionTypes = functions.map(({ lanes }) => {
+    let index = typeByArity.get(lanes.length);
+    if (index === undefined) {
+      index = types.length;
+      typeByArity.set(lanes.length, index);
+      const parameters = lanes.map(() => 0x7c);
+      types.push([0x60, ...u32(parameters.length), ...parameters, 0x01, 0x7f]);
+    }
+    return [...u32(index)];
+  });
+  const typeSection = section(0x01, vector(types));
+  const functionSection = section(0x03, vector(functionTypes));
   const exportSection = section(
     0x07,
-    vector([[...u32(name.length), ...name, 0x00, 0x00]]),
+    vector(functions.map(({ exportName }, index) => {
+      const name = new TextEncoder().encode(exportName);
+      return [...u32(name.length), ...name, 0x00, ...u32(index)];
+    })),
   );
+  const codeSection = section(
+    0x0a,
+    vector(functions.map(({ lanes }) => encodeBody(lanes))),
+  );
+  return new Uint8Array([
+    0x00,
+    0x61,
+    0x73,
+    0x6d,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    ...typeSection,
+    ...functionSection,
+    ...exportSection,
+    ...codeSection,
+  ]);
+}
 
+function encodeBody(lanes: readonly NumericLane[]): number[] {
   const groups = Map.groupBy(
     lanes,
     (lane) => `${lane.lowerOpcode}:${lane.upperOpcode}`,
@@ -178,21 +251,7 @@ function encodeModule(lanes: readonly NumericLane[]): Uint8Array<ArrayBuffer> {
   }
   instructions.push(0x0b);
   const body = [0x01, 0x01, 0x7b, ...instructions]; // one reusable v128 local
-  const codeSection = section(0x0a, vector([[...u32(body.length), ...body]]));
-  return new Uint8Array([
-    0x00,
-    0x61,
-    0x73,
-    0x6d,
-    0x01,
-    0x00,
-    0x00,
-    0x00,
-    ...typeSection,
-    ...functionSection,
-    ...exportSection,
-    ...codeSection,
-  ]);
+  return [...u32(body.length), ...body];
 }
 
 function emitPair(
@@ -265,6 +324,65 @@ export const instantiate=source=>{const module=source instanceof WebAssembly.Mod
 `;
 }
 
+function batchGlue(
+  entries: readonly {
+    readonly name: string;
+    readonly plan: ObjectPlan;
+  }[],
+): string {
+  const predicates = entries.map(({ plan }, index) => batchPredicate(plan, index));
+  const constants = predicates.map((item) => item.constants).join("");
+  const validators = predicates.map(({ body }, index) =>
+    `const predicate${index}=wasm.v${index},is${index}=value=>{${body}};`
+  ).join("");
+  const result = entries.map(({ name }, index) => `${JSON.stringify(name)}:{is:is${index}}`).join(
+    ",",
+  );
+  return `const own=(value,key)=>Object.prototype.hasOwnProperty.call(value,key);${constants}
+export const instantiate=source=>{const module=source instanceof WebAssembly.Module?source:new WebAssembly.Module(source),wasm=new WebAssembly.Instance(module).exports;${validators}return{${result}}};
+`;
+}
+
+function batchPredicate(
+  plan: ObjectPlan,
+  index: number,
+): { readonly constants: string; readonly body: string } {
+  const fields = plan.schema.fields;
+  const fieldNames = fields.map((field) => field.name);
+  const values = fields.map((field) => `value[${JSON.stringify(field.name)}]`);
+  const numericValues = plan.lanes.map((lane) => lane.access);
+  const first = plan.lanes.find((lane) => lane.depth === 1);
+  const firstValue = first?.access;
+  const lower = first?.node.minimum !== undefined && first.node.exclusiveMinimum ? ">" : ">=";
+  const upper = first?.node.maximum !== undefined && first.node.exclusiveMaximum ? "<" : "<=";
+  const firstInteger = first?.node.integer ? `||!Number.isInteger(${firstValue})` : "";
+  const preflight = fields.length >= EARLY_PREFLIGHT_MIN_FIELDS && first !== undefined
+    ? `if(typeof ${firstValue}!=="number"${firstInteger}||!(${firstValue}${lower}${first.minimum}&&${firstValue}${upper}${first.maximum}))return false;`
+    : "";
+  const required = fields.map((field) => `own(value,${JSON.stringify(field.name)})`).join("&&");
+  const types = values.map((value, fieldIndex) =>
+    fieldPredicate(value, fields[fieldIndex]!.node, true)
+  ).join("&&");
+  const orderedShape = fields.length >= ORDERED_SHAPE_MIN_FIELDS;
+  const expected = `expected${index}`;
+  const known = `known${index}`;
+  const shape = orderedShape
+    ? `const keys=Object.keys(value);let keyIndex=0;if(keys.length===${fields.length})for(;keyIndex<${fields.length}&&keys[keyIndex]===${expected}[keyIndex];keyIndex++);if(keyIndex!==${fields.length}){for(const key of keys)if(!${known}.has(key))return false;if(keys.length!==${fields.length}&&!(${required}))return false}`
+    : `const keys=Object.keys(value);for(const key of keys)switch(key){${
+      fields.map((field) => `case ${JSON.stringify(field.name)}:`).join("")
+    }break;default:return false}if(keys.length!==${fields.length}&&!(${required}))return false;`;
+  const constants = orderedShape
+    ? `const ${expected}=${JSON.stringify(fieldNames)},${known}=new Set(${expected});`
+    : "";
+  return {
+    constants,
+    body:
+      `if(value===null||typeof value!=="object"||Array.isArray(value))return false;${preflight}${shape}if(!(${types}))return false;return predicate${index}(${
+        numericValues.join(",")
+      })!==0`,
+  };
+}
+
 function fieldPredicate(value: string, node: SchemaIR, flattenStatic: boolean): string {
   if (node.kind === "number") {
     const type = node.integer
@@ -329,6 +447,90 @@ function declaration(plan: ObjectPlan): string {
 export interface WasmBooleanValidator { readonly is: (input: unknown) => input is Output; }
 export declare function instantiate(source: ArrayBuffer | Uint8Array | WebAssembly.Module): WasmBooleanValidator;
 `;
+}
+
+function batchDeclaration(
+  entries: readonly {
+    readonly name: string;
+    readonly plan: ObjectPlan;
+  }[],
+): string {
+  const outputs = entries.map(({ name, plan }) =>
+    `readonly ${JSON.stringify(name)}: ${objectOutput(plan.schema)};`
+  ).join("\n  ");
+  const aliases = entries.filter(({ name }) => canDeclareTypeAlias(name)).map(({ name }) =>
+    `export type ${name} = Outputs[${JSON.stringify(name)}];`
+  ).join("\n");
+  const validators = entries.map(({ name }) =>
+    `readonly ${JSON.stringify(name)}: WasmBooleanValidator<Outputs[${JSON.stringify(name)}]>;`
+  ).join("\n  ");
+  return `export interface Outputs {
+  ${outputs}
+}
+${aliases}
+export interface WasmBooleanValidator<Output> { readonly is: (input: unknown) => input is Output; }
+export interface WasmValidators {
+  ${validators}
+}
+export declare function instantiate(source: ArrayBuffer | Uint8Array | WebAssembly.Module): WasmValidators;
+`;
+}
+
+const TYPESCRIPT_RESERVED_NAMES = new Set([
+  "any",
+  "boolean",
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "implements",
+  "import",
+  "in",
+  "instanceof",
+  "interface",
+  "let",
+  "new",
+  "null",
+  "number",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "return",
+  "static",
+  "string",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "type",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+]);
+
+function canDeclareTypeAlias(name: string): boolean {
+  return /^[A-Za-z_$][\w$]*$/.test(name) && !TYPESCRIPT_RESERVED_NAMES.has(name);
 }
 
 function objectOutput(object: ObjectIR): string {

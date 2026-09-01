@@ -1,6 +1,6 @@
 {
   "name": "@mizchi/jsimd-validator",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Wasm SIMD range validation for typed numeric arrays",
   "type": "module",
   "exports": {
