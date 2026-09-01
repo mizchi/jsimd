@@ -1,4 +1,4 @@
-import { LIFE_COMMAND, LifeSharedBoard } from "./life_shared.ts";
+import { LIFE_COMMAND, LIFE_STATS_WORDS, LifeSharedBoard } from "./life_shared.ts";
 
 function assertEquals(actual: unknown, expected: unknown): void {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -44,6 +44,33 @@ Deno.test("LifeSharedBoard associates an input timestamp with its published fram
   writer.publish(simulation.index, 1, 20);
   assertEquals(reader.inputSequence, 1);
   assertEquals(reader.inputTimeMicros, 123_456);
+});
+
+Deno.test("LifeSharedBoard snapshots metadata without copying cells", () => {
+  const board = LifeSharedBoard.create(4, 3);
+  const stats = new Int32Array(LIFE_STATS_WORDS);
+  const write = board.beginWrite();
+  assertEquals(board.tryStatsInto(stats), false);
+  board.publish(write.index, 5, 42, 123_456, 77);
+
+  assertEquals(board.tryStatsInto(stats), true);
+  assertEquals(Array.from(stats), [1, 5, 42, 1, 123_456, 1, 77]);
+  assertThrows(() => board.tryStatsInto(new Int32Array(LIFE_STATS_WORDS - 1)), RangeError);
+});
+
+Deno.test("LifeSharedBoard can omit cell snapshots for an offscreen renderer", () => {
+  const writer = LifeSharedBoard.create(1_024, 640, { cellSnapshots: false });
+  const reader = LifeSharedBoard.attach(writer.buffer);
+
+  assertEquals(writer.buffer.byteLength, 80);
+  assertEquals(reader.hasCellSnapshots, false);
+  const write = writer.beginWrite();
+  assertEquals(write.cells.length, 0);
+  writer.publish(write.index, 12_345, 98, 654_321, 1_234);
+  const stats = new Int32Array(LIFE_STATS_WORDS);
+  assertEquals(reader.tryStatsInto(stats), true);
+  assertEquals(Array.from(stats), [1, 12_345, 98, 1, 654_321, 1, 1_234]);
+  assertThrows(() => reader.trySnapshotInto(new Uint8Array(writer.cellCount)), Error);
 });
 
 Deno.test("LifeSharedBoard rejects snapshots while a write is active", () => {

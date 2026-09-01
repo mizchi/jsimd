@@ -1,7 +1,7 @@
 import { ATOMIC_INPUT_KIND, AtomicInputBuffer } from "../atomic_input.ts";
 import { writeDiscretePointerEventAt, writeLatestPointerEventAt } from "../atomic_input_dom.ts";
-import type { LifeRuntime } from "../life_kernel.ts";
-import { LIFE_COMMAND, LifeSharedBoard } from "../life_shared.ts";
+import type { LifeRenderer, LifeRuntime } from "../life_options.ts";
+import { LIFE_COMMAND, LIFE_STATS_WORDS, LifeSharedBoard } from "../life_shared.ts";
 import { SimdUi, type UiContainer, type UiDocument } from "../signals.ts";
 
 const TARGET_ID = 1;
@@ -14,8 +14,11 @@ export interface LifeDemoResult {
   readonly droppedInputs: number;
   readonly stepMicros: number;
   readonly running: boolean;
+  readonly renderer: LifeRenderer;
   readonly runtime: LifeRuntime;
   readonly inputLatencyMs: number;
+  readonly paintFps: number;
+  readonly renderMicros: number;
   readonly computeBytes: number;
   readonly sharedBytes: number;
 }
@@ -26,11 +29,12 @@ export async function mountLifeDemo(
   runtime: LifeRuntime,
   width: number,
   height: number,
+  renderer: LifeRenderer,
 ): Promise<LifeDemoResult | null> {
   document.title = "Life, off the main thread — jsimd";
   document.body.classList.add("life-mode");
   const input = AtomicInputBuffer.create(256);
-  const board = LifeSharedBoard.create(width, height);
+  const board = LifeSharedBoard.create(width, height, { cellSnapshots: renderer === "main" });
   const worker = new Worker(new URL("./life_worker.ts", import.meta.url), { type: "module" });
   const computeBytes = runtime === "simd"
     ? Math.ceil(board.cellCount * 2 / 65_536) * 65_536
@@ -40,6 +44,7 @@ export async function mountLifeDemo(
   const generation = ui.signal(0);
   const live = ui.signal(0);
   const stepMedianMicros = ui.signal(0);
+  const renderMedianMicros = ui.signal(0);
   const fps = ui.signal(0);
   const inputLatencyMs = ui.signal(0);
   const running = ui.signal(true);
@@ -76,21 +81,31 @@ export async function mountLifeDemo(
       ui.element("aside", { className: "life-console" }, [
         ui.element("nav", { className: "life-runtime", ariaLabel: "Life compute runtime" }, [
           ui.element("a", {
-            href: lifeHref("simd", width),
+            href: lifeHref("simd", width, renderer),
             className: runtime === "simd" ? "active" : "",
           }, ["Wasm SIMD"]),
           ui.element("a", {
-            href: lifeHref("scalar", width),
+            href: lifeHref("scalar", width, renderer),
             className: runtime === "scalar" ? "active" : "",
           }, ["Scalar JS"]),
         ]),
         ui.element("nav", { className: "life-size", ariaLabel: "Life grid size" }, [
           ...[256, 512, 1_024].map((candidate) =>
             ui.element("a", {
-              href: lifeHref(runtime, candidate),
+              href: lifeHref(runtime, candidate, renderer),
               className: width === candidate ? "active" : "",
             }, [`${candidate}×${candidate * 5 / 8}`])
           ),
+        ]),
+        ui.element("nav", { className: "life-renderer", ariaLabel: "Life canvas renderer" }, [
+          ui.element("a", {
+            href: lifeHref(runtime, width, "offscreen"),
+            className: renderer === "offscreen" ? "active" : "",
+          }, ["Worker canvas"]),
+          ui.element("a", {
+            href: lifeHref(runtime, width, "main"),
+            className: renderer === "main" ? "active" : "",
+          }, ["Main canvas"]),
         ]),
         ui.element("div", { className: "life-stats" }, [
           stat(ui, "publications", ui.text([generation], () => generation.value.toLocaleString())),
@@ -103,10 +118,16 @@ export async function mountLifeDemo(
           stat(ui, "paint", ui.text([fps], () => `${fps.value.toFixed(0)} fps`)),
           stat(
             ui,
+            "render median",
+            ui.text([renderMedianMicros], () => `${renderMedianMicros.value.toFixed(0)} µs`),
+          ),
+          stat(
+            ui,
             "input → frame",
             ui.text([inputLatencyMs], () => `${inputLatencyMs.value.toFixed(1)} ms`),
           ),
           stat(ui, "compute memory", ui.text([], () => formatBytes(computeBytes))),
+          stat(ui, "shared memory", ui.text([], () => formatBytes(sharedBytes))),
         ]),
         ui.element("div", { className: "life-controls" }, [
           ui.element("button", { id: "life-toggle", className: "life-primary" }, [
@@ -136,24 +157,29 @@ export async function mountLifeDemo(
       ui.element("span", {}, ["SharedArrayBuffer"]),
       ui.element("span", {}, ["Atomics.wait / notify"]),
       ui.element("span", {}, [runtime === "simd" ? "i8x16 Life kernel" : "Scalar baseline"]),
-      ui.element("span", {}, ["Canvas snapshot"]),
+      ui.element("span", {}, [renderer === "offscreen" ? "OffscreenCanvas" : "Main canvas"]),
     ]),
   ]);
   host.replaceChildren();
   await ui.mount(host as unknown as UiContainer, root);
 
   const canvas = required<HTMLCanvasElement>(host, "life-canvas");
-  const context = canvas.getContext("2d", { alpha: false });
-  if (context === null) throw new Error("2D canvas is unavailable");
-  const image = context.createImageData(width, height);
-  const pixels = new Uint32Array(image.data.buffer);
-  const snapshot = new Uint8Array(board.cellCount);
+  const context = renderer === "main" ? canvas.getContext("2d", { alpha: false }) : null;
+  if (renderer === "main" && context === null) throw new Error("2D canvas is unavailable");
+  if (renderer === "offscreen" && typeof canvas.transferControlToOffscreen !== "function") {
+    throw new Error("OffscreenCanvas is unavailable");
+  }
+  const image = context?.createImageData(width, height) ?? null;
+  const pixels = image === null ? null : new Uint32Array(image.data.buffer);
+  const snapshot = renderer === "main" ? new Uint8Array(board.cellCount) : null;
+  const stats = new Int32Array(LIFE_STATS_WORDS);
   const toggle = required<HTMLButtonElement>(host, "life-toggle");
   const stepButton = required<HTMLButtonElement>(host, "life-step");
   const rate = required<HTMLInputElement>(host, "life-rate");
   const rateValue = required<HTMLElement>(host, "life-rate-value");
 
-  await requestReady(worker, input, board, runtime);
+  const offscreen = renderer === "offscreen" ? canvas.transferControlToOffscreen() : undefined;
+  await requestReady(worker, input, board, runtime, renderer, offscreen);
   const updateViewport = (): void => {
     board.setViewportFixed(
       0,
@@ -229,43 +255,65 @@ export async function mountLifeDemo(
   let frames = 0;
   let fpsStarted = performance.now();
   const stepSamples: number[] = [];
+  const renderSamples: number[] = [];
   const inputLatencySamples: number[] = [];
   const renderFrame = (): void => {
     running.value = board.running;
-    const nextGeneration = board.generation;
-    if (nextGeneration !== renderedGeneration && board.trySnapshotInto(snapshot)) {
-      renderedGeneration = nextGeneration;
-      for (let index = 0; index < snapshot.length; index++) {
-        pixels[index] = snapshot[index] === 0 ? 0xff111a17 : 0xff9dff73;
+    if (board.tryStatsInto(stats)) {
+      const nextGeneration = stats[0]! >>> 0;
+      if (nextGeneration === renderedGeneration) {
+        updateFps();
+        requestAnimationFrame(renderFrame);
+        return;
       }
-      context.putImageData(image, 0, 0);
+      let renderMicros = stats[6]! >>> 0;
+      if (renderer === "main") {
+        if (
+          snapshot === null || context === null || image === null || pixels === null ||
+          !board.trySnapshotInto(snapshot)
+        ) {
+          requestAnimationFrame(renderFrame);
+          return;
+        }
+        const renderStarted = performance.now();
+        for (let index = 0; index < snapshot.length; index++) {
+          pixels[index] = snapshot[index] === 0 ? 0xff111a17 : 0xff9dff73;
+        }
+        context.putImageData(image, 0, 0);
+        renderMicros = (performance.now() - renderStarted) * 1_000;
+      }
+      renderedGeneration = nextGeneration;
       ui.batch(() => {
         generation.value = nextGeneration;
-        live.value = board.liveCount;
-        const nextStepMicros = board.stepMicros;
+        live.value = stats[1]! >>> 0;
+        const nextStepMicros = stats[2]! >>> 0;
         if (nextStepMicros > 0) {
-          stepSamples.push(nextStepMicros);
-          if (stepSamples.length > 120) stepSamples.shift();
+          appendSample(stepSamples, nextStepMicros);
           stepMedianMicros.value = median(stepSamples);
         }
-        const inputSequence = board.inputSequence;
+        if (renderMicros > 0) {
+          appendSample(renderSamples, renderMicros);
+          renderMedianMicros.value = median(renderSamples);
+        }
+        const inputSequence = stats[5]! >>> 0;
         if (inputSequence !== renderedInputSequence) {
           renderedInputSequence = inputSequence;
           const nowMicros = Math.round(performance.now() * 1_000) >>> 0;
-          inputLatencySamples.push(((nowMicros - board.inputTimeMicros) >>> 0) / 1_000);
-          if (inputLatencySamples.length > 120) inputLatencySamples.shift();
+          appendSample(inputLatencySamples, ((nowMicros - (stats[4]! >>> 0)) >>> 0) / 1_000);
           inputLatencyMs.value = median(inputLatencySamples);
         }
       });
       frames++;
     }
-    const now = performance.now();
-    if (now - fpsStarted >= 500) {
-      fps.value = frames * 1_000 / (now - fpsStarted);
-      frames = 0;
-      fpsStarted = now;
-    }
+    updateFps();
     requestAnimationFrame(renderFrame);
+  };
+  const updateFps = (): void => {
+    const now = performance.now();
+    if (now - fpsStarted < 500) return;
+    fps.value = frames * 1_000 / (now - fpsStarted);
+    frames = 0;
+    fpsStarted = now;
   };
   requestAnimationFrame(renderFrame);
 
@@ -311,15 +359,23 @@ export async function mountLifeDemo(
     droppedInputs: input.droppedCount,
     stepMicros: stepMedianMicros.value,
     running: board.running,
+    renderer,
     runtime,
     inputLatencyMs: inputLatencyMs.value,
+    paintFps: fps.value,
+    renderMicros: renderMedianMicros.value,
     computeBytes,
     sharedBytes,
   };
 }
 
-function lifeHref(runtime: LifeRuntime, width: number): string {
-  return `?run=life&runtime=${runtime}&size=${width}`;
+function lifeHref(runtime: LifeRuntime, width: number, renderer: LifeRenderer): string {
+  return `?run=life&runtime=${runtime}&size=${width}&renderer=${renderer}`;
+}
+
+function appendSample(samples: number[], value: number): void {
+  samples.push(value);
+  if (samples.length > 120) samples.shift();
 }
 
 function median(values: readonly number[]): number {
@@ -351,18 +407,23 @@ function requestReady(
   input: AtomicInputBuffer,
   board: LifeSharedBoard,
   runtime: LifeRuntime,
+  renderer: LifeRenderer,
+  canvas?: OffscreenCanvas,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     worker.onmessage = (event) => {
       if (event.data?.type === "ready") resolve();
     };
     worker.onerror = (event) => reject(event.error ?? new Error(event.message));
-    worker.postMessage({
+    const message = {
       type: "init",
       inputBuffer: input.buffer,
       boardBuffer: board.buffer,
       runtime,
-    });
+      renderer,
+      canvas,
+    };
+    worker.postMessage(message, canvas === undefined ? [] : [canvas]);
   });
 }
 

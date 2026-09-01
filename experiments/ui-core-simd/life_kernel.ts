@@ -4,8 +4,6 @@ interface LifeKernelExports extends WebAssembly.Exports {
 
 let modulePromise: Promise<WebAssembly.Module> | undefined;
 
-export type LifeRuntime = "scalar" | "simd";
-
 export class WasmSimdLife {
   readonly width: number;
   readonly height: number;

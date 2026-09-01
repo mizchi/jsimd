@@ -4,6 +4,9 @@ const MAGIC = 0x4c494645;
 const VERSION = 1;
 const HEADER_WORDS = 20;
 const HEADER_BYTES = HEADER_WORDS * Int32Array.BYTES_PER_ELEMENT;
+const EMPTY_CELLS = new Uint8Array(0);
+
+export const LIFE_STATS_WORDS = 7;
 
 const HEADER = {
   magic: 0,
@@ -25,6 +28,7 @@ const HEADER = {
   rate: 16,
   inputTimeMicros: 17,
   inputSequence: 18,
+  renderMicros: 19,
 } as const;
 
 export const LIFE_COMMAND = {
@@ -42,13 +46,18 @@ export interface LifeWriteBuffer {
   readonly cells: Uint8Array;
 }
 
+export interface LifeSharedBoardOptions {
+  readonly cellSnapshots?: boolean;
+}
+
 export class LifeSharedBoard {
   readonly buffer: SharedArrayBuffer;
   readonly width: number;
   readonly height: number;
   readonly cellCount: number;
+  readonly hasCellSnapshots: boolean;
   readonly #header: Int32Array;
-  readonly #boards: readonly [Uint8Array, Uint8Array];
+  readonly #boards: readonly [Uint8Array, Uint8Array] | null;
 
   private constructor(buffer: SharedArrayBuffer) {
     this.buffer = buffer;
@@ -62,20 +71,28 @@ export class LifeSharedBoard {
     this.width = this.#header[HEADER.width];
     this.height = this.#header[HEADER.height];
     this.cellCount = this.width * this.height;
+    const snapshotBytes = HEADER_BYTES + this.cellCount * 2;
     if (
       this.width <= 0 ||
       this.height <= 0 ||
-      buffer.byteLength !== HEADER_BYTES + this.cellCount * 2
+      (buffer.byteLength !== HEADER_BYTES && buffer.byteLength !== snapshotBytes)
     ) {
       throw new TypeError("invalid life shared-board dimensions");
     }
-    this.#boards = [
-      new Uint8Array(buffer, HEADER_BYTES, this.cellCount),
-      new Uint8Array(buffer, HEADER_BYTES + this.cellCount, this.cellCount),
-    ];
+    this.hasCellSnapshots = buffer.byteLength === snapshotBytes;
+    this.#boards = this.hasCellSnapshots
+      ? [
+        new Uint8Array(buffer, HEADER_BYTES, this.cellCount),
+        new Uint8Array(buffer, HEADER_BYTES + this.cellCount, this.cellCount),
+      ]
+      : null;
   }
 
-  static create(width: number, height: number): LifeSharedBoard {
+  static create(
+    width: number,
+    height: number,
+    options: LifeSharedBoardOptions = {},
+  ): LifeSharedBoard {
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
       throw new RangeError("life board dimensions must be positive integers");
     }
@@ -83,7 +100,9 @@ export class LifeSharedBoard {
     if (!Number.isSafeInteger(cellCount) || cellCount > 16_777_216) {
       throw new RangeError("life board is too large");
     }
-    const buffer = new SharedArrayBuffer(HEADER_BYTES + cellCount * 2);
+    const buffer = new SharedArrayBuffer(
+      HEADER_BYTES + (options.cellSnapshots === false ? 0 : cellCount * 2),
+    );
     const header = new Int32Array(buffer, 0, HEADER_WORDS);
     header[HEADER.magic] = MAGIC;
     header[HEADER.version] = VERSION;
@@ -117,6 +136,10 @@ export class LifeSharedBoard {
 
   get inputSequence(): number {
     return Atomics.load(this.#header, HEADER.inputSequence) >>> 0;
+  }
+
+  get renderMicros(): number {
+    return Atomics.load(this.#header, HEADER.renderMicros) >>> 0;
   }
 
   get running(): boolean {
@@ -177,7 +200,7 @@ export class LifeSharedBoard {
       throw new Error("life shared-board already has an active writer");
     }
     const index = (1 - Atomics.load(this.#header, HEADER.front)) as 0 | 1;
-    return { index, cells: this.#boards[index] };
+    return { index, cells: this.#boards?.[index] ?? EMPTY_CELLS };
   }
 
   publish(
@@ -185,12 +208,14 @@ export class LifeSharedBoard {
     liveCount: number,
     stepMicros: number,
     inputTimeMicros?: number,
+    renderMicros = 0,
   ): void {
     if ((Atomics.load(this.#header, HEADER.sequence) & 1) === 0) {
       throw new Error("life shared-board publish requires beginWrite");
     }
     Atomics.store(this.#header, HEADER.liveCount, liveCount | 0);
     Atomics.store(this.#header, HEADER.stepMicros, Math.max(0, Math.round(stepMicros)) | 0);
+    Atomics.store(this.#header, HEADER.renderMicros, Math.max(0, Math.round(renderMicros)) | 0);
     if (inputTimeMicros !== undefined) {
       Atomics.store(this.#header, HEADER.inputTimeMicros, inputTimeMicros | 0);
       Atomics.add(this.#header, HEADER.inputSequence, 1);
@@ -204,6 +229,7 @@ export class LifeSharedBoard {
     if (destination.length !== this.cellCount) {
       throw new RangeError(`life snapshot must contain ${this.cellCount} cells`);
     }
+    if (this.#boards === null) throw new Error("life cell snapshots are disabled");
     destination.set(this.#boards[Atomics.load(this.#header, HEADER.front)]);
   }
 
@@ -211,9 +237,28 @@ export class LifeSharedBoard {
     if (destination.length !== this.cellCount) {
       throw new RangeError(`life snapshot must contain ${this.cellCount} cells`);
     }
+    if (this.#boards === null) throw new Error("life cell snapshots are disabled");
     const before = Atomics.load(this.#header, HEADER.sequence);
     if ((before & 1) !== 0) return false;
     destination.set(this.#boards[Atomics.load(this.#header, HEADER.front)]);
+    const after = Atomics.load(this.#header, HEADER.sequence);
+    return before === after && (after & 1) === 0;
+  }
+
+  /** Copies generation/live/timing metadata without touching either cell buffer. */
+  tryStatsInto(destination: Int32Array): boolean {
+    if (destination.length < LIFE_STATS_WORDS) {
+      throw new RangeError(`life stats must contain ${LIFE_STATS_WORDS} words`);
+    }
+    const before = Atomics.load(this.#header, HEADER.sequence);
+    if ((before & 1) !== 0) return false;
+    destination[0] = Atomics.load(this.#header, HEADER.generation);
+    destination[1] = Atomics.load(this.#header, HEADER.liveCount);
+    destination[2] = Atomics.load(this.#header, HEADER.stepMicros);
+    destination[3] = Atomics.load(this.#header, HEADER.running);
+    destination[4] = Atomics.load(this.#header, HEADER.inputTimeMicros);
+    destination[5] = Atomics.load(this.#header, HEADER.inputSequence);
+    destination[6] = Atomics.load(this.#header, HEADER.renderMicros);
     const after = Atomics.load(this.#header, HEADER.sequence);
     return before === after && (after & 1) === 0;
   }

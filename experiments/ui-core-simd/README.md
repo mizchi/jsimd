@@ -413,12 +413,15 @@ is 1,452 gzip bytes. Neither enters `signals.ts` or the Patch Tape bundle.
 
 The interactive `?run=life` route turns this bridge into a 256 × 160 Conway's Game of Life demo. The
 Worker owns all 40,960 cells, simulation steps, and drag-line reconstruction. `pointermove` events
-overwrite the latest slot, while `pointerdown/up/cancel` remain ordered in the discrete ring.
-Finished boards are published through a separate double-buffered `SharedArrayBuffer`; the main
-thread snapshots them into one reusable `ImageData`. The route accepts
-`?run=life&runtime=simd|scalar&size=256|512|1024`; the height remains 5/8 of the width. It also
-reports the rolling step median, input-to-frame latency, paint rate, and exact compute allocation.
-Run `just dev-ui-comparison`, then open the printed local URL with `?run=life&runtime=simd`.
+overwrite the latest slot, while `pointerdown/up/cancel` remain ordered in the discrete ring. The
+route accepts `?run=life&runtime=simd|scalar&size=256|512|1024&renderer=main|offscreen`; the height
+remains 5/8 of the width. The main renderer publishes through a double-buffered
+`SharedArrayBuffer`, while the offscreen renderer transfers the Canvas to the Worker and publishes
+only an 80-byte seqlocked statistics/control header. The latter avoids both the cell snapshot and
+the per-frame main-thread RGBA conversion. The UI reports rolling compute/render medians,
+input-to-frame latency, observed frame rate, and exact compute/shared allocations. Run
+`just dev-ui-comparison`, then open the printed local URL with
+`?run=life&runtime=simd&renderer=offscreen`.
 
 The optional Life kernel is 664 raw / 368 gzip bytes and uses `i8x16` addition and comparison for
 the contiguous interior of each row. Sixteen wraparound/tail cells per row stay scalar, avoiding a
@@ -437,6 +440,19 @@ taps. Local Chrome produced 25 µs SIMD versus 380 µs Scalar JS at 256 × 160, 
 3,920 µs at 1024 × 640. Input-to-frame stayed 4.9–7.3 ms across both runtimes and sizes with no
 dropped records. The 1024 × 640 Canvas painted about 26–28 fps at the default 30 Hz, so display
 conversion becomes the next bottleneck even though the SIMD compute remains below 0.2 ms.
+
+An OffscreenCanvas A/B run shows that it is a large-surface optimization, not an unconditional win:
+
+| grid | renderer | input-to-frame | render median | observed fps | shared memory |
+| ---: | :------- | -------------: | ------------: | -----------: | ------------: |
+| 256 × 160 | main | 4.39 ms | 170 µs | 29.7 | 88.2 KiB |
+| 256 × 160 | offscreen | 8.38 ms | 75 µs | 30.0 | 8.2 KiB |
+| 1024 × 640 | main | 9.90 ms | 1,145 µs | 27.8 | 1.26 MiB |
+| 1024 × 640 | offscreen | 8.28 ms | 1,085 µs | 28.0 | 8.2 KiB |
+
+These are local Chrome autorun medians, so the exact input number includes the rAF/Worker phase.
+At 40,960 cells the handoff is not repaid; at 655,360 cells it removes main-thread pixel work,
+reduces shared allocation by about 99.4%, and improves the sampled input latency by about 16%.
 
 ### Browser memory and event-loop profile
 

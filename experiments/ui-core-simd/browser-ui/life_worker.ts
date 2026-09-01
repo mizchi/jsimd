@@ -4,7 +4,8 @@ import {
   AtomicInputBuffer,
 } from "../atomic_input.ts";
 import { cellFromFixedPoint, countLiveCells, drawLifeLine, stepLife } from "../life_game.ts";
-import { type LifeRuntime, WasmSimdLife } from "../life_kernel.ts";
+import { WasmSimdLife } from "../life_kernel.ts";
+import type { LifeRenderer, LifeRuntime } from "../life_options.ts";
 import { LIFE_COMMAND, LifeSharedBoard } from "../life_shared.ts";
 
 interface InitMessage {
@@ -12,19 +13,23 @@ interface InitMessage {
   readonly inputBuffer: SharedArrayBuffer;
   readonly boardBuffer: SharedArrayBuffer;
   readonly runtime: LifeRuntime;
+  readonly renderer: LifeRenderer;
+  readonly canvas?: OffscreenCanvas;
 }
 
 self.onmessage = (event: MessageEvent<InitMessage>) => {
   if (event.data.type !== "init") return;
   const input = AtomicInputBuffer.attach(event.data.inputBuffer);
   const board = LifeSharedBoard.attach(event.data.boardBuffer);
-  void initialize(input, board, event.data.runtime);
+  void initialize(input, board, event.data.runtime, event.data.renderer, event.data.canvas);
 };
 
 async function initialize(
   input: AtomicInputBuffer,
   board: LifeSharedBoard,
   runtime: LifeRuntime,
+  renderer: LifeRenderer,
+  canvas?: OffscreenCanvas,
 ): Promise<void> {
   const simd = runtime === "simd" ? await WasmSimdLife.create(board.width, board.height) : null;
   let current: Uint8Array = simd?.cells ?? new Uint8Array(board.cellCount);
@@ -38,6 +43,14 @@ async function initialize(
   let lastX = 0;
   let lastY = 0;
   let seed = 0x51f1_5e5d;
+  const context = renderer === "offscreen"
+    ? canvas?.getContext("2d", { alpha: false }) ?? null
+    : null;
+  if (renderer === "offscreen" && context === null) {
+    throw new Error("OffscreenCanvas 2D context is unavailable");
+  }
+  const image = context?.createImageData(board.width, board.height) ?? null;
+  const pixels = image === null ? null : new Uint32Array(image.data.buffer);
 
   const randomize = (): void => {
     for (let index = 0; index < current.length; index++) {
@@ -57,10 +70,30 @@ async function initialize(
     [current, next] = [next!, current];
     return live;
   };
-  const publish = (stepMicros = 0, inputTimeMicros?: number): void => {
+  const render = (): number => {
+    if (context === null || image === null || pixels === null) return 0;
+    const started = performance.now();
+    for (let index = 0; index < current.length; index++) {
+      pixels[index] = current[index] === 0 ? 0xff111a17 : 0xff9dff73;
+    }
+    context.putImageData(image, 0, 0);
+    return (performance.now() - started) * 1_000;
+  };
+  const publish = (
+    stepMicros = 0,
+    inputTimeMicros?: number,
+    knownLiveCount?: number,
+  ): void => {
+    const renderMicros = render();
     const write = board.beginWrite();
-    write.cells.set(current);
-    board.publish(write.index, countLiveCells(current), stepMicros, inputTimeMicros);
+    if (board.hasCellSnapshots) write.cells.set(current);
+    board.publish(
+      write.index,
+      knownLiveCount ?? countLiveCells(current),
+      stepMicros,
+      inputTimeMicros,
+      renderMicros,
+    );
   };
   const point = (records: Int32Array, offset: number) =>
     cellFromFixedPoint(
@@ -93,9 +126,7 @@ async function initialize(
             board.running = false;
             const started = performance.now();
             const live = advance();
-            const write = board.beginWrite();
-            write.cells.set(current);
-            board.publish(write.index, live, (performance.now() - started) * 1_000);
+            publish((performance.now() - started) * 1_000, undefined, live);
             break;
           }
           case LIFE_COMMAND.randomize:
@@ -178,9 +209,7 @@ async function initialize(
       if (board.running && now >= nextStepAt) {
         const started = performance.now();
         const live = advance();
-        const write = board.beginWrite();
-        write.cells.set(current);
-        board.publish(write.index, live, (performance.now() - started) * 1_000);
+        publish((performance.now() - started) * 1_000, undefined, live);
         nextStepAt = performance.now() + interval;
       }
 
