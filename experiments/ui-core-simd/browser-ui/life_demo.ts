@@ -182,7 +182,9 @@ export async function mountLifeDemo(
     ]),
     ui.element("footer", { className: "life-footer" }, [
       ui.element("span", {}, ["SharedArrayBuffer"]),
-      ui.element("span", {}, ["Atomics.wait / notify"]),
+      ui.element("span", {}, [
+        renderer === "offscreen" ? "Atomics.waitAsync / notify" : "Atomics.wait / notify",
+      ]),
       ui.element("span", {}, [runtime === "simd" ? "i8x16 Life kernel" : "Scalar baseline"]),
       ui.element("span", {}, [renderer === "offscreen" ? "OffscreenCanvas" : "Main canvas"]),
     ]),

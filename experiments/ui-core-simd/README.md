@@ -425,6 +425,12 @@ input-to-frame latency, observed frame rate, and exact compute/shared allocation
 `just dev-ui-comparison`, then open the printed local URL with
 `?run=life&runtime=simd&renderer=auto`.
 
+The compute-only Worker keeps the blocking `Atomics.wait` loop. The OffscreenCanvas Worker instead
+awaits `Atomics.waitAsync`, yielding its event loop after every `putImageData` so the browser can
+present the new bitmap. Browsers without `waitAsync` use bounded 8 ms timer polling. A blocking
+infinite loop here still computes and publishes statistics, but only its initial Canvas frame can
+reach the compositor.
+
 The optional Life kernel is 664 raw / 368 gzip bytes and uses `i8x16` addition and comparison for
 the contiguous interior of each row. Sixteen wraparound/tail cells per row stay scalar, avoiding a
 halo copy or a strided board. Its two generations live directly in Worker-owned Wasm memory; only a

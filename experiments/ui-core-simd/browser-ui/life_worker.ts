@@ -3,6 +3,7 @@ import {
   ATOMIC_INPUT_RECORD_WORDS,
   AtomicInputBuffer,
 } from "../atomic_input.ts";
+import { AtomicInputAsyncWaiter } from "../atomic_input_async.ts";
 import { cellFromFixedPoint, countLiveCells, drawLifeLine, stepLife } from "../life_game.ts";
 import { WasmSimdLife } from "../life_kernel.ts";
 import type { LifeRenderer, LifeRuntime } from "../life_options.ts";
@@ -108,114 +109,132 @@ async function initialize(
   publish();
   self.postMessage({ type: "ready" });
 
-  // The worker owns this blocking loop. All later control is shared memory + one wake word.
-  setTimeout(() => {
-    let nextStepAt = performance.now();
-    while (true) {
-      let changed = false;
-      let changedInputTimeMicros: number | undefined;
-      const nextCommandSequence = board.commandSequence;
-      if (nextCommandSequence !== commandSequence) {
-        commandSequence = nextCommandSequence;
-        switch (board.command) {
-          case LIFE_COMMAND.toggleRunning:
-            board.running = !board.running;
-            nextStepAt = performance.now();
-            break;
-          case LIFE_COMMAND.step: {
-            board.running = false;
-            const started = performance.now();
-            const live = advance();
-            publish((performance.now() - started) * 1_000, undefined, live);
-            break;
-          }
-          case LIFE_COMMAND.randomize:
-            randomize();
-            changed = true;
-            break;
-          case LIFE_COMMAND.clear:
-            current.fill(0);
-            changed = true;
-            break;
+  let nextStepAt = performance.now();
+  const runCycle = (): { readonly wakeSequence: number; readonly timeout?: number } => {
+    let changed = false;
+    let changedInputTimeMicros: number | undefined;
+    const nextCommandSequence = board.commandSequence;
+    if (nextCommandSequence !== commandSequence) {
+      commandSequence = nextCommandSequence;
+      switch (board.command) {
+        case LIFE_COMMAND.toggleRunning:
+          board.running = !board.running;
+          nextStepAt = performance.now();
+          break;
+        case LIFE_COMMAND.step: {
+          board.running = false;
+          const started = performance.now();
+          const live = advance();
+          publish((performance.now() - started) * 1_000, undefined, live);
+          break;
         }
-      }
-
-      const discreteCount = input.drainInto(discrete);
-      for (let record = 0; record < discreteCount; record++) {
-        const offset = record * ATOMIC_INPUT_RECORD_WORDS;
-        const kind = discrete[offset];
-        if (kind === ATOMIC_INPUT_KIND.pointerDown) {
-          const cell = point(discrete, offset);
-          const flags = discrete[offset + 5]! >>> 0;
-          const button = ((flags >>> 16) & 0xff) - 1;
-          dragValue = button === 2 || (flags >>> 24 & 1) !== 0 ? 0 : 1;
-          dragging = true;
-          lastX = cell.x;
-          lastY = cell.y;
-          current[lastY * board.width + lastX] = dragValue;
+        case LIFE_COMMAND.randomize:
+          randomize();
           changed = true;
-          changedInputTimeMicros = discrete[offset + 6]! >>> 0;
-        } else if (kind === ATOMIC_INPUT_KIND.pointerUp) {
-          if (dragging) {
-            const cell = point(discrete, offset);
-            drawLifeLine(
-              current,
-              board.width,
-              board.height,
-              lastX,
-              lastY,
-              cell.x,
-              cell.y,
-              dragValue,
-            );
-            changed = true;
-            changedInputTimeMicros = discrete[offset + 6]! >>> 0;
-          }
-          dragging = false;
-        } else if (kind === ATOMIC_INPUT_KIND.pointerCancel) {
-          dragging = false;
-        }
+          break;
+        case LIFE_COMMAND.clear:
+          current.fill(0);
+          changed = true;
+          break;
       }
+    }
 
-      const nextLatestSequence = input.readLatestInto(latest);
-      if (
-        dragging && nextLatestSequence !== 0 && nextLatestSequence !== latestSequence &&
-        latest[0] === ATOMIC_INPUT_KIND.pointerMove
-      ) {
-        latestSequence = nextLatestSequence;
-        const cell = point(latest, 0);
-        drawLifeLine(
-          current,
-          board.width,
-          board.height,
-          lastX,
-          lastY,
-          cell.x,
-          cell.y,
-          dragValue,
-        );
+    const discreteCount = input.drainInto(discrete);
+    for (let record = 0; record < discreteCount; record++) {
+      const offset = record * ATOMIC_INPUT_RECORD_WORDS;
+      const kind = discrete[offset];
+      if (kind === ATOMIC_INPUT_KIND.pointerDown) {
+        const cell = point(discrete, offset);
+        const flags = discrete[offset + 5]! >>> 0;
+        const button = ((flags >>> 16) & 0xff) - 1;
+        dragValue = button === 2 || (flags >>> 24 & 1) !== 0 ? 0 : 1;
+        dragging = true;
         lastX = cell.x;
         lastY = cell.y;
+        current[lastY * board.width + lastX] = dragValue;
         changed = true;
-        changedInputTimeMicros = latest[6]! >>> 0;
-      } else if (nextLatestSequence !== 0) {
-        latestSequence = nextLatestSequence;
+        changedInputTimeMicros = discrete[offset + 6]! >>> 0;
+      } else if (kind === ATOMIC_INPUT_KIND.pointerUp) {
+        if (dragging) {
+          const cell = point(discrete, offset);
+          drawLifeLine(
+            current,
+            board.width,
+            board.height,
+            lastX,
+            lastY,
+            cell.x,
+            cell.y,
+            dragValue,
+          );
+          changed = true;
+          changedInputTimeMicros = discrete[offset + 6]! >>> 0;
+        }
+        dragging = false;
+      } else if (kind === ATOMIC_INPUT_KIND.pointerCancel) {
+        dragging = false;
       }
-
-      if (changed) publish(0, changedInputTimeMicros);
-
-      const now = performance.now();
-      const interval = 1_000 / board.rate;
-      if (board.running && now >= nextStepAt) {
-        const started = performance.now();
-        const live = advance();
-        publish((performance.now() - started) * 1_000, undefined, live);
-        nextStepAt = performance.now() + interval;
-      }
-
-      const wakeSequence = input.wakeSequence;
-      const timeout = board.running ? Math.max(0, nextStepAt - performance.now()) : undefined;
-      input.waitForInput(wakeSequence, timeout);
     }
+
+    const nextLatestSequence = input.readLatestInto(latest);
+    if (
+      dragging && nextLatestSequence !== 0 && nextLatestSequence !== latestSequence &&
+      latest[0] === ATOMIC_INPUT_KIND.pointerMove
+    ) {
+      latestSequence = nextLatestSequence;
+      const cell = point(latest, 0);
+      drawLifeLine(
+        current,
+        board.width,
+        board.height,
+        lastX,
+        lastY,
+        cell.x,
+        cell.y,
+        dragValue,
+      );
+      lastX = cell.x;
+      lastY = cell.y;
+      changed = true;
+      changedInputTimeMicros = latest[6]! >>> 0;
+    } else if (nextLatestSequence !== 0) {
+      latestSequence = nextLatestSequence;
+    }
+
+    if (changed) publish(0, changedInputTimeMicros);
+
+    const now = performance.now();
+    const interval = 1_000 / board.rate;
+    if (board.running && now >= nextStepAt) {
+      const started = performance.now();
+      const live = advance();
+      publish((performance.now() - started) * 1_000, undefined, live);
+      nextStepAt = performance.now() + interval;
+    }
+
+    return {
+      wakeSequence: input.wakeSequence,
+      timeout: board.running ? Math.max(0, nextStepAt - performance.now()) : undefined,
+    };
+  };
+
+  const runBlocking = (): never => {
+    while (true) {
+      const waiting = runCycle();
+      input.waitForInput(waiting.wakeSequence, waiting.timeout);
+    }
+  };
+  const runOffscreen = async (): Promise<never> => {
+    const waiter = AtomicInputAsyncWaiter.attach(input);
+    while (true) {
+      const waiting = runCycle();
+      await waiter.waitForInput(waiting.wakeSequence, waiting.timeout);
+    }
+  };
+
+  // OffscreenCanvas presentation needs a worker event-loop yield after each frame.
+  setTimeout(() => {
+    if (renderer === "offscreen") void runOffscreen();
+    else runBlocking();
   }, 0);
 }

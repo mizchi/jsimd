@@ -16,6 +16,7 @@
   "include": [
     "../atomic_effect_batch.ts",
     "../atomic_input.ts",
+    "../atomic_input_async.ts",
     "../atomic_input_dom.ts",
     "../benchmark_stats.ts",
     "../complex_tree.ts",

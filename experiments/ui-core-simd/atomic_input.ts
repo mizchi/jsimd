@@ -9,7 +9,7 @@ const LATEST_VERSION_INDEX = 4;
 const WRITE_CURSOR_INDEX = 5;
 const READ_CURSOR_INDEX = 6;
 const DROPPED_INDEX = 7;
-const WAKE_SEQUENCE_INDEX = 8;
+export const ATOMIC_INPUT_WAKE_SEQUENCE_INDEX = 8;
 const LATEST_OFFSET = HEADER_WORDS;
 const RING_OFFSET = LATEST_OFFSET + 8;
 
@@ -194,7 +194,7 @@ export class AtomicInputBuffer {
   }
 
   get wakeSequence(): number {
-    return Atomics.load(this.#words, WAKE_SEQUENCE_INDEX) >>> 0;
+    return Atomics.load(this.#words, ATOMIC_INPUT_WAKE_SEQUENCE_INDEX) >>> 0;
   }
 
   /** Wakes the consumer after an out-of-band shared-state change. */
@@ -204,12 +204,12 @@ export class AtomicInputBuffer {
 
   /** Worker-only blocking wait. Drain both latest and discrete records after it returns. */
   waitForInput(sequence: number, timeout?: number): "ok" | "not-equal" | "timed-out" {
-    return Atomics.wait(this.#words, WAKE_SEQUENCE_INDEX, sequence | 0, timeout);
+    return Atomics.wait(this.#words, ATOMIC_INPUT_WAKE_SEQUENCE_INDEX, sequence | 0, timeout);
   }
 
   #wakeConsumer(): number {
-    const sequence = Atomics.add(this.#words, WAKE_SEQUENCE_INDEX, 1) + 1;
-    Atomics.notify(this.#words, WAKE_SEQUENCE_INDEX);
+    const sequence = Atomics.add(this.#words, ATOMIC_INPUT_WAKE_SEQUENCE_INDEX, 1) + 1;
+    Atomics.notify(this.#words, ATOMIC_INPUT_WAKE_SEQUENCE_INDEX);
     return sequence >>> 0;
   }
 
