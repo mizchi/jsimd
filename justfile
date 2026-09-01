@@ -36,6 +36,9 @@ build:
     wasm-tools strip -a experiments/parallel-hybrid-query/kernels.wat -o experiments/parallel-hybrid-query/kernels.wasm
     wasm-tools strip -a experiments/parallel-columnar-selection/kernels.wat -o experiments/parallel-columnar-selection/kernels.wasm
     wasm-tools strip -a experiments/parallel-bloom-filter/kernels.wat -o experiments/parallel-bloom-filter/kernels.wasm
+    wasm-tools strip -a experiments/ui-core-simd/signals.wat -o experiments/ui-core-simd/signals.wasm
+    wasm-tools strip -a experiments/ui-core-simd/patch_tape.wat -o experiments/ui-core-simd/patch_tape.wasm
+    wasm-tools strip -a experiments/ui-core-simd/life_step.wat -o experiments/ui-core-simd/life_step.wasm
     wasm-tools strip -a experiments/radix-sort-block/kernels.wat -o experiments/radix-sort-block/kernels.wasm
     wasm-tools strip -a experiments/ultra-log-log/kernels.wat -o experiments/ultra-log-log/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm
@@ -75,6 +78,9 @@ build:
     wasm-tools validate --features threads,simd experiments/parallel-hybrid-query/kernels.wasm
     wasm-tools validate --features threads,simd experiments/parallel-columnar-selection/kernels.wasm
     wasm-tools validate --features threads,simd experiments/parallel-bloom-filter/kernels.wasm
+    wasm-tools validate --features simd experiments/ui-core-simd/signals.wasm
+    wasm-tools validate --features simd experiments/ui-core-simd/patch_tape.wasm
+    wasm-tools validate --features simd experiments/ui-core-simd/life_step.wasm
     wasm-tools validate --features simd experiments/radix-sort-block/kernels.wasm
     wasm-tools validate --features simd experiments/ultra-log-log/kernels.wasm
     wasm-tools print packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm | rg -q 'scan_between_for|scan_between_raw|scan_between_rle|scan_between_dictionary|scan_between_sparse|gather_sparse|sum_sparse|mask_count'
@@ -135,6 +141,10 @@ build:
     wasm-tools print experiments/parallel-bloom-filter/kernels.wasm | rg -q 'add_many|may_contain_many|i32x4.all_true|shared'
     wasm-tools print experiments/radix-sort-block/kernels.wasm | rg -q 'sort_u32_pairs|sort_u32|sort_u64|v128.store'
     wasm-tools print experiments/ultra-log-log/kernels.wasm | rg -q 'build_u32|merge_states|i8x16.max_u|v128.bitselect'
+    wasm-tools print experiments/ui-core-simd/signals.wasm | rg -q 'union_subscriber_rows|v128.or'
+    ! wasm-tools print experiments/ui-core-simd/signals.wasm | rg -q 'classify_nodes|i32x4.ne'
+    wasm-tools print experiments/ui-core-simd/patch_tape.wasm | rg -q 'collect_changed|i32x4.ne|i32x4.bitmask'
+    wasm-tools print experiments/ui-core-simd/life_step.wasm | rg -q 'i8x16.add|i8x16.eq|i8x16.bitmask'
 
 test-olap-package: build
     deno test -A packages/olap/src
@@ -155,6 +165,79 @@ test-radix-sort-block: build
 
 test-ultra-log-log: build
     deno test -A experiments/ultra-log-log
+
+test-ui-core-simd: build check-ui-core-entrypoints check-ui-pixel-bundles
+    deno test -A experiments/ui-core-simd
+
+check-ui-core-entrypoints:
+    mkdir -p experiments/ui-core-simd/fixtures/dist
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/fixtures/signals-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/signals.js
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/fixtures/computed-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/computed.js
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/fixtures/atomics-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/atomics.js
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/fixtures/atomic-input-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/atomic-input.js
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/fixtures/atomic-input-dom-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/atomic-input-dom.js
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/fixtures/diagnostics-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/diagnostics.js
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/fixtures/regions-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/regions.js
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/fixtures/segmented-scheduler-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/segmented-scheduler.js
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/fixtures/dynamic-regions-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/dynamic-regions.js
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/fixtures/patch-tape-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/patch-tape.js
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/fixtures/patch-tape-text-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/patch-tape-text.js
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/fixtures/signals-patch-tape-text-entry.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/signals-patch-tape-text.js
+    ! rg -q 'classify_nodes|reconciler\.wasm' experiments/ui-core-simd/fixtures/dist/signals.js
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/signals.js | wc -c | tr -d ' ')" -le 2650
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/computed.js | wc -c | tr -d ' ')" -le 2700
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/atomics.js | wc -c | tr -d ' ')" -le 950
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/atomic-input.js | wc -c | tr -d ' ')" -le 1200
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/atomic-input-dom.js | wc -c | tr -d ' ')" -le 1500
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/diagnostics.js | wc -c | tr -d ' ')" -le 500
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/regions.js | wc -c | tr -d ' ')" -le 900
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/segmented-scheduler.js | wc -c | tr -d ' ')" -le 3075
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/dynamic-regions.js | wc -c | tr -d ' ')" -le 3650
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/patch-tape.js | wc -c | tr -d ' ')" -le 1800
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/patch-tape-text.js | wc -c | tr -d ' ')" -le 1500
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/signals-patch-tape-text.js | wc -c | tr -d ' ')" -le 3500
+    test "$(wc -c < experiments/ui-core-simd/signals.wasm | tr -d ' ')" -le 220
+    test "$(wc -c < experiments/ui-core-simd/patch_tape.wasm | tr -d ' ')" -le 420
+    test "$(wc -c < experiments/ui-core-simd/life_step.wasm | tr -d ' ')" -le 700
+    test ! -e experiments/ui-core-simd/reconciler.ts
+    test ! -e experiments/ui-core-simd/reconciler.wasm
+    test ! -e experiments/ui-core-simd/packed_list.ts
+    test ! -e experiments/ui-core-simd/ui.ts
+
+bench-ui-core-simd: build
+    deno bench -A experiments/ui-core-simd/bench.ts
+
+bench-ui-core-segments: build
+    deno bench -A experiments/ui-core-simd/segmented_scheduler_bench.ts
+
+bench-ui-core-patch-tape: build
+    deno bench -A experiments/ui-core-simd/patch_tape_bench.ts
+
+bench-ui-core-atomics: build
+    deno run -A experiments/ui-core-simd/atomic_worker_bench.ts
+
+bench-ui-core-atomic-input:
+    deno bench -A experiments/ui-core-simd/atomic_input_bench.ts
+
+bench-ui-life-kernel: build
+    deno run -A experiments/ui-core-simd/life_kernel_bench.ts
+
+bench-ui-pixel-browser: build-ui-comparison
+    deno run -A tools/bench-ui-pixel-browser.ts
+
+build-ui-comparison:
+    pnpm --config.verify-deps-before-run=false exec tsc -p experiments/ui-core-simd/browser-ui/tsconfig.json
+    pnpm --config.verify-deps-before-run=false exec vite build experiments/ui-core-simd/browser-ui
+
+check-ui-pixel-bundles: build-ui-comparison
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_demo-*.js | wc -c | tr -d ' ')" -le 5000
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_active_runtime-*.js | wc -c | tr -d ' ')" -le 1700
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_webgpu-*.js | wc -c | tr -d ' ')" -le 3700
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_worker_client-*.js | wc -c | tr -d ' ')" -le 2000
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_worker-*.js | wc -c | tr -d ' ')" -le 5300
+
+dev-ui-comparison:
+    pnpm --config.verify-deps-before-run=false exec vite --host 127.0.0.1 experiments/ui-core-simd/browser-ui
 
 bench-ultra-log-log: build
     deno run -A experiments/ultra-log-log/bench.ts
