@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SIMD UI vs Preact Signals</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">jsimd experiment</p>
+        <h1>SIMD UI vs Preact Signals</h1>
+        <p>
+          Fixed packed dependency graphs with Wasm SIMD fan-out, measured against Preact 10 and
+          @preact/signals 2 in the same browser.
+        </p>
+      </header>
+
+      <section class="panel">
+        <h2>Interactive smoke test</h2>
+        <div class="demos">
+          <div>
+            <h3>SIMD UI</h3>
+            <div id="simd-demo" data-testid="simd-demo"></div>
+          </div>
+          <div>
+            <h3>Preact Signals</h3>
+            <div id="preact-demo" data-testid="preact-demo"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="run-row">
+          <div>
+            <h2>Browser update benchmark</h2>
+            <p>
+              Median and p95 of 11 samples after 5 warmups. Update timing excludes mount and fixture
+              construction; mount is reported separately. Results are mirrored to the local Vite
+              terminal.
+            </p>
+          </div>
+          <button id="run-all" data-testid="run-all">Run all</button>
+        </div>
+        <p id="status" data-testid="status">Ready</p>
+        <div id="profile-host" class="bench-sandbox" aria-hidden="true"></div>
+
+        <h3>Fine-grained binding fan-out</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>bindings</th>
+              <th>SIMD UI</th>
+              <th>Preact Signals</th>
+              <th>faster</th>
+              <th>dispatch</th>
+            </tr>
+          </thead>
+          <tbody id="fanout-results"></tbody>
+        </table>
+
+        <h3>Numeric patch tape</h3>
+        <p>
+          The same fan-out graph with binding evaluators writing numeric results into Wasm memory.
+          One final effect compacts changed values and applies the borrowed command tape to text
+          nodes. Direct SIMD and Preact columns reuse the fine-grained samples above.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>bindings</th>
+              <th>Direct SIMD</th>
+              <th>Patch tape</th>
+              <th>Preact Signals</th>
+              <th>winner</th>
+              <th>dispatch / mount</th>
+            </tr>
+          </thead>
+          <tbody id="patch-tape-results"></tbody>
+        </table>
+
+        <h3>Patch-tape scenario matrix</h3>
+        <p>
+          Separates affected-binding density, batching, output stability, and signal fan-out. Append
+          <code>?run=patch-matrix&amp;size=4096</code> to run one binding size in a fresh page.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>bindings</th>
+              <th>scenario</th>
+              <th>affected / flushes / deps</th>
+              <th>Direct</th>
+              <th>Patch tape</th>
+              <th>Preact</th>
+              <th>winner</th>
+              <th>Patch ratios / dispatch</th>
+            </tr>
+          </thead>
+          <tbody id="patch-scenario-results"></tbody>
+        </table>
+
+        <h3>Derived diamond graph</h3>
+        <p>
+          Each output has two computed branches, one computed join, and one text effect. Unchanged
+          computed values stop downstream propagation.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>outputs</th>
+              <th>SIMD UI</th>
+              <th>Preact Signals</th>
+              <th>faster</th>
+              <th>graph / mount</th>
+            </tr>
+          </thead>
+          <tbody id="derived-results"></tbody>
+        </table>
+
+        <h3>Nested component tree</h3>
+        <p>
+          Balanced four-way trees with nested cards, headers, content, footers, and four dynamic
+          text bindings per leaf. Eight of 32 root signals change in each batch.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>leaves</th>
+              <th>SIMD UI</th>
+              <th>Preact Signals</th>
+              <th>faster</th>
+              <th>shape / dispatch</th>
+            </tr>
+          </thead>
+          <tbody id="complex-tree-results"></tbody>
+        </table>
+
+        <h3>Large layered dependency graph</h3>
+        <p>
+          Graphs with 4,096 or 16,384 computed nodes arranged at different widths and depths. Every
+          computed node has four fixed dependencies; one quarter of the 32 roots changes per batch.
+          The table also reports the packed dense-matrix footprint.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>computed</th>
+              <th>SIMD UI</th>
+              <th>Preact Signals</th>
+              <th>faster</th>
+              <th>width × depth / memory</th>
+            </tr>
+          </thead>
+          <tbody id="layered-results"></tbody>
+        </table>
+      </section>
+
+      <section class="notes">
+        <h2>Scope</h2>
+        <p>
+          SIMD UI requires explicit, immutable dependency arrays and accelerates queue selection.
+          Preact supports dynamic dependencies, components, keyed reconciliation, lifecycle, SSR,
+          and a mature ecosystem. Atomics are excluded from the DOM hot path because DOM mutation
+          remains main-thread-only.
+        </p>
+      </section>
+    </main>
+    <script type="module" src="/src.ts"></script>
+  </body>
+</html>

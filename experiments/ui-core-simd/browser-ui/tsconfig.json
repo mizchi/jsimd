@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "allowArbitraryExtensions": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "erasableSyntaxOnly": true,
+    "lib": ["DOM", "ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ESNext",
+    "types": ["vite/client"],
+    "verbatimModuleSyntax": true
+  },
+  "include": [
+    "../atomic_effect_batch.ts",
+    "../atomic_input.ts",
+    "../atomic_input_dom.ts",
+    "../benchmark_stats.ts",
+    "../complex_tree.ts",
+    "../layered_graph.ts",
+    "../patch_tape.ts",
+    "../patch_tape_kernel.ts",
+    "../patch_scenarios.ts",
+    "../runtime_profile.ts",
+    "../computed.ts",
+    "../signal_graph.ts",
+    "../signal_kernel.ts",
+    "../signals.ts",
+    "atomic_profile_worker.ts",
+    "input_demo.ts",
+    "input_demo_worker.ts",
+    "profile.ts",
+    "src.ts"
+  ]
+}

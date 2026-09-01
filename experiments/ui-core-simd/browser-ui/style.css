@@ -1,0 +1,137 @@
+:root {
+  color: #18201d;
+  background: #edf1ec;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+main {
+  width: min(1080px, calc(100% - 32px));
+  margin: 48px auto 80px;
+}
+header {
+  max-width: 760px;
+  margin-bottom: 32px;
+}
+h1 {
+  margin: 0 0 12px;
+  font-size: clamp(2.4rem, 7vw, 5.8rem);
+  line-height: 0.94;
+  letter-spacing: -0.06em;
+}
+h2 {
+  margin: 0 0 8px;
+}
+h3 {
+  margin-top: 28px;
+}
+p {
+  color: #52605a;
+  line-height: 1.6;
+}
+.eyebrow {
+  color: #c5492e;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.panel {
+  margin-top: 20px;
+  padding: 28px;
+  border: 1px solid #bdc9c2;
+  border-radius: 20px;
+  background: #f8faf7;
+  box-shadow: 0 16px 50px rgb(35 52 44 / 8%);
+}
+.demos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.demos > div {
+  padding: 18px;
+  border-radius: 14px;
+  background: #e9efe9;
+}
+.demos h3 {
+  margin-top: 0;
+}
+.counter {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 18px;
+  color: white;
+  background: #1f5b48;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+button:hover {
+  background: #174737;
+}
+.run-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+#status {
+  min-height: 1.6em;
+  color: #9d3b26;
+  font-weight: 700;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+th, td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #d6ded8;
+  text-align: right;
+}
+th:first-child, td:first-child {
+  text-align: left;
+}
+.winner {
+  color: #176b4d;
+  font-weight: 800;
+}
+.notes {
+  max-width: 760px;
+  padding: 32px 4px;
+}
+.bench-sandbox {
+  position: fixed;
+  left: -100000px;
+  top: 0;
+  contain: strict;
+}
+
+@media (max-width: 680px) {
+  main {
+    margin-top: 28px;
+  }
+  .panel {
+    padding: 18px;
+    overflow-x: auto;
+  }
+  .demos {
+    grid-template-columns: 1fr;
+  }
+  .run-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

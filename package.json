@@ -16,7 +16,9 @@
     "@mizchi/jsimd-moonbit-interop": "workspace:*",
     "@mizchi/jsimd-olap": "workspace:*",
     "@mizchi/jsimd-shared": "workspace:*",
+    "@preact/signals": "2.11.1",
     "@types/node": "^24.13.3",
+    "preact": "10.29.8",
     "typescript": "^5.9.0",
     "vite": "^8.0.0",
     "vitest": "4.1.11"
