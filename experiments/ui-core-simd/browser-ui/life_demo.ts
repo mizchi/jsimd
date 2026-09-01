@@ -1,6 +1,12 @@
 import { ATOMIC_INPUT_KIND, AtomicInputBuffer } from "../atomic_input.ts";
 import { writeDiscretePointerEventAt, writeLatestPointerEventAt } from "../atomic_input_dom.ts";
-import type { LifeRenderer, LifeRuntime } from "../life_options.ts";
+import { summarizeSamples } from "../benchmark_stats.ts";
+import {
+  type LifeRenderer,
+  type LifeRendererPreference,
+  type LifeRuntime,
+  selectLifeRenderer,
+} from "../life_options.ts";
 import { LIFE_COMMAND, LIFE_STATS_WORDS, LifeSharedBoard } from "../life_shared.ts";
 import { SimdUi, type UiContainer, type UiDocument } from "../signals.ts";
 
@@ -15,10 +21,13 @@ export interface LifeDemoResult {
   readonly stepMicros: number;
   readonly running: boolean;
   readonly renderer: LifeRenderer;
+  readonly rendererPreference: LifeRendererPreference;
   readonly runtime: LifeRuntime;
   readonly inputLatencyMs: number;
   readonly paintFps: number;
   readonly renderMicros: number;
+  readonly frameGapP95Ms: number;
+  readonly mainLoadMs: number;
   readonly computeBytes: number;
   readonly sharedBytes: number;
 }
@@ -29,10 +38,17 @@ export async function mountLifeDemo(
   runtime: LifeRuntime,
   width: number,
   height: number,
-  renderer: LifeRenderer,
+  rendererPreference: LifeRendererPreference,
+  mainLoadMs: number,
 ): Promise<LifeDemoResult | null> {
   document.title = "Life, off the main thread — jsimd";
   document.body.classList.add("life-mode");
+  const renderer = selectLifeRenderer(
+    rendererPreference,
+    width * height,
+    typeof OffscreenCanvas !== "undefined" &&
+      typeof HTMLCanvasElement.prototype.transferControlToOffscreen === "function",
+  );
   const input = AtomicInputBuffer.create(256);
   const board = LifeSharedBoard.create(width, height, { cellSnapshots: renderer === "main" });
   const worker = new Worker(new URL("./life_worker.ts", import.meta.url), { type: "module" });
@@ -46,6 +62,7 @@ export async function mountLifeDemo(
   const stepMedianMicros = ui.signal(0);
   const renderMedianMicros = ui.signal(0);
   const fps = ui.signal(0);
+  const frameGapP95Ms = ui.signal(0);
   const inputLatencyMs = ui.signal(0);
   const running = ui.signal(true);
 
@@ -81,30 +98,34 @@ export async function mountLifeDemo(
       ui.element("aside", { className: "life-console" }, [
         ui.element("nav", { className: "life-runtime", ariaLabel: "Life compute runtime" }, [
           ui.element("a", {
-            href: lifeHref("simd", width, renderer),
+            href: lifeHref("simd", width, rendererPreference),
             className: runtime === "simd" ? "active" : "",
           }, ["Wasm SIMD"]),
           ui.element("a", {
-            href: lifeHref("scalar", width, renderer),
+            href: lifeHref("scalar", width, rendererPreference),
             className: runtime === "scalar" ? "active" : "",
           }, ["Scalar JS"]),
         ]),
         ui.element("nav", { className: "life-size", ariaLabel: "Life grid size" }, [
           ...[256, 512, 1_024].map((candidate) =>
             ui.element("a", {
-              href: lifeHref(runtime, candidate, renderer),
+              href: lifeHref(runtime, candidate, rendererPreference),
               className: width === candidate ? "active" : "",
             }, [`${candidate}×${candidate * 5 / 8}`])
           ),
         ]),
         ui.element("nav", { className: "life-renderer", ariaLabel: "Life canvas renderer" }, [
           ui.element("a", {
+            href: lifeHref(runtime, width, "auto"),
+            className: rendererPreference === "auto" ? "active" : "",
+          }, [`Auto → ${renderer === "offscreen" ? "Worker" : "Main"}`]),
+          ui.element("a", {
             href: lifeHref(runtime, width, "offscreen"),
-            className: renderer === "offscreen" ? "active" : "",
+            className: rendererPreference === "offscreen" ? "active" : "",
           }, ["Worker canvas"]),
           ui.element("a", {
             href: lifeHref(runtime, width, "main"),
-            className: renderer === "main" ? "active" : "",
+            className: rendererPreference === "main" ? "active" : "",
           }, ["Main canvas"]),
         ]),
         ui.element("div", { className: "life-stats" }, [
@@ -116,6 +137,12 @@ export async function mountLifeDemo(
             ui.text([stepMedianMicros], () => `${stepMedianMicros.value.toFixed(0)} µs`),
           ),
           stat(ui, "paint", ui.text([fps], () => `${fps.value.toFixed(0)} fps`)),
+          stat(
+            ui,
+            "rAF gap p95",
+            ui.text([frameGapP95Ms], () => `${frameGapP95Ms.value.toFixed(1)} ms`),
+          ),
+          stat(ui, "main load", ui.text([], () => `${mainLoadMs} ms/rAF`)),
           stat(
             ui,
             "render median",
@@ -254,10 +281,16 @@ export async function mountLifeDemo(
   let renderedInputSequence = 0;
   let frames = 0;
   let fpsStarted = performance.now();
+  let previousFrameAt = 0;
   const stepSamples: number[] = [];
   const renderSamples: number[] = [];
   const inputLatencySamples: number[] = [];
+  const frameGapSamples: number[] = [];
   const renderFrame = (): void => {
+    const frameStarted = performance.now();
+    if (previousFrameAt > 0) appendSample(frameGapSamples, frameStarted - previousFrameAt);
+    previousFrameAt = frameStarted;
+    burnMainThread(mainLoadMs);
     running.value = board.running;
     if (board.tryStatsInto(stats)) {
       const nextGeneration = stats[0]! >>> 0;
@@ -312,6 +345,7 @@ export async function mountLifeDemo(
     const now = performance.now();
     if (now - fpsStarted < 500) return;
     fps.value = frames * 1_000 / (now - fpsStarted);
+    if (frameGapSamples.length > 0) frameGapP95Ms.value = summarizeSamples(frameGapSamples).p95;
     frames = 0;
     fpsStarted = now;
   };
@@ -360,22 +394,37 @@ export async function mountLifeDemo(
     stepMicros: stepMedianMicros.value,
     running: board.running,
     renderer,
+    rendererPreference,
     runtime,
     inputLatencyMs: inputLatencyMs.value,
     paintFps: fps.value,
     renderMicros: renderMedianMicros.value,
+    frameGapP95Ms: frameGapP95Ms.value,
+    mainLoadMs,
     computeBytes,
     sharedBytes,
   };
 }
 
-function lifeHref(runtime: LifeRuntime, width: number, renderer: LifeRenderer): string {
+function lifeHref(
+  runtime: LifeRuntime,
+  width: number,
+  renderer: LifeRendererPreference,
+): string {
   return `?run=life&runtime=${runtime}&size=${width}&renderer=${renderer}`;
 }
 
 function appendSample(samples: number[], value: number): void {
   samples.push(value);
   if (samples.length > 120) samples.shift();
+}
+
+function burnMainThread(milliseconds: number): void {
+  if (milliseconds <= 0) return;
+  const deadline = performance.now() + milliseconds;
+  while (performance.now() < deadline) {
+    // Intentionally model unrelated application work in the benchmark fixture.
+  }
 }
 
 function median(values: readonly number[]): number {

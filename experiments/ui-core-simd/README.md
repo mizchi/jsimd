@@ -414,14 +414,16 @@ is 1,452 gzip bytes. Neither enters `signals.ts` or the Patch Tape bundle.
 The interactive `?run=life` route turns this bridge into a 256 × 160 Conway's Game of Life demo. The
 Worker owns all 40,960 cells, simulation steps, and drag-line reconstruction. `pointermove` events
 overwrite the latest slot, while `pointerdown/up/cancel` remain ordered in the discrete ring. The
-route accepts `?run=life&runtime=simd|scalar&size=256|512|1024&renderer=main|offscreen`; the height
-remains 5/8 of the width. The main renderer publishes through a double-buffered
+route accepts `?run=life&runtime=simd|scalar&size=256|512|1024&renderer=auto|main|offscreen`; the
+height remains 5/8 of the width. `auto` is the default: it keeps surfaces below 262,144 cells on the
+main thread, selects OffscreenCanvas at or above that provisional crossover, and falls back to main
+when OffscreenCanvas is unavailable. The main renderer publishes through a double-buffered
 `SharedArrayBuffer`, while the offscreen renderer transfers the Canvas to the Worker and publishes
 only an 80-byte seqlocked statistics/control header. The latter avoids both the cell snapshot and
 the per-frame main-thread RGBA conversion. The UI reports rolling compute/render medians,
 input-to-frame latency, observed frame rate, and exact compute/shared allocations. Run
 `just dev-ui-comparison`, then open the printed local URL with
-`?run=life&runtime=simd&renderer=offscreen`.
+`?run=life&runtime=simd&renderer=auto`.
 
 The optional Life kernel is 664 raw / 368 gzip bytes and uses `i8x16` addition and comparison for
 the contiguous interior of each row. Sixteen wraparound/tail cells per row stay scalar, avoiding a
@@ -436,23 +438,32 @@ these Apple M5/Deno medians:
 | 1024 × 640 | 655,360 | 2,483.3 µs |   97.5 µs |  25.46× |
 
 The browser autorun waits for 20 generations and reports rolling medians from 11 sequential pointer
-taps. Local Chrome produced 25 µs SIMD versus 380 µs Scalar JS at 256 × 160, and 155 µs versus
-3,920 µs at 1024 × 640. Input-to-frame stayed 4.9–7.3 ms across both runtimes and sizes with no
-dropped records. The 1024 × 640 Canvas painted about 26–28 fps at the default 30 Hz, so display
-conversion becomes the next bottleneck even though the SIMD compute remains below 0.2 ms.
+taps. Local Chrome produced 25 µs SIMD versus 380 µs Scalar JS at 256 × 160, and 155 µs versus 3,920
+µs at 1024 × 640. Input-to-frame stayed 4.9–7.3 ms across both runtimes and sizes with no dropped
+records. The 1024 × 640 Canvas painted about 26–28 fps at the default 30 Hz, so display conversion
+becomes the next bottleneck even though the SIMD compute remains below 0.2 ms.
 
 An OffscreenCanvas A/B run shows that it is a large-surface optimization, not an unconditional win:
 
-| grid | renderer | input-to-frame | render median | observed fps | shared memory |
-| ---: | :------- | -------------: | ------------: | -----------: | ------------: |
-| 256 × 160 | main | 4.39 ms | 170 µs | 29.7 | 88.2 KiB |
-| 256 × 160 | offscreen | 8.38 ms | 75 µs | 30.0 | 8.2 KiB |
-| 1024 × 640 | main | 9.90 ms | 1,145 µs | 27.8 | 1.26 MiB |
-| 1024 × 640 | offscreen | 8.28 ms | 1,085 µs | 28.0 | 8.2 KiB |
+|       grid | renderer  | input-to-frame | render median | observed fps | shared memory |
+| ---------: | :-------- | -------------: | ------------: | -----------: | ------------: |
+|  256 × 160 | main      |        4.39 ms |        170 µs |         29.7 |      88.2 KiB |
+|  256 × 160 | offscreen |        8.38 ms |         75 µs |         30.0 |       8.2 KiB |
+|  512 × 320 | main      |        7.54 ms |        465 µs |         30.0 |       328 KiB |
+|  512 × 320 | offscreen |        8.15 ms |        455 µs |         30.0 |       8.2 KiB |
+| 1024 × 640 | main      |        9.90 ms |      1,145 µs |         27.8 |      1.26 MiB |
+| 1024 × 640 | offscreen |        8.28 ms |      1,085 µs |         28.0 |       8.2 KiB |
 
-These are local Chrome autorun medians, so the exact input number includes the rAF/Worker phase.
-At 40,960 cells the handoff is not repaid; at 655,360 cells it removes main-thread pixel work,
-reduces shared allocation by about 99.4%, and improves the sampled input latency by about 16%.
+These are local Chrome autorun medians, so the exact input number includes the rAF/Worker phase. At
+40,960 cells the handoff is not repaid; at 655,360 cells it removes main-thread pixel work, reduces
+shared allocation by about 99.4%, and improves the sampled input latency by about 16%.
+
+The optional `load=0..8` benchmark parameter burns that many milliseconds on the main thread per rAF
+to model unrelated application work; it also reports the rAF gap p95. At 1024 × 640 with `load=4`,
+main rendering reported 9.165 ms input-to-frame, 2.68 ms render, and a 14.1 ms rAF-gap p95.
+Offscreen rendering reported 6.535 ms, 1.03 ms, and 9.28 ms respectively. Under this mixed load,
+moving pixels off-thread improved sampled input latency by about 29%. This synthetic load is a
+stress fixture, not a substitute for INP measurements in a real Luna application.
 
 ### Browser memory and event-loop profile
 

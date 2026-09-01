@@ -32,7 +32,11 @@ import {
 import { mountRuntimeProfilePage, type ProfileRuntime } from "./profile.ts";
 import { runAtomicInputDemo } from "./input_demo.ts";
 import { mountLifeDemo } from "./life_demo.ts";
-import type { LifeRenderer, LifeRuntime } from "../life_options.ts";
+import {
+  type LifeRendererPreference,
+  type LifeRuntime,
+  parseLifeMainLoadMs,
+} from "../life_options.ts";
 
 interface Comparison {
   readonly size: number;
@@ -120,6 +124,7 @@ if (benchmarkParams.get("run") === "life") {
     width,
     width * 5 / 8,
     parseLifeRenderer(benchmarkParams.get("renderer")),
+    parseLifeMainLoadMs(benchmarkParams.get("load")),
   );
   if (result !== null) report({ life: result });
 } else if (benchmarkParams.get("run") === "input") {
@@ -165,9 +170,9 @@ function parseLifeRuntime(value: string | null): LifeRuntime {
   throw new TypeError(`unknown Life runtime: ${value}`);
 }
 
-function parseLifeRenderer(value: string | null): LifeRenderer {
-  if (value === null || value === "offscreen") return "offscreen";
-  if (value === "main") return "main";
+function parseLifeRenderer(value: string | null): LifeRendererPreference {
+  if (value === null || value === "auto") return "auto";
+  if (value === "main" || value === "offscreen") return value;
   throw new TypeError(`unknown Life renderer: ${value}`);
 }
 

@@ -292,6 +292,10 @@ body.life-mode {
   background: #0b1512;
 }
 
+.life-renderer {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .life-runtime a,
 .life-renderer a {
   padding: 8px 10px;
