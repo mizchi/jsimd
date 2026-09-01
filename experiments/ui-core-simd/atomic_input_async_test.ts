@@ -10,13 +10,19 @@ Deno.test("AtomicInputAsyncWaiter yields until a producer wakes it", async () =>
   const waiter = AtomicInputAsyncWaiter.attach(input);
   const sequence = input.wakeSequence;
   let producerRan = false;
-  queueMicrotask(() => {
+  // Native Atomics.waitAsync does not itself keep Deno's event loop alive.
+  setTimeout(() => {
     producerRan = true;
     input.wake();
-  });
+  }, 0);
 
-  assertEquals(await waiter.waitForInput(sequence, 100), "ok");
-  assertEquals(producerRan, true);
+  const keepAlive = setInterval(() => {}, 10);
+  try {
+    assertEquals(await waiter.waitForInput(sequence, 100), "ok");
+    assertEquals(producerRan, true);
+  } finally {
+    clearInterval(keepAlive);
+  }
 });
 
 Deno.test("AtomicInputAsyncWaiter polling fallback observes changes without blocking", async () => {

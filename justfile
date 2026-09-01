@@ -166,7 +166,7 @@ test-radix-sort-block: build
 test-ultra-log-log: build
     deno test -A experiments/ultra-log-log
 
-test-ui-core-simd: build check-ui-core-entrypoints
+test-ui-core-simd: build check-ui-core-entrypoints check-ui-pixel-bundles
     deno test -A experiments/ui-core-simd
 
 check-ui-core-entrypoints:
@@ -222,9 +222,19 @@ bench-ui-core-atomic-input:
 bench-ui-life-kernel: build
     deno run -A experiments/ui-core-simd/life_kernel_bench.ts
 
+bench-ui-pixel-browser: build-ui-comparison
+    deno run -A tools/bench-ui-pixel-browser.ts
+
 build-ui-comparison:
     pnpm --config.verify-deps-before-run=false exec tsc -p experiments/ui-core-simd/browser-ui/tsconfig.json
     pnpm --config.verify-deps-before-run=false exec vite build experiments/ui-core-simd/browser-ui
+
+check-ui-pixel-bundles: build-ui-comparison
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_demo-*.js | wc -c | tr -d ' ')" -le 5000
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_active_runtime-*.js | wc -c | tr -d ' ')" -le 1700
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_webgpu-*.js | wc -c | tr -d ' ')" -le 3700
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_worker_client-*.js | wc -c | tr -d ' ')" -le 2000
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_worker-*.js | wc -c | tr -d ' ')" -le 5300
 
 dev-ui-comparison:
     pnpm --config.verify-deps-before-run=false exec vite --host 127.0.0.1 experiments/ui-core-simd/browser-ui

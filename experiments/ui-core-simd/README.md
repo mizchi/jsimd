@@ -471,6 +471,84 @@ Offscreen rendering reported 6.535 ms, 1.03 ms, and 9.28 ms respectively. Under 
 moving pixels off-thread improved sampled input latency by about 29%. This synthetic load is a
 stress fixture, not a substitute for INP measurements in a real Luna application.
 
+### Pixel Lab: conservative material cells
+
+The optional `?run=pixel` route broadens the Canvas experiment from a uniform Life rule to a
+material cellular automaton. Its v0 cell ABI is one `u32`: material, temperature, flags, and variant
+each occupy one byte. Empty, wall, sand, and water are implemented; temperature is reserved but is
+not updated yet. A tick consists of vertical, diagonal, and horizontal disjoint-pair passes. Passes
+swap complete cells, so material counts and metadata are conserved without per-cell atomics. The
+CPU and WebGPU paths share the same parity and pair-count contract.
+
+Open
+`?run=pixel&runtime=cpu|active|worker|webgpu&size=256|512|1024&occupancy=5|25|75&region=full|quarter|spot&load=0..8`.
+The CPU path performs scalar in-place pair swaps and converts the resulting cells to `ImageData`.
+The active path applies the identical rules only to hot 32 × 32 chunks and their one-chunk halo;
+chunks cool after two idle parities and pointer brushes wake their neighborhood. The WebGPU path
+keeps the cells in a storage buffer, dispatches three compute passes, and samples that buffer
+directly from the Canvas fragment shader; it performs no frame readback. Pointer input is reduced
+to a cell coordinate, material, and radius before a small brush dispatch. The autorun case injects
+11 pointer samples and reports input-to-present latency as well as synchronized GPU completion time.
+
+The Worker path runs the active-chunk implementation and `ImageData` presentation behind a
+transferred `OffscreenCanvas`. Main-thread pointer listeners synchronously write only fixed-point
+coordinates, pointer flags, and timestamps into the existing `AtomicInputBuffer`; coalesced moves
+are reconstructed into continuous brush lines in the Worker. An independent 80-byte seqlocked
+control block publishes tick, compute/render timings, active chunks, run state, and the timestamp of
+the last presented input. No cell snapshot crosses the thread boundary.
+
+`just bench-ui-pixel-browser` runs the full 3 × 3 × 4 × 2 matrix in isolated headless Chrome
+profiles. The axes can be narrowed with `JSIMD_PIXEL_WIDTHS`, `JSIMD_PIXEL_OCCUPANCIES`,
+`JSIMD_PIXEL_RUNTIMES`, and `JSIMD_PIXEL_REGIONS`. Representative Apple M5 results at 25%
+occupancy were:
+
+| world | runtime | tick + present median | input-to-present | resident buffers |
+| ----: | :------ | --------------------: | ---------------: | ---------------: |
+| 512 × 320 | CPU | 0.710 ms | 14.20 ms | 1.25 MiB |
+| 512 × 320 | WebGPU | 0.745 ms | 17.12 ms | 640 KiB |
+| 1024 × 640 | CPU | 2.730 ms | 12.11 ms | 5.00 MiB |
+| 1024 × 640 | WebGPU | 0.865 ms | 17.12 ms | 2.50 MiB |
+
+This exposes a useful boundary: at 163,840 cells, GPU queue/synchronization cost is not repaid; at
+655,360 cells, WebGPU is about 3.2× faster for the dense full-grid tick and uses half the explicitly
+owned memory. WebGPU brush presentation adds roughly one display interval in this harness, so CPU
+input latency remains lower. At 1024 × 640, changing occupancy from 5% to 75% moved WebGPU from
+0.825 to 0.945 ms and CPU from 2.505 to 2.840 ms. Both still scan the full world, which deliberately
+makes the missing sparse-world optimization visible.
+
+At 1024 × 640, the locality axis separates full-world density from a localized workload:
+
+| region | runtime | compute median | tick + present | active chunks |
+| :----- | :------ | -------------: | -------------: | ------------: |
+| full | CPU | 2.30 ms | 2.84 ms | - |
+| full | Active CPU | 3.74 ms | 4.34 ms | 571 / 640 |
+| spot | CPU | 1.32 ms | 1.93 ms | - |
+| spot | Active CPU | 0.665 ms | 1.21 ms | 178 / 640 |
+| spot | WebGPU | GPU-synchronized | 1.07 ms | full dispatch |
+
+Chunk scheduling is therefore harmful when almost the whole world moves, but halves CPU compute
+time when activity covers roughly 28% of chunks. The fixed 0.55 ms `ImageData` conversion remains
+after sparse compute and is the reason WebGPU still narrowly wins the complete spot frame.
+
+The Worker experiment changes ownership rather than making the kernel itself faster. At 1024 × 640
+with 8 ms of synthetic main-thread work, the measured main-frame work was 12.38 ms for full active
+CPU versus 8.09 ms for Worker, and 9.23 ms versus 8.09 ms for the spot case. Worker compute was
+slower in the isolated Chrome runs and sampled input-to-present was about 2–3 ms worse, so this is a
+throughput/jank trade rather than an unconditional latency win. It pays when the UI has other
+main-thread work to overlap; WebGPU remains the stronger dense-grid backend.
+
+The lazy chunks are 4.81 KiB gzip for the Pixel UI/CPU path, 1.60 KiB for active chunks, and 3.33
+KiB for WebGPU. Worker selection additionally loads a 1.91 KiB main-thread adapter and a 5.02 KiB
+self-contained Worker. Their byte ceilings are 5,000, 1,700, 3,700, 2,000, and 5,300 respectively.
+None enters the signals, computed, Atomics, or Patch Tape entrypoints; all existing core ceilings
+also remain enforced by `just test-ui-core-simd`.
+
+This is a benchmarkable material kernel, not yet a Sandustry/Noita-like engine. Disjoint pairing
+avoids races but produces lattice artifacts and cannot express long-range machines, rigid bodies,
+connected-component updates, or arbitrary material scripts. The next discriminating steps are an
+optional SIMD heat/reaction scan, multi-pass movement intents for less grid-biased GPU motion, and
+a DOM-backed stress fixture that separates simulation gains from Canvas-only gains.
+
 ### Browser memory and event-loop profile
 
 The isolated browser route

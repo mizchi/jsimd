@@ -10,7 +10,7 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ESNext",
-    "types": ["vite/client"],
+    "types": ["vite/client", "@webgpu/types"],
     "verbatimModuleSyntax": true
   },
   "include": [
@@ -28,6 +28,12 @@
     "../patch_tape.ts",
     "../patch_tape_kernel.ts",
     "../patch_scenarios.ts",
+    "../pixel_chunk_activity.ts",
+    "../pixel_active_sim.ts",
+    "../pixel_options.ts",
+    "../pixel_pass_plan.ts",
+    "../pixel_sim.ts",
+    "../pixel_worker_control.ts",
     "../runtime_profile.ts",
     "../computed.ts",
     "../signal_graph.ts",
@@ -38,6 +44,12 @@
     "input_demo_worker.ts",
     "life_demo.ts",
     "life_worker.ts",
+    "pixel_active_runtime.ts",
+    "pixel_demo.ts",
+    "pixel_shaders.wgsl.ts",
+    "pixel_webgpu.ts",
+    "pixel_worker.ts",
+    "pixel_worker_client.ts",
     "profile.ts",
     "src.ts"
   ]
