@@ -130,6 +130,13 @@ self.onmessage = (event) => {
   }
 });
 
+Deno.test("explicit wake releases consumers for out-of-band control changes", () => {
+  const input = AtomicInputBuffer.create(4);
+  assertEquals(input.wake(), 1, "first explicit wake sequence");
+  assertEquals(input.wake(), 2, "second explicit wake sequence");
+  assertEquals(input.wakeSequence, 2, "wake sequence is shared with input publications");
+});
+
 Deno.test("atomic input validates power-of-two capacity and destinations", () => {
   assertThrows(() => AtomicInputBuffer.create(3), RangeError);
   const input = AtomicInputBuffer.create(4);

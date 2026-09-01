@@ -197,14 +197,20 @@ export class AtomicInputBuffer {
     return Atomics.load(this.#words, WAKE_SEQUENCE_INDEX) >>> 0;
   }
 
+  /** Wakes the consumer after an out-of-band shared-state change. */
+  wake(): number {
+    return this.#wakeConsumer();
+  }
+
   /** Worker-only blocking wait. Drain both latest and discrete records after it returns. */
   waitForInput(sequence: number, timeout?: number): "ok" | "not-equal" | "timed-out" {
     return Atomics.wait(this.#words, WAKE_SEQUENCE_INDEX, sequence | 0, timeout);
   }
 
-  #wakeConsumer(): void {
-    Atomics.add(this.#words, WAKE_SEQUENCE_INDEX, 1);
+  #wakeConsumer(): number {
+    const sequence = Atomics.add(this.#words, WAKE_SEQUENCE_INDEX, 1) + 1;
     Atomics.notify(this.#words, WAKE_SEQUENCE_INDEX);
+    return sequence >>> 0;
   }
 
   #storeRecord(

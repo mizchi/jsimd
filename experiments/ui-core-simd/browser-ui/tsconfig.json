@@ -20,6 +20,8 @@
     "../benchmark_stats.ts",
     "../complex_tree.ts",
     "../layered_graph.ts",
+    "../life_game.ts",
+    "../life_shared.ts",
     "../patch_tape.ts",
     "../patch_tape_kernel.ts",
     "../patch_scenarios.ts",
@@ -31,6 +33,8 @@
     "atomic_profile_worker.ts",
     "input_demo.ts",
     "input_demo_worker.ts",
+    "life_demo.ts",
+    "life_worker.ts",
     "profile.ts",
     "src.ts"
   ]

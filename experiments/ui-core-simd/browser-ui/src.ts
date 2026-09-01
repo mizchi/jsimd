@@ -31,6 +31,7 @@ import {
 } from "../signals.ts";
 import { mountRuntimeProfilePage, type ProfileRuntime } from "./profile.ts";
 import { runAtomicInputDemo } from "./input_demo.ts";
+import { mountLifeDemo } from "./life_demo.ts";
 
 interface Comparison {
   readonly size: number;
@@ -108,7 +109,14 @@ await mountDemos();
 const runButton = required<HTMLButtonElement>("run-all");
 benchmarkGlobal.__jsimdUiBench = { ready: true, results: null, runAll: runAndRender };
 const benchmarkParams = new URLSearchParams(location.search);
-if (benchmarkParams.get("run") === "input") {
+if (benchmarkParams.get("run") === "life") {
+  runButton.disabled = true;
+  const result = await mountLifeDemo(
+    document.querySelector("main")!,
+    benchmarkParams.get("autorun") === "1",
+  );
+  if (result !== null) report({ life: result });
+} else if (benchmarkParams.get("run") === "input") {
   runButton.disabled = true;
   const result = await runAtomicInputDemo(
     required("simd-demo"),

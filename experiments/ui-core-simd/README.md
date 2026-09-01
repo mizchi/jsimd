@@ -411,6 +411,13 @@ verified that 100 PointerEvents coalesced to the last position while pointerdown
 the Worker in order with no drops. The core is 1,178 gzip bytes; adding the DOM extraction adapter
 is 1,452 gzip bytes. Neither enters `signals.ts` or the Patch Tape bundle.
 
+The interactive `?run=life` route turns this bridge into a 256 × 160 Conway's Game of Life demo. The
+Worker owns all 40,960 cells, simulation steps, and drag-line reconstruction. `pointermove` events
+overwrite the latest slot, while `pointerdown/up/cancel` remain ordered in the discrete ring.
+Finished boards are published through a separate double-buffered `SharedArrayBuffer`; the main
+thread snapshots them into one reusable `ImageData`. Run `just dev-ui-comparison`, then open the
+printed local URL with `?run=life`.
+
 ### Browser memory and event-loop profile
 
 The isolated browser route
