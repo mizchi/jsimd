@@ -248,7 +248,7 @@ test-striped-roaring-bitmap: build
     deno test -A experiments/striped-roaring-bitmap
 
 bench-record-vitest suite output:
-    deno run -A packages/bench/src/record_vitest.ts {{suite}} {{output}}
+    deno run -A packages/bench/src/record_vitest.ts {{ suite }} {{ output }}
 
 bench-record-all-vitest:
     deno run -A packages/bench/src/record_all_vitest.ts
@@ -438,10 +438,25 @@ build-moonbit-interop-package: build-jsimd-package
 build-columnar-package: build-jsimd-package
     deno run -A tools/build-typescript-package.ts columnar
 
+build-validator-simd:
+    wasm-tools strip -a packages/validator/src/simd/kernels.wat -o packages/validator/src/simd/kernels.wasm
+    wasm-tools validate --features simd packages/validator/src/simd/kernels.wasm
+    wasm-tools print packages/validator/src/simd/kernels.wasm | rg -q 'first_i32_outside|first_u32_outside|first_u8_outside'
+    wasm-tools print packages/validator/src/simd/kernels.wasm | rg -q 'first_f32_outside'
+    wasm-tools print packages/validator/src/simd/kernels.wasm | rg -q 'first_f64_outside'
+    wasm-tools print packages/validator/src/simd/kernels.wasm | rg -q 'f32x4.lt'
+    wasm-tools print packages/validator/src/simd/kernels.wasm | rg -q 'f64x2.lt'
+
+build-validator-package: build-validator-simd
+    deno run -A tools/build-typescript-package.ts validator
+
+build-validator-compiler-package:
+    deno run -A tools/build-typescript-package.ts validator-compiler
+
 build-olap-package: build-jsimd-package build-shared-package build-columnar-package
     deno run -A tools/build-typescript-package.ts olap
 
-build-package: build-shared-package build-moonbit-interop-package build-columnar-package build-olap-package
+build-package: build-shared-package build-moonbit-interop-package build-validator-package build-validator-compiler-package build-columnar-package build-olap-package
 
 memory-profile: build
     node --no-warnings --expose-gc tools/profile-memory.ts
@@ -452,7 +467,92 @@ snapshot-transport: build
 package-smoke: build-package
     deno run -A tools/smoke-package.ts
     deno run -A tools/smoke-moonbit-interop-package.ts
+    deno run -A tools/smoke-validator-package.ts
+    deno run -A tools/smoke-validator-compiler-package.ts
     deno run -A tools/smoke-olap-package.ts
+
+check-validator-tree-shake:
+    pnpm exec tsc -p packages/validator/fixtures/tree-shake/tsconfig.json
+    pnpm exec vite build packages/validator/fixtures/tree-shake
+    test "$(find packages/validator/fixtures/tree-shake/dist/assets -name '*.js' -exec gzip -c {} \; | wc -c | tr -d ' ')" -le 1000
+    pnpm exec tsc -p packages/validator/fixtures/compiled/tsconfig.json
+    pnpm exec vite build packages/validator/fixtures/compiled
+    test "$(find packages/validator/fixtures/compiled/dist/assets -name '*.js' -exec gzip -c {} \; | wc -c | tr -d ' ')" -le 2250
+    pnpm exec tsc -p packages/validator/fixtures/simd/tsconfig.json
+    pnpm exec vite build packages/validator/fixtures/simd
+    test "$(find packages/validator/fixtures/simd/dist/assets -name '*.js' -exec gzip -c {} \; | wc -c | tr -d ' ')" -le 2750
+    rg -q 'data:application/wasm' packages/validator/fixtures/simd/dist/assets/*.js
+    ! rg -q 'Expected required property|Expected no additional properties' packages/validator/fixtures/tree-shake/dist/assets/*.js packages/validator/fixtures/compiled/dist/assets/*.js packages/validator/fixtures/simd/dist/assets/*.js
+
+test-validator:
+    deno test -A packages/validator/src packages/validator/benchmarks/comparison_contract_test.ts
+
+test-validator-compiler:
+    deno test -A packages/validator-compiler/src packages/validator-compiler/benchmarks/validator_accuracy_test.ts packages/validator-compiler/benchmarks/schema_shapes_accuracy_test.ts packages/validator-compiler/benchmarks/schema_size_matrix_test.ts packages/validator-compiler/benchmarks/wasm_library_accuracy_test.ts
+
+test-validator-release:
+    deno test -A tools/validator_release_contract_test.ts
+
+release-check-validator-packages: build-validator-package build-validator-compiler-package
+    just test-validator
+    just test-validator-compiler
+    deno run -A tools/smoke-validator-package.ts
+    deno run -A tools/smoke-validator-compiler-package.ts
+    just test-validator-release
+
+build-validator-compiler-zod-example: build-validator-compiler-package
+    node packages/validator-compiler/dist/cli.js examples/validator-compiler-zod/schema.ts#UserSchema --out examples/validator-compiler-zod/generated/user --javascript
+
+test-validator-compiler-zod-example: build-validator-compiler-zod-example
+    pnpm exec tsc -p examples/validator-compiler-zod/tsconfig.json
+    node examples/validator-compiler-zod/app.ts
+    deno test -A examples/validator-compiler-zod/app_test.ts
+
+check-validator-compiler-zod-example: test-validator-compiler-zod-example
+    git diff --exit-code -- examples/validator-compiler-zod/generated
+
+build-validator-compiler-zod-wasm-example: build-validator-compiler-package
+    node packages/validator-compiler/dist/cli.js examples/validator-compiler-zod-wasm/schema.ts#TelemetrySchema --out examples/validator-compiler-zod-wasm/generated/telemetry
+
+test-validator-compiler-zod-wasm-example: build-validator-compiler-zod-wasm-example
+    wasm-tools validate --features simd examples/validator-compiler-zod-wasm/generated/telemetry.wasm
+    wasm-tools print examples/validator-compiler-zod-wasm/generated/telemetry.wasm | rg -q 'f64x2.splat|f64x2.replace_lane|f64x2.ge|f64x2.le|i64x2.all_true'
+    test "$(wc -c < examples/validator-compiler-zod-wasm/generated/telemetry.wasm | tr -d ' ')" -le 1150
+    test "$(gzip -9 -c examples/validator-compiler-zod-wasm/generated/telemetry.wasm | wc -c | tr -d ' ')" -le 400
+    test "$(gzip -9 -c examples/validator-compiler-zod-wasm/generated/telemetry.js | wc -c | tr -d ' ')" -le 800
+    pnpm exec tsc -p examples/validator-compiler-zod-wasm/tsconfig.json
+    node examples/validator-compiler-zod-wasm/app.ts
+    deno test -A examples/validator-compiler-zod-wasm/app_test.ts
+
+check-validator-compiler-zod-wasm-example: test-validator-compiler-zod-wasm-example
+    git diff --exit-code -- examples/validator-compiler-zod-wasm/generated
+
+bench-validator: build-validator-simd
+    deno bench -A packages/validator/benchmarks
+
+bench-validator-compiler:
+    deno bench -A packages/validator-compiler/benchmarks
+
+bench-validator-compiler-wasm:
+    deno bench -A packages/validator-compiler/benchmarks/wasm_aot.bench.ts
+
+bench-validator-compiler-wasm-libraries:
+    deno bench -A packages/validator-compiler/benchmarks/wasm_library_comparison.bench.ts
+
+bench-validator-only:
+    deno bench -A packages/validator-compiler/benchmarks/validator_only.bench.ts packages/validator-compiler/benchmarks/schema_shapes.bench.ts
+
+measure-validator-bundles:
+    deno run -A tools/measure-validator-bundles.ts
+
+measure-validator-compiler:
+    deno run -A tools/measure-validator-compiler.ts
+
+measure-validator-schema-sizes:
+    deno run -A tools/measure-validator-schema-sizes.ts
+
+measure-validator-wasm-comparison:
+    deno run -A tools/measure-validator-wasm-comparison.ts
 
 test: build
     deno test -A
@@ -460,7 +560,7 @@ test: build
 bench: build
     deno bench -A
 
-check: test package-smoke check-dynamic-wasm-fusion-bundle-size
+check: test package-smoke check-dynamic-wasm-fusion-bundle-size check-validator-tree-shake check-validator-compiler-zod-example check-validator-compiler-zod-wasm-example
     test "$(find packages/jsimd/dist -name '*_test.js' -o -name '*_test.d.ts' | wc -l | tr -d ' ')" = "0"
     deno fmt --check
     deno lint

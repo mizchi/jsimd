@@ -1,0 +1,8 @@
+{
+  "name": "@mizchi/jsimd-validator",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./debug": "./src/debug.ts"
+  }
+}

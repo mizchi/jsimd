@@ -3,6 +3,8 @@
     "./packages/jsimd",
     "./packages/shared",
     "./packages/moonbit-interop",
+    "./packages/validator",
+    "./packages/validator-compiler",
     "./packages/columnar",
     "./packages/olap",
     "./packages/bench"
@@ -14,7 +16,17 @@
     "bench": "just bench"
   },
   "fmt": {
-    "exclude": ["pnpm-lock.yaml"],
+    "exclude": [
+      "pnpm-lock.yaml",
+      "examples/validator-compiler-zod/generated/",
+      "examples/validator-compiler-zod-wasm/generated/"
+    ],
     "lineWidth": 100
+  },
+  "lint": {
+    "exclude": [
+      "examples/validator-compiler-zod/generated/",
+      "examples/validator-compiler-zod-wasm/generated/"
+    ]
   }
 }

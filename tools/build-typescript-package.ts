@@ -1,9 +1,12 @@
 const packageName = Deno.args[0];
 if (
   packageName !== "shared" && packageName !== "columnar" && packageName !== "olap" &&
-  packageName !== "moonbit-interop"
+  packageName !== "moonbit-interop" && packageName !== "validator" &&
+  packageName !== "validator-compiler"
 ) {
-  throw new TypeError("expected package name: shared, columnar, moonbit-interop, or olap");
+  throw new TypeError(
+    "expected package name: shared, columnar, moonbit-interop, olap, validator, or validator-compiler",
+  );
 }
 
 const packageDirectory = `packages/${packageName}`;
@@ -41,6 +44,13 @@ if (packageName === "olap") {
   await Deno.copyFile(
     `${packageDirectory}/src/radix_order_u32.wasm`,
     `${outputDirectory}/radix_order_u32.wasm`,
+  );
+}
+
+if (packageName === "validator") {
+  await Deno.copyFile(
+    `${packageDirectory}/src/simd/kernels.wasm`,
+    `${outputDirectory}/simd/kernels.wasm`,
   );
 }
 

@@ -1,0 +1,50 @@
+{
+  "name": "@mizchi/jsimd-validator-compiler",
+  "version": "0.1.0",
+  "description": "Schema-specialized Wasm SIMD AOT validator compiler for Standard Schema subsets",
+  "type": "module",
+  "exports": { ".": "./dist/mod.js" },
+  "types": "./dist/mod.d.ts",
+  "bin": { "jsimd-validator-compiler": "./dist/cli.js" },
+  "sideEffects": false,
+  "engines": { "node": ">=24" },
+  "files": ["dist/", "README.md"],
+  "scripts": {
+    "build": "cd ../.. && just build-validator-compiler-package",
+    "bench": "deno bench -A benchmarks",
+    "prepack": "cd ../.. && just build-validator-compiler-package",
+    "test": "deno test src"
+  },
+  "devDependencies": {
+    "@standard-schema/spec": "1.1.0",
+    "@valibot/to-json-schema": "1.7.1",
+    "arktype": "2.2.3",
+    "valibot": "1.4.2",
+    "zod": "4.5.4"
+  },
+  "peerDependencies": {
+    "@valibot/to-json-schema": ">=1.7.1"
+  },
+  "peerDependenciesMeta": {
+    "@valibot/to-json-schema": { "optional": true }
+  },
+  "license": "MIT",
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mizchi/jsimd.git",
+    "directory": "packages/validator-compiler"
+  },
+  "homepage": "https://github.com/mizchi/jsimd/tree/main/packages/validator-compiler#readme",
+  "bugs": "https://github.com/mizchi/jsimd/issues",
+  "keywords": [
+    "typescript",
+    "validation",
+    "standard-schema",
+    "json-schema",
+    "wasm",
+    "simd",
+    "aot",
+    "compiler"
+  ]
+}

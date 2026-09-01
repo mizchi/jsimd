@@ -1,0 +1,35 @@
+{
+  "name": "@mizchi/jsimd-validator",
+  "version": "0.1.0",
+  "description": "Wasm SIMD range validation for typed numeric arrays",
+  "type": "module",
+  "exports": {
+    ".": "./dist/mod.js",
+    "./debug": "./dist/debug.js"
+  },
+  "types": "./dist/mod.d.ts",
+  "sideEffects": false,
+  "engines": { "node": ">=24" },
+  "files": ["dist/", "README.md"],
+  "scripts": {
+    "build": "cd ../.. && just build-validator-package",
+    "bench": "deno bench -A benchmarks",
+    "prepack": "cd ../.. && just build-validator-package",
+    "test": "deno test src"
+  },
+  "devDependencies": {
+    "arktype": "2.2.3",
+    "valibot": "1.4.2",
+    "zod": "4.5.4"
+  },
+  "license": "MIT",
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mizchi/jsimd.git",
+    "directory": "packages/validator"
+  },
+  "homepage": "https://github.com/mizchi/jsimd/tree/main/packages/validator#readme",
+  "bugs": "https://github.com/mizchi/jsimd/issues",
+  "keywords": ["typescript", "validation", "wasm", "simd", "typed-array"]
+}

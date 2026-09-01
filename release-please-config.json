@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "bootstrap-sha": "2beeb922cde76d13619baa549e316afedc7a9593",
+  "include-component-in-tag": true,
+  "separate-pull-requests": false,
+  "plugins": ["node-workspace"],
+  "packages": {
+    "packages/validator": {
+      "component": "validator",
+      "package-name": "@mizchi/jsimd-validator",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": ["deno.json"]
+    },
+    "packages/validator-compiler": {
+      "component": "validator-compiler",
+      "package-name": "@mizchi/jsimd-validator-compiler",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": ["deno.json"]
+    }
+  }
+}

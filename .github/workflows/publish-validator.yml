@@ -1,0 +1,94 @@
+name: publish-validator
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-validator-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      startsWith(github.event.release.tag_name, 'validator-v') ||
+      startsWith(github.event.release.tag_name, 'validator-compiler-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.24.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+          cache: pnpm
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.6.4
+
+      - name: Set up just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: 1.58.0
+
+      - name: Set up wasm-tools
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location \
+            --output "$RUNNER_TEMP/wasm-tools.tar.gz" \
+            https://github.com/bytecodealliance/wasm-tools/releases/download/v1.245.1/wasm-tools-1.245.1-x86_64-linux.tar.gz
+          echo "b171e20fd107e63e89ef6c936b5581597666a086af677d7818de92b7cdd5a86d  $RUNNER_TEMP/wasm-tools.tar.gz" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/wasm-tools"
+          tar -xzf "$RUNNER_TEMP/wasm-tools.tar.gz" -C "$RUNNER_TEMP/wasm-tools" --strip-components=1
+          echo "$RUNNER_TEMP/wasm-tools" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Require npm 11 for OIDC provenance
+        run: npm install --global npm@11
+
+      - name: Verify release artifacts
+        run: just release-check-validator-packages
+
+      - name: Resolve package from release tag
+        id: package
+        shell: bash
+        run: |
+          case "$GITHUB_REF_NAME" in
+            validator-v*)
+              component="validator"
+              directory="packages/validator"
+              ;;
+            validator-compiler-v*)
+              component="validator-compiler"
+              directory="packages/validator-compiler"
+              ;;
+            *)
+              echo "Unsupported release tag: $GITHUB_REF_NAME" >&2
+              exit 1
+              ;;
+          esac
+          version="${GITHUB_REF_NAME#"$component-v"}"
+          package_version="$(node -p "require('./$directory/package.json').version")"
+          test "$version" = "$package_version"
+          echo "directory=$directory" >> "$GITHUB_OUTPUT"
+
+      - name: Publish with npm Trusted Publishing
+        working-directory: ${{ steps.package.outputs.directory }}
+        run: npm publish
