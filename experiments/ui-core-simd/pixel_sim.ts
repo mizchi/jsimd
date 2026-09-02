@@ -1,15 +1,13 @@
 import type { PixelRegion } from "./pixel_options.ts";
+import {
+  MATERIAL,
+  materialDensity,
+  materialIsFluid,
+  materialIsMovable,
+  type PixelMaterial,
+} from "./pixel_material.ts";
 
-export const MATERIAL = {
-  empty: 0,
-  wall: 1,
-  sand: 2,
-  water: 3,
-  gas: 4,
-  fire: 5,
-} as const;
-
-export type PixelMaterial = (typeof MATERIAL)[keyof typeof MATERIAL];
+export { MATERIAL, type PixelMaterial } from "./pixel_material.ts";
 
 export interface PixelStepResult {
   readonly moves: number;
@@ -72,7 +70,7 @@ export function stepPixelWorld(
   const parity = phase & 1;
   let moves = verticalPass(cells, width, height, parity);
   moves += diagonalPass(cells, width, height, parity);
-  moves += horizontalWaterPass(cells, width, height, parity);
+  moves += horizontalFluidPass(cells, width, height, parity);
   return { moves };
 }
 
@@ -190,6 +188,183 @@ export function createPixelScenario(
   return cells;
 }
 
+/** Demo-only gallery with raw materials above and live compound reactions below. */
+export function createPixelMaterialShowcase(
+  width: number,
+  height: number,
+  occupancy = 0.25,
+  seed = 0x51f1_5e5d,
+  region: PixelRegion = "full",
+): Uint32Array {
+  if (!Number.isFinite(occupancy) || occupancy < 0 || occupancy > 1) {
+    throw new RangeError("pixel showcase occupancy must be between zero and one");
+  }
+  const cells = new Uint32Array(width * height);
+  validateWorld(cells, width, height);
+  cells.fill(packPixel(MATERIAL.empty));
+  const columns = 5;
+  const rows = 2;
+  const [galleryLeft, galleryTop, galleryWidth, galleryHeight] = pixelShowcaseBounds(
+    width,
+    height,
+    region,
+  );
+  const fillProbability = Math.min(1, 0.25 + occupancy);
+  const wall = packPixel(MATERIAL.wall);
+
+  for (let slot = 0; slot < columns * rows; slot++) {
+    const column = slot % columns;
+    const row = Math.floor(slot / columns);
+    const left = galleryLeft + Math.floor(column * galleryWidth / columns);
+    const right = galleryLeft + Math.floor((column + 1) * galleryWidth / columns) - 1;
+    const top = galleryTop + Math.floor(row * galleryHeight / rows);
+    const bottom = galleryTop + Math.floor((row + 1) * galleryHeight / rows) - 1;
+    for (let x = left; x <= right; x++) {
+      cells[top * width + x] = wall;
+      cells[bottom * width + x] = wall;
+    }
+    for (let y = top; y <= bottom; y++) {
+      cells[y * width + left] = wall;
+      cells[y * width + right] = wall;
+    }
+
+    if (row !== 0) continue;
+    const pairs = [
+      [MATERIAL.sand, MATERIAL.water],
+      [MATERIAL.gas, MATERIAL.smoke],
+      [MATERIAL.stone, MATERIAL.wood],
+      [MATERIAL.oil, MATERIAL.acid],
+      [MATERIAL.fire, MATERIAL.lava],
+    ] as const;
+    const middle = Math.floor((left + right) / 2);
+    for (let y = top + 1; y < bottom; y++) cells[y * width + middle] = wall;
+    for (let side = 0; side < 2; side++) {
+      const material = pairs[column]![side]!;
+      const packed = packPixel(
+        material,
+        material === MATERIAL.fire || material === MATERIAL.lava ? 255 : 128,
+      );
+      const startX = side === 0 ? left + 1 : middle + 1;
+      const endX = side === 0 ? middle : right;
+      for (let y = top + 1; y < bottom; y++) {
+        for (let x = startX; x < endX; x++) {
+          seed ^= seed << 13;
+          seed ^= seed >>> 17;
+          seed ^= seed << 5;
+          if ((seed >>> 0) / 0x1_0000_0000 < fillProbability) cells[y * width + x] = packed;
+        }
+      }
+      cells[(bottom - 1) * width + Math.floor((startX + endX - 1) / 2)] = packed;
+    }
+  }
+
+  seedPixelMaterialShowcaseInteractions(cells, width, height, region);
+
+  for (let x = 0; x < width; x++) {
+    cells[x] = wall;
+    cells[(height - 1) * width + x] = wall;
+  }
+  for (let y = 0; y < height; y++) {
+    cells[y * width] = wall;
+    cells[y * width + width - 1] = wall;
+  }
+  return cells;
+}
+
+/** Restores small material sources so the demo keeps showing reactions after reaching equilibrium. */
+export function seedPixelMaterialShowcaseInteractions(
+  cells: Uint32Array,
+  width: number,
+  height: number,
+  region: PixelRegion = "full",
+): void {
+  validateWorld(cells, width, height);
+  const [galleryLeft, galleryTop, galleryWidth, galleryHeight] = pixelShowcaseBounds(
+    width,
+    height,
+    region,
+  );
+  const rowTop = galleryTop + Math.floor(galleryHeight / 2);
+  const sourcePairs = [
+    [MATERIAL.sand, MATERIAL.water],
+    [MATERIAL.fire, MATERIAL.water],
+    [MATERIAL.lava, MATERIAL.water],
+    [MATERIAL.acid, MATERIAL.wood],
+    [MATERIAL.fire, MATERIAL.oil],
+  ] as const;
+  for (let column = 0; column < sourcePairs.length; column++) {
+    const left = galleryLeft + Math.floor(column * galleryWidth / 5);
+    const right = galleryLeft + Math.floor((column + 1) * galleryWidth / 5) - 1;
+    const bottom = galleryTop + galleryHeight - 1;
+    const middleX = Math.floor((left + right) / 2);
+    const spanX = Math.max(1, Math.floor((right - left - 1) * 0.16));
+    const spanY = Math.max(2, Math.floor((bottom - rowTop - 1) * 0.22));
+    const [first, second] = sourcePairs[column]!;
+    if (column === 0) {
+      fillPixelRect(
+        cells,
+        width,
+        middleX - spanX,
+        rowTop + 2,
+        middleX + spanX,
+        rowTop + spanY,
+        first,
+      );
+      fillPixelRect(
+        cells,
+        width,
+        middleX - spanX,
+        bottom - spanY,
+        middleX + spanX,
+        bottom - 1,
+        second,
+      );
+      continue;
+    }
+    for (let y = bottom - spanY; y < bottom; y++) {
+      const secondMaterial = column === 3 && (y & 1) === 0
+        ? MATERIAL.stone
+        : column === 4 && (y & 1) === 0
+        ? MATERIAL.wood
+        : second;
+      fillPixelRect(cells, width, middleX - spanX, y, middleX, y, first);
+      fillPixelRect(cells, width, middleX + 1, y, middleX + spanX + 1, y, secondMaterial);
+    }
+  }
+}
+
+function pixelShowcaseBounds(
+  width: number,
+  height: number,
+  region: PixelRegion,
+): readonly [number, number, number, number] {
+  const scale = region === "full" ? 0.94 : region === "quarter" ? 0.5 : 0.3;
+  const galleryWidth = Math.max(20, Math.floor((width - 2) * scale));
+  const galleryHeight = Math.max(8, Math.floor((height - 2) * scale));
+  return [
+    Math.max(1, Math.floor((width - galleryWidth) / 2)),
+    Math.max(1, Math.floor((height - galleryHeight) / 2)),
+    galleryWidth,
+    galleryHeight,
+  ];
+}
+
+function fillPixelRect(
+  cells: Uint32Array,
+  width: number,
+  left: number,
+  top: number,
+  right: number,
+  bottom: number,
+  material: PixelMaterial,
+): void {
+  const packed = packPixel(
+    material,
+    material === MATERIAL.fire || material === MATERIAL.lava ? 255 : 128,
+  );
+  for (let y = top; y <= bottom; y++) cells.fill(packed, y * width + left, y * width + right + 1);
+}
+
 function verticalPass(cells: Uint32Array, width: number, height: number, parity: number): number {
   let moves = 0;
   for (let y = parity; y + 1 < height; y += 2) {
@@ -225,7 +400,7 @@ function diagonalPass(cells: Uint32Array, width: number, height: number, parity:
   return moves;
 }
 
-function horizontalWaterPass(
+function horizontalFluidPass(
   cells: Uint32Array,
   width: number,
   height: number,
@@ -240,7 +415,7 @@ function horizontalWaterPass(
       const source = parity === 0 ? right : left;
       const destination = parity === 0 ? left : right;
       if (
-        pixelMaterial(cells[source]!) === MATERIAL.water &&
+        materialIsFluid(pixelMaterial(cells[source]!)) &&
         pixelMaterial(cells[destination]!) === MATERIAL.empty
       ) {
         swap(cells, source, destination);
@@ -254,14 +429,9 @@ function horizontalWaterPass(
 function fallsThrough(top: number, bottom: number): boolean {
   const topMaterial = pixelMaterial(top);
   const bottomMaterial = pixelMaterial(bottom);
-  if (topMaterial === MATERIAL.wall || bottomMaterial === MATERIAL.wall) return false;
-  return density(topMaterial) > density(bottomMaterial);
-}
-
-function density(material: number): number {
-  if (material === MATERIAL.sand) return 2;
-  if (material === MATERIAL.water) return 1;
-  return 0;
+  if (topMaterial !== MATERIAL.empty && !materialIsMovable(topMaterial)) return false;
+  if (bottomMaterial !== MATERIAL.empty && !materialIsMovable(bottomMaterial)) return false;
+  return materialDensity(topMaterial) > materialDensity(bottomMaterial);
 }
 
 function swap(cells: Uint32Array, left: number, right: number): void {

@@ -2,28 +2,59 @@
   (import "jsimd" "memory" (memory 1))
 
   (func $density (param $material i32) (result i32)
+    (local $packed i32)
+    (local $shift i32)
     local.get $material
-    i32.const 2
-    i32.eq
-    if (result i32)
+    i32.const 8
+    i32.lt_u
+    if
+      i32.const 0x000f2400
+      local.set $packed
+      local.get $material
       i32.const 2
+      i32.shl
+      local.set $shift
     else
       local.get $material
-      i32.const 3
-      i32.eq
-      if (result i32)
-        i32.const 1
-      else
-        local.get $material
-        i32.const 4
-        i32.eq
-        if (result i32)
-          i32.const -1
-        else
-          i32.const 0
-        end
-      end
-    end)
+      i32.const 8
+      i32.sub
+      i32.const 2
+      i32.shl
+      local.set $shift
+      i32.const 0x000032e1
+      local.set $packed
+    end
+    local.get $packed
+    local.get $shift
+    i32.shr_u
+    i32.const 15
+    i32.and
+    i32.const 8
+    i32.xor
+    i32.const 8
+    i32.sub)
+
+  (func $is_movable (param $material i32) (result i32)
+    i32.const 1
+    local.get $material
+    i32.shl
+    i32.const 0x0f1c
+    i32.and
+    i32.eqz
+    i32.eqz)
+
+  (func $is_exchangeable (param $material i32) (result i32)
+    local.get $material
+    i32.eqz
+    local.get $material
+    call $is_movable
+    i32.or)
+
+  (func $cell_is_movable (param $cell i32) (result i32)
+    local.get $cell
+    i32.const 255
+    i32.and
+    call $is_movable)
 
   (func $should_fall (param $top i32) (param $bottom i32) (result i32)
     (local $top_material i32)
@@ -32,8 +63,8 @@
     i32.const 255
     i32.and
     local.tee $top_material
-    i32.const 1
-    i32.eq
+    call $is_exchangeable
+    i32.eqz
     if
       i32.const 0
       return
@@ -42,8 +73,8 @@
     i32.const 255
     i32.and
     local.tee $bottom_material
-    i32.const 1
-    i32.eq
+    call $is_exchangeable
+    i32.eqz
     if
       i32.const 0
       return
@@ -55,13 +86,13 @@
     i32.gt_s)
 
   (func $is_fluid (param $material i32) (result i32)
+    i32.const 1
     local.get $material
-    i32.const 3
-    i32.eq
-    local.get $material
-    i32.const 4
-    i32.eq
-    i32.or)
+    i32.shl
+    i32.const 0x0f18
+    i32.and
+    i32.eqz
+    i32.eqz)
 
   (func $should_flow_right (param $left i32) (param $right i32) (result i32)
     local.get $left
@@ -181,14 +212,16 @@
     local.set $d
 
     local.get $a
+    call $cell_is_movable
     local.get $b
+    call $cell_is_movable
     i32.or
     local.get $c
+    call $cell_is_movable
     i32.or
     local.get $d
+    call $cell_is_movable
     i32.or
-    i32.const 254
-    i32.and
     i32.eqz
     if
       i32.const 0
@@ -464,29 +497,33 @@
     i32.add)
 
   (func $material_density (param $materials v128) (result v128)
+    v128.const i8x16 0 0 4 2 -1 0 0 0 1 -2 2 3 0 0 0 0
     local.get $materials
-    i32.const 2
-    i32x4.splat
-    i32x4.eq
-    i32.const 2
+    i8x16.swizzle
+    i32.const 24
+    i32x4.shl
+    i32.const 24
+    i32x4.shr_s)
+
+  (func $is_movable_vector (param $cells v128) (result v128)
+    v128.const i8x16 0 0 1 1 1 0 0 0 1 1 1 1 0 0 0 0
+    local.get $cells
+    i32.const 255
     i32x4.splat
     v128.and
+    i8x16.swizzle
+    i32.const 0
+    i32x4.splat
+    i32x4.ne)
+
+  (func $is_exchangeable_vector (param $materials v128) (result v128)
     local.get $materials
-    i32.const 3
+    call $is_movable_vector
+    local.get $materials
+    i32.const 0
     i32x4.splat
     i32x4.eq
-    i32.const 1
-    i32x4.splat
-    v128.and
-    i32x4.add
-    local.get $materials
-    i32.const 4
-    i32x4.splat
-    i32x4.eq
-    i32.const -1
-    i32x4.splat
-    v128.and
-    i32x4.add)
+    v128.or)
 
   (func $should_fall_vector (param $top v128) (param $bottom v128) (result v128)
     (local $top_materials v128)
@@ -502,13 +539,9 @@
     v128.and
     local.set $bottom_materials
     local.get $top_materials
-    i32.const 1
-    i32x4.splat
-    i32x4.ne
+    call $is_exchangeable_vector
     local.get $bottom_materials
-    i32.const 1
-    i32x4.splat
-    i32x4.ne
+    call $is_exchangeable_vector
     v128.and
     local.get $top_materials
     call $material_density
@@ -518,20 +551,15 @@
     v128.and)
 
   (func $is_fluid_vector (param $cells v128) (result v128)
-    (local $materials v128)
+    v128.const i8x16 0 0 0 1 1 0 0 0 1 1 1 1 0 0 0 0
     local.get $cells
     i32.const 255
     i32x4.splat
     v128.and
-    local.tee $materials
-    i32.const 3
+    i8x16.swizzle
+    i32.const 0
     i32x4.splat
-    i32x4.eq
-    local.get $materials
-    i32.const 4
-    i32x4.splat
-    i32x4.eq
-    v128.or)
+    i32x4.ne)
 
   (func $flow_right_vector (param $left v128) (param $right v128) (result v128)
     local.get $left
@@ -740,15 +768,16 @@
             i8x16.shuffle 4 5 6 7 12 13 14 15 20 21 22 23 28 29 30 31
             local.set $d
             local.get $a
+            call $is_movable_vector
             local.get $b
+            call $is_movable_vector
             v128.or
             local.get $c
+            call $is_movable_vector
             v128.or
             local.get $d
+            call $is_movable_vector
             v128.or
-            i32.const 254
-            i32x4.splat
-            v128.and
             v128.any_true
             if
               i32.const 1
@@ -1074,10 +1103,12 @@
             i32.add
             local.tee $top_left
             i32.load
+            call $cell_is_movable
             local.get $top_left
             i32.const 4
             i32.add
             i32.load
+            call $cell_is_movable
             i32.or
             local.get $top_left
             local.get $width
@@ -1086,14 +1117,14 @@
             i32.add
             local.tee $bottom_left
             i32.load
+            call $cell_is_movable
             i32.or
             local.get $bottom_left
             i32.const 4
             i32.add
             i32.load
+            call $cell_is_movable
             i32.or
-            i32.const 254
-            i32.and
             if
               i32.const 1
               local.set $hot

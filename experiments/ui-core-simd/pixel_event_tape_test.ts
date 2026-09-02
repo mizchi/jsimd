@@ -55,3 +55,13 @@ Deno.test("PixelEventTape reports overflow without overwriting unread events", (
   assertEquals(tape.droppedCount, 4);
   assertThrows(() => PixelEventTape.create(3), RangeError);
 });
+
+Deno.test("PixelEventTape publishes one timestamp per compact event batch", () => {
+  const writer = PixelEventTape.create(4);
+  const reader = PixelEventTape.attach(writer.buffer);
+  writer.markPublished(0xffff_ff00);
+  writer.push(PIXEL_EVENT_KIND.vaporized, 4, 3, 4);
+
+  assertEquals(reader.publishedMicros, 0xffff_ff00);
+  assertThrows(() => writer.markPublished(-1), RangeError);
+});

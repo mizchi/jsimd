@@ -1,4 +1,4 @@
-import { MATERIAL } from "./pixel_sim.ts";
+import { MATERIAL, materialDensity, materialIsFluid, materialIsMovable } from "./pixel_material.ts";
 
 export const DEFAULT_PIXEL_BLOCK_SEED = 0x51f1_5e5d;
 
@@ -100,7 +100,10 @@ export function stepPixelBlockRangeUnchecked(
       let b = cells[topRight]!;
       let c = cells[bottomLeft]!;
       let d = cells[bottomRight]!;
-      if (((a | b | c | d) & 0xfe) === 0) continue;
+      if (
+        !materialIsMovable(a & 0xff) && !materialIsMovable(b & 0xff) &&
+        !materialIsMovable(c & 0xff) && !materialIsMovable(d & 0xff)
+      ) continue;
       if (!hotNotified && onHotBlock !== undefined) {
         onHotBlock(topLeft, bottomRight);
         hotNotified = true;
@@ -183,27 +186,17 @@ function alignOrigin(value: number, origin: number): number {
 function shouldFall(top: number, bottom: number): boolean {
   const topMaterial = top & 0xff;
   const bottomMaterial = bottom & 0xff;
-  if (topMaterial === MATERIAL.wall || bottomMaterial === MATERIAL.wall) return false;
-  return density(topMaterial) > density(bottomMaterial);
+  if (topMaterial !== MATERIAL.empty && !materialIsMovable(topMaterial)) return false;
+  if (bottomMaterial !== MATERIAL.empty && !materialIsMovable(bottomMaterial)) return false;
+  return materialDensity(topMaterial) > materialDensity(bottomMaterial);
 }
 
 function shouldFlowRight(left: number, right: number): boolean {
-  return isFluid(left & 0xff) && (right & 0xff) === MATERIAL.empty;
+  return materialIsFluid(left & 0xff) && (right & 0xff) === MATERIAL.empty;
 }
 
 function shouldFlowLeft(left: number, right: number): boolean {
-  return (left & 0xff) === MATERIAL.empty && isFluid(right & 0xff);
-}
-
-function isFluid(material: number): boolean {
-  return material === MATERIAL.water || material === MATERIAL.gas;
-}
-
-function density(material: number): number {
-  if (material === MATERIAL.sand) return 2;
-  if (material === MATERIAL.water) return 1;
-  if (material === MATERIAL.gas) return -1;
-  return 0;
+  return (left & 0xff) === MATERIAL.empty && materialIsFluid(right & 0xff);
 }
 
 function blockRandom(seed: number, tick: number, blockX: number, blockY: number): number {

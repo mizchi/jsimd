@@ -1,7 +1,7 @@
 import { stepPixelWorldBlockActive } from "../pixel_block_active_sim.ts";
 import { DEFAULT_PIXEL_BLOCK_SEED } from "../pixel_block_sim.ts";
 import { PixelChunkActivity } from "../pixel_chunk_activity.ts";
-import { MATERIAL } from "../pixel_sim.ts";
+import { materialIsMovable } from "../pixel_material.ts";
 
 export class BlockActivePixelSimulation {
   readonly activity: PixelChunkActivity;
@@ -33,9 +33,7 @@ export class BlockActivePixelSimulation {
     const activity = new PixelChunkActivity(width, height);
     for (let index = 0; index < cells.length; index++) {
       const material = cells[index]! & 0xff;
-      if (
-        material === MATERIAL.sand || material === MATERIAL.water || material === MATERIAL.gas
-      ) {
+      if (materialIsMovable(material)) {
         activity.activateCell(index % width, Math.floor(index / width));
       }
     }

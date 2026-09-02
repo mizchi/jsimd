@@ -25,6 +25,7 @@ interface PixelResult {
   readonly computeMedianMs: number;
   readonly renderMedianMs: number;
   readonly inputLatencyMs: number;
+  readonly eventLatencyMs: number;
   readonly frameGapP95Ms: number;
   readonly mainFrameMedianMs: number;
   readonly paintFps: number;
@@ -159,6 +160,7 @@ const output = createBenchmarkResult({
     const prefix = `${result.runtime}.width${width}.${result.region}`;
     return [
       [`${prefix}.inputLatencyMs`, result.inputLatencyMs],
+      [`${prefix}.eventLatencyMs`, result.eventLatencyMs],
       [`${prefix}.mainFrameMedianMs`, result.mainFrameMedianMs],
       [`${prefix}.frameGapP95Ms`, result.frameGapP95Ms],
       [`${prefix}.paintFps`, result.paintFps],
@@ -173,6 +175,7 @@ const output = createBenchmarkResult({
     "Tick-present includes simulation and Canvas presentation for CPU runtimes.",
     "Warmups are retained in the raw rolling samples; this run does not claim a separate warmup phase.",
     "Input-to-Canvas-submit is recorded in metrics rather than measurements because it has a different 11-sample count.",
+    "Event latency is the final observed age of the newest non-empty Worker batch when main drains it, not a per-event distribution.",
     ...results.filter((result) => result.chunkCount > 0).map((result) =>
       `${result.runtime} width=${
         Math.sqrt(result.cells * 8 / 5)

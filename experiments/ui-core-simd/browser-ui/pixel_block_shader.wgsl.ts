@@ -86,7 +86,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     if ((moved & 0xcu) == 0u) {
       let flows = select(shouldFlowRight(c, d), shouldFlowLeft(c, d), (random & 0x20u) != 0u);
-      if (flows) { let value = c; c = d; d = value; }
+      if (flows) { let value = c; c = d; d = value; moved = moved | 0xcu; }
     }
   }
 

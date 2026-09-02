@@ -1,4 +1,4 @@
-import { PIXEL_EVENT_RECORD_WORDS } from "./pixel_event_tape.ts";
+import { PIXEL_EVENT_RECORD_WORDS } from "./pixel_event_contract.ts";
 
 export function pixelReactionRequiredBytes(
   width: number,

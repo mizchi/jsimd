@@ -21,9 +21,12 @@ Deno.test("reactive active SIMD shares one world and flushes bounded events", as
   const result = simulation.step(0);
   simulation.flushEvents(tape);
 
-  assertEquals(result.reactions, 1);
+  assertEquals(result.reactions, 2);
+  assertEquals(pixelMaterial(simulation.cells[2 * width + 3]!), MATERIAL.smoke);
   assertEquals(pixelMaterial(simulation.cells[2 * width + 4]!), MATERIAL.gas);
-  assertEquals(tape.drainInto(output), 1);
-  assertEquals(output[0], PIXEL_EVENT_KIND.vaporized);
-  assertEquals(output[1], 2 * width + 4);
+  assertEquals(tape.drainInto(output), 2);
+  assertEquals(output[0], PIXEL_EVENT_KIND.extinguished);
+  assertEquals(output[1], 2 * width + 3);
+  assertEquals(output[PIXEL_EVENT_RECORD_WORDS], PIXEL_EVENT_KIND.vaporized);
+  assertEquals(output[PIXEL_EVENT_RECORD_WORDS + 1], 2 * width + 4);
 });

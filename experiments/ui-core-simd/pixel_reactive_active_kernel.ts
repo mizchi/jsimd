@@ -1,4 +1,8 @@
-import { PIXEL_EVENT_RECORD_WORDS, type PixelEventSink } from "./pixel_event_tape.ts";
+import {
+  PIXEL_EVENT_RECORD_WORDS,
+  type PixelEventKind,
+  type PixelEventSink,
+} from "./pixel_event_tape.ts";
 import {
   type PixelBlockActiveKernelStepResult,
   WasmActiveSimdPixelBlock,
@@ -76,7 +80,7 @@ export class WasmReactiveActiveSimdPixelBlock {
     for (let event = 0; event < reaction.events.length; event += PIXEL_EVENT_RECORD_WORDS) {
       if (
         tape.push(
-          reaction.events[event]! as 1 | 2,
+          reaction.events[event]! as PixelEventKind,
           reaction.events[event + 1]! >>> 0,
           reaction.events[event + 2]! >>> 0,
           reaction.events[event + 3]! >>> 0,

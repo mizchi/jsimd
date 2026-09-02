@@ -15,7 +15,8 @@ export type PixelOccupancyPercent = 5 | 25 | 75;
 export type PixelRegion = "full" | "quarter" | "spot";
 
 export function parsePixelRuntime(value: string | null): PixelRuntime {
-  if (value === null || value === "cpu") return "cpu";
+  if (value === null || value === "worker-reaction-simd") return "worker-reaction-simd";
+  if (value === "cpu") return "cpu";
   if (
     value === "block" || value === "block-active" || value === "block-simd" ||
     value === "block-active-simd" ||

@@ -5,6 +5,7 @@ import type { PixelRegion } from "../pixel_options.ts";
 import { pixelReactionRequiredBytes } from "../pixel_reaction_layout.ts";
 import type { PixelMaterial } from "../pixel_sim.ts";
 import { PIXEL_WORKER_STATS_WORDS, PixelWorkerControl } from "../pixel_worker_control.ts";
+import { elapsedUint32Micros, timelineMicros } from "../pixel_worker_timing.ts";
 import type { PixelWorkerInitMessage } from "./pixel_worker_runtime.ts";
 
 const TARGET_ID = 2;
@@ -21,6 +22,7 @@ export class PixelReactiveWorkerClient {
   readonly #worker: Worker;
   readonly #canvas: HTMLCanvasElement;
   readonly #resizeObserver: ResizeObserver;
+  #eventLatencyMs = 0;
 
   private constructor(
     canvas: HTMLCanvasElement,
@@ -119,7 +121,15 @@ export class PixelReactiveWorkerClient {
     return this.control.tryStatsInto(this.stats);
   }
   drainEvents(): number {
-    return this.events.drainInto(this.eventRecords);
+    const count = this.events.drainInto(this.eventRecords);
+    if (count > 0) {
+      const consumed = timelineMicros(performance.timeOrigin, performance.now());
+      this.#eventLatencyMs = elapsedUint32Micros(consumed, this.events.publishedMicros) / 1_000;
+    }
+    return count;
+  }
+  get eventLatencyMs(): number {
+    return this.#eventLatencyMs;
   }
   get droppedEvents(): number {
     return this.events.droppedCount;

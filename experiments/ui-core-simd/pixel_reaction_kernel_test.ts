@@ -53,18 +53,32 @@ Deno.test("Wasm SIMD reaction storage can attach to a preallocated movement memo
 function reactionFixture(width: number, height: number): Uint32Array {
   const cells = new Uint32Array(width * height);
   for (let index = 0; index < cells.length; index++) {
-    const sample = index % 11;
+    const sample = index % 19;
     const material = sample === 0
       ? MATERIAL.fire
-      : sample < 5
+      : sample === 1
+      ? MATERIAL.lava
+      : sample < 6
       ? MATERIAL.water
-      : sample < 8
+      : sample < 9
       ? MATERIAL.gas
+      : sample < 12
+      ? MATERIAL.wood
+      : sample < 15
+      ? MATERIAL.oil
+      : sample === 15
+      ? MATERIAL.smoke
+      : sample === 16
+      ? MATERIAL.acid
+      : sample === 17
+      ? MATERIAL.stone
       : MATERIAL.empty;
-    const temperature = material === MATERIAL.fire
+    const temperature = material === MATERIAL.fire || material === MATERIAL.lava
       ? 255
       : material === MATERIAL.gas
       ? 64 + index % 32
+      : material === MATERIAL.wood || material === MATERIAL.oil
+      ? 176 + index % 32
       : 128 + index % 16;
     cells[index] = packPixel(material, temperature, index & 7, index & 15);
   }

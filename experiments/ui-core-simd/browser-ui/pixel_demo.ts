@@ -39,6 +39,7 @@ export interface PixelDemoResult {
   readonly computeMedianMs: number;
   readonly renderMedianMs: number;
   readonly inputLatencyMs: number;
+  readonly eventLatencyMs: number;
   readonly frameGapP95Ms: number;
   readonly mainFrameMedianMs: number;
   readonly paintFps: number;
@@ -91,6 +92,7 @@ export async function mountPixelDemo(
   const frameGapP95 = ui.signal(0);
   const mainFrameMedian = ui.signal(0);
   const inputLatency = ui.signal(0);
+  const eventLatency = ui.signal(0);
   const activeChunkCount = ui.signal(0);
   const eventCount = ui.signal(0);
   const droppedEventCount = ui.signal(0);
@@ -119,10 +121,10 @@ export async function mountPixelDemo(
   const root = ui.element("div", { className: "life-shell pixel-shell" }, [
     ui.element("header", { className: "life-hero" }, [
       ui.element("div", {}, [
-        ui.element("p", { className: "eyebrow" }, ["jsimd × material cellular automata"]),
+        ui.element("p", { className: "eyebrow" }, ["jsimd × pixel physics"]),
         ui.element("h1", {}, ["Pixel Lab"]),
         ui.element("p", { className: "life-lead" }, [
-          "Compare pair passes with a seeded 2×2 conservative block solver, active chunks, an off-thread canvas, and resident WebGPU.",
+          "Seeded 2×2 physics across CPU, Worker, Wasm SIMD, and resident WebGPU.",
         ]),
       ]),
       ui.element("div", { className: "life-badge pixel-badge" }, [
@@ -164,6 +166,27 @@ export async function mountPixelDemo(
           ariaLabel: "Interactive falling sand and water simulation",
           tabIndex: 0,
         }),
+        ...(runtime === "worker-reaction-simd"
+          ? [ui.element(
+            "div",
+            {
+              className: `pixel-showcase-labels pixel-showcase-${region}`,
+              ariaHidden: "true",
+            },
+            [
+              "SAND · WATER",
+              "GAS · SMOKE",
+              "STONE · WOOD",
+              "OIL · ACID",
+              "FIRE · LAVA",
+              "DENSITY SWAP",
+              "WATER → STEAM",
+              "LAVA → STONE",
+              "ACID → VOID",
+              "FUEL → FIRE",
+            ].map((label) => ui.element("span", {}, [label])),
+          )]
+          : []),
         ui.element("div", { className: "life-overlay" }, [
           ui.element("span", { className: "life-status-dot" }),
           ui.text([running], () => running.value ? "RUNNING" : "PAUSED"),
@@ -243,6 +266,27 @@ export async function mountPixelDemo(
             }, [candidate])
           ),
         ]),
+        ...(runtime === "worker-reaction-simd"
+          ? [
+            ui.element(
+              "div",
+              { className: "life-controls pixel-materials pixel-material-picker" },
+              [
+                ui.element("select", { id: "pixel-material", ariaLabel: "Brush material" }, [
+                  ...Object.entries(MATERIAL).map(([name, material]) =>
+                    ui.element(
+                      "option",
+                      { value: material, selected: material === MATERIAL.fire },
+                      [
+                        name,
+                      ],
+                    )
+                  ),
+                ]),
+              ],
+            ),
+          ]
+          : []),
         ui.element("div", { className: "life-stats" }, [
           stat(ui, "ticks", ui.text([tickCount], () => tickCount.value.toLocaleString())),
           stat(
@@ -283,26 +327,31 @@ export async function mountPixelDemo(
             "active chunks",
             ui.text([activeChunkCount], () => activeChunkCount.value.toLocaleString()),
           ),
-          stat(ui, "events", ui.text([eventCount], () => eventCount.value.toLocaleString())),
+          stat(
+            ui,
+            "events → main",
+            ui.text(
+              [eventCount, eventLatency],
+              () => `${eventCount.value.toLocaleString()} · ${eventLatency.value.toFixed(1)} ms`,
+            ),
+          ),
           stat(
             ui,
             "event drops",
             ui.text([droppedEventCount], () => droppedEventCount.value.toLocaleString()),
           ),
         ]),
-        ui.element("div", { className: "life-controls pixel-materials" }, [
-          ui.element("button", {
-            id: "pixel-sand",
-            className: runtime === "worker-reaction-simd" ? "" : "life-primary",
-          }, ["Sand"]),
-          ui.element("button", { id: "pixel-water" }, ["Water"]),
-          ...(isBlockRuntime(runtime) ? [ui.element("button", { id: "pixel-gas" }, ["Gas"])] : []),
-          ...(runtime === "worker-reaction-simd"
-            ? [ui.element("button", { id: "pixel-fire", className: "life-primary" }, ["Fire"])]
-            : []),
-          ui.element("button", { id: "pixel-wall" }, ["Wall"]),
-          ui.element("button", { id: "pixel-erase" }, ["Erase"]),
-        ]),
+        ...(runtime === "worker-reaction-simd"
+          ? []
+          : [ui.element("div", { className: "life-controls pixel-materials" }, [
+            ui.element("button", { id: "pixel-sand", className: "life-primary" }, ["Sand"]),
+            ui.element("button", { id: "pixel-water" }, ["Water"]),
+            ...(isBlockRuntime(runtime)
+              ? [ui.element("button", { id: "pixel-gas" }, ["Gas"])]
+              : []),
+            ui.element("button", { id: "pixel-wall" }, ["Wall"]),
+            ui.element("button", { id: "pixel-erase" }, ["Erase"]),
+          ])]),
         ui.element("div", { className: "life-controls" }, [
           ui.element("button", { id: "pixel-toggle", className: "life-primary" }, [
             ui.text([running], () => running.value ? "Pause" : "Play"),
@@ -316,10 +365,10 @@ export async function mountPixelDemo(
           ui.text(
             [selectedMaterial],
             () =>
-              `Brush: ${materialName(selectedMaterial.value)}. Drag on the world; ${
+              `Brush: ${materialName(selectedMaterial.value)}. ${
                 isWorkerRuntime(runtime)
-                  ? "Atomics coalesces moves and the Worker reconstructs the stroke."
-                  : "input is coalesced to one GPU/CPU brush per presented frame."
+                  ? "Worker reconstructs coalesced pointer moves."
+                  : "One brush is applied per frame."
               }`,
           ),
         ]),
@@ -436,18 +485,25 @@ export async function mountPixelDemo(
     ["pixel-sand", MATERIAL.sand],
     ["pixel-water", MATERIAL.water],
     ...(isBlockRuntime(runtime) ? [["pixel-gas", MATERIAL.gas] as const] : []),
-    ...(runtime === "worker-reaction-simd" ? [["pixel-fire", MATERIAL.fire] as const] : []),
     ["pixel-wall", MATERIAL.wall],
     ["pixel-erase", MATERIAL.empty],
   ];
-  for (const [id, material] of materialButtons) {
-    required(host, id).addEventListener("click", () => {
+  if (runtime === "worker-reaction-simd") {
+    required<HTMLSelectElement>(host, "pixel-material").addEventListener("change", (event) => {
+      const material = Number((event.currentTarget as HTMLSelectElement).value) as PixelMaterial;
       selectedMaterial.value = material;
       workerClient?.setMaterial(material);
-      for (const [candidateId, candidate] of materialButtons) {
-        required(host, candidateId).classList.toggle("life-primary", candidate === material);
-      }
     });
+  } else {
+    for (const [id, material] of materialButtons) {
+      required(host, id).addEventListener("click", () => {
+        selectedMaterial.value = material;
+        workerClient?.setMaterial(material);
+        for (const [candidateId, candidate] of materialButtons) {
+          required(host, candidateId).classList.toggle("life-primary", candidate === material);
+        }
+      });
+    }
   }
   required(host, "pixel-toggle").addEventListener("click", () => {
     running.value = workerClient?.toggleRunning() ?? !running.value;
@@ -510,7 +566,10 @@ export async function mountPixelDemo(
     let presented = false;
     if (workerClient !== null) {
       const drainedEvents = reactiveWorkerClient?.drainEvents() ?? 0;
-      if (drainedEvents > 0) eventCount.value += drainedEvents;
+      if (drainedEvents > 0) {
+        eventCount.value += drainedEvents;
+        eventLatency.value = reactiveWorkerClient!.eventLatencyMs;
+      }
       droppedEventCount.value = reactiveWorkerClient?.droppedEvents ?? 0;
       if (workerClient.readStats()) {
         const stats = workerClient.stats;
@@ -654,6 +713,7 @@ export async function mountPixelDemo(
     computeMedianMs: computeSamples.length === 0 ? 0 : median(computeSamples),
     renderMedianMs: renderSamples.length === 0 ? 0 : median(renderSamples),
     inputLatencyMs: inputLatency.value,
+    eventLatencyMs: eventLatency.value,
     frameGapP95Ms: frameGapP95.value,
     mainFrameMedianMs: mainFrameMedian.value,
     paintFps: fps.value,
@@ -722,12 +782,7 @@ function isGpuRuntime(runtime: PixelRuntime): boolean {
 }
 
 function materialName(material: PixelMaterial): string {
-  if (material === MATERIAL.wall) return "wall";
-  if (material === MATERIAL.sand) return "sand";
-  if (material === MATERIAL.water) return "water";
-  if (material === MATERIAL.gas) return "gas";
-  if (material === MATERIAL.fire) return "fire";
-  return "eraser";
+  return Object.keys(MATERIAL)[material] ?? "eraser";
 }
 
 function adapterLabel(info: GPUAdapterInfo): string {

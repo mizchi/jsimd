@@ -1,9 +1,12 @@
 import { createPixelBlockPlan, stepPixelWorldBlock } from "./pixel_block_sim.ts";
 import { countPixelMaterials, MATERIAL, packPixel, pixelMaterial } from "./pixel_sim.ts";
+import { ALL_PIXEL_MATERIALS } from "./pixel_material.ts";
 
-function assertEquals(actual: unknown, expected: unknown): void {
+function assertEquals(actual: unknown, expected: unknown, label = "value"): void {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(`expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    throw new Error(
+      `${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
   }
 }
 
@@ -29,13 +32,7 @@ Deno.test("pixel block plans alternate non-overlapping 2x2 partitions", () => {
 });
 
 Deno.test("pixel block movement conserves complete cells for every local material state", () => {
-  const materials = [
-    MATERIAL.empty,
-    MATERIAL.wall,
-    MATERIAL.sand,
-    MATERIAL.water,
-    MATERIAL.gas,
-  ] as const;
+  const materials = ALL_PIXEL_MATERIALS;
   let states = 0;
   for (const topLeft of materials) {
     for (const topRight of materials) {
@@ -58,7 +55,7 @@ Deno.test("pixel block movement conserves complete cells for every local materia
       }
     }
   }
-  assertEquals(states, 625);
+  assertEquals(states, 20_736);
 });
 
 Deno.test("pixel block gravity sinks dense cells and raises gas", () => {
@@ -90,6 +87,60 @@ Deno.test("pixel block gravity sinks dense cells and raises gas", () => {
     MATERIAL.empty,
     MATERIAL.wall,
   ]);
+});
+
+Deno.test("pixel block density orders lava, water, oil, gas, and smoke", () => {
+  const scenarios = [
+    [MATERIAL.lava, MATERIAL.water, MATERIAL.water, MATERIAL.lava],
+    [MATERIAL.water, MATERIAL.oil, MATERIAL.oil, MATERIAL.water],
+    [MATERIAL.empty, MATERIAL.smoke, MATERIAL.smoke, MATERIAL.empty],
+    [MATERIAL.gas, MATERIAL.smoke, MATERIAL.smoke, MATERIAL.gas],
+  ] as const;
+  for (const [top, bottom, expectedTop, expectedBottom] of scenarios) {
+    const cells = new Uint32Array([
+      packPixel(top),
+      packPixel(MATERIAL.wall),
+      packPixel(bottom),
+      packPixel(MATERIAL.wall),
+    ]);
+    stepPixelWorldBlock(cells, 2, 2, 0, 1);
+    assertEquals(
+      [pixelMaterial(cells[0]!), pixelMaterial(cells[2]!)],
+      [expectedTop, expectedBottom],
+    );
+  }
+});
+
+Deno.test("pixel block immovable materials block movement while new fluids flow", () => {
+  for (const obstacle of [MATERIAL.stone, MATERIAL.wood, MATERIAL.fire] as const) {
+    const cells = new Uint32Array([
+      packPixel(MATERIAL.sand),
+      packPixel(MATERIAL.wall),
+      packPixel(obstacle),
+      packPixel(MATERIAL.wall),
+    ]);
+    stepPixelWorldBlock(cells, 2, 2, 0, 1);
+    assertEquals(Array.from(cells, pixelMaterial), [
+      MATERIAL.sand,
+      MATERIAL.wall,
+      obstacle,
+      MATERIAL.wall,
+    ]);
+  }
+  for (const fluid of [MATERIAL.oil, MATERIAL.smoke, MATERIAL.acid, MATERIAL.lava] as const) {
+    const outcomes = new Set<string>();
+    for (let seed = 0; seed < 64; seed++) {
+      const cells = new Uint32Array([
+        packPixel(fluid),
+        packPixel(MATERIAL.empty),
+        packPixel(MATERIAL.wall),
+        packPixel(MATERIAL.wall),
+      ]);
+      stepPixelWorldBlock(cells, 2, 2, 0, seed);
+      outcomes.add(Array.from(cells, pixelMaterial).join(","));
+    }
+    assertEquals(outcomes.size, 2, `lateral flow for material ${fluid}`);
+  }
 });
 
 Deno.test("pixel block cells move at most once per tick", () => {

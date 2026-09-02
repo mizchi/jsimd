@@ -106,8 +106,8 @@ export class PixelWorkerControl {
   }
 
   set brushMaterial(material: number) {
-    if (!Number.isInteger(material) || material < 0 || material > 5) {
-      throw new RangeError("pixel brush material must be between 0 and 5");
+    if (!Number.isInteger(material) || material < 0 || material > 0xff) {
+      throw new RangeError("pixel brush material must be an unsigned byte");
     }
     Atomics.store(this.#header, HEADER.brushMaterial, material);
   }

@@ -1,4 +1,4 @@
-import { PIXEL_EVENT_RECORD_WORDS } from "./pixel_event_tape.ts";
+import { PIXEL_EVENT_RECORD_WORDS } from "./pixel_event_contract.ts";
 import { pixelReactionRequiredBytes, pixelReactionScratchOffset } from "./pixel_reaction_layout.ts";
 
 interface PixelReactionKernelExports extends WebAssembly.Exports {

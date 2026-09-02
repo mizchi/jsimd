@@ -1,5 +1,6 @@
 import {
   countPixelMaterials,
+  createPixelMaterialShowcase,
   createPixelScenario,
   MATERIAL,
   packPixel,
@@ -49,6 +50,23 @@ Deno.test("pixel scenarios seal the complete perimeter with walls", () => {
   for (let y = 0; y < height; y++) {
     assertEquals(pixelMaterial(cells[y * width]!), MATERIAL.wall);
     assertEquals(pixelMaterial(cells[y * width + width - 1]!), MATERIAL.wall);
+  }
+});
+
+Deno.test("material showcase initializes every material deterministically", () => {
+  const width = 128;
+  const height = 80;
+  const left = createPixelMaterialShowcase(width, height, 0.25, 123, "full");
+  const right = createPixelMaterialShowcase(width, height, 0.25, 123, "full");
+  const counts = countPixelMaterials(left);
+
+  assertEquals(Array.from(left), Array.from(right));
+  for (const material of Object.values(MATERIAL)) {
+    assertEquals((counts[material] ?? 0) > 0, true);
+  }
+  for (let x = 0; x < width; x++) {
+    assertEquals(pixelMaterial(left[x]!), MATERIAL.wall);
+    assertEquals(pixelMaterial(left[(height - 1) * width + x]!), MATERIAL.wall);
   }
 });
 

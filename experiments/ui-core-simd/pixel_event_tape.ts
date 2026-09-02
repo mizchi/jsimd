@@ -1,5 +1,17 @@
+import {
+  PIXEL_EVENT_KIND,
+  PIXEL_EVENT_RECORD_WORDS,
+  type PixelEventKind,
+} from "./pixel_event_contract.ts";
+
+export {
+  PIXEL_EVENT_KIND,
+  PIXEL_EVENT_RECORD_WORDS,
+  type PixelEventKind,
+} from "./pixel_event_contract.ts";
+
 const MAGIC = 0x5058_4556;
-const VERSION = 1;
+const VERSION = 2;
 const HEADER_WORDS = 8;
 const HEADER = {
   magic: 0,
@@ -9,16 +21,8 @@ const HEADER = {
   write: 4,
   read: 5,
   dropped: 6,
-  reserved: 7,
+  publishedMicros: 7,
 } as const;
-
-export const PIXEL_EVENT_RECORD_WORDS = 4;
-export const PIXEL_EVENT_KIND = {
-  vaporized: 1,
-  condensed: 2,
-} as const;
-
-export type PixelEventKind = typeof PIXEL_EVENT_KIND[keyof typeof PIXEL_EVENT_KIND];
 
 export interface PixelEventSink {
   push(kind: PixelEventKind, index: number, before: number, after: number): boolean;
@@ -61,7 +65,7 @@ export class PixelEventTape {
       Atomics.load(words, HEADER.magic) !== MAGIC ||
       Atomics.load(words, HEADER.version) !== VERSION
     ) {
-      throw new RangeError("buffer does not contain a supported PixelEventTape");
+      throw new RangeError("unsupported PixelEventTape buffer");
     }
     const capacity = Atomics.load(words, HEADER.capacity) >>> 0;
     validateCapacity(capacity);
@@ -110,9 +114,18 @@ export class PixelEventTape {
     return Atomics.load(this.#words, HEADER.dropped) >>> 0;
   }
 
+  get publishedMicros(): number {
+    return Atomics.load(this.#words, HEADER.publishedMicros) >>> 0;
+  }
+
+  markPublished(timestampMicros: number): void {
+    if ((timestampMicros >>> 0) !== timestampMicros) throw new RangeError("timestamp must be u32");
+    Atomics.store(this.#words, HEADER.publishedMicros, timestampMicros | 0);
+  }
+
   recordDropped(count: number): void {
     if (!Number.isSafeInteger(count) || count < 0) {
-      throw new RangeError("dropped event count must be a non-negative safe integer");
+      throw new RangeError("dropped count must be a non-negative safe integer");
     }
     if (count > 0) Atomics.add(this.#words, HEADER.dropped, count | 0);
   }

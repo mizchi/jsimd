@@ -10,7 +10,8 @@ function assertEquals(actual: unknown, expected: unknown): void {
 }
 
 Deno.test("pixel benchmark parses bounded scenario options", () => {
-  assertEquals(parsePixelRuntime(null), "cpu");
+  assertEquals(parsePixelRuntime(null), "worker-reaction-simd");
+  assertEquals(parsePixelRuntime("cpu"), "cpu");
   assertEquals(parsePixelRuntime("block"), "block");
   assertEquals(parsePixelRuntime("block-active"), "block-active");
   assertEquals(parsePixelRuntime("block-simd"), "block-simd");

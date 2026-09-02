@@ -480,15 +480,18 @@ solver.
 
 The optional `?run=pixel` route broadens the Canvas experiment from a uniform Life rule to a
 material cellular automaton. Its v0 cell ABI is one `u32`: material, temperature, flags, and variant
-each occupy one byte. Empty, wall, sand, and water are implemented by the original pair solver; the
-block solver also implements gas. Temperature is reserved but is not updated yet. The original tick
-consists of vertical, diagonal, and horizontal disjoint-pair passes. The block alternative owns a
-staggered 2 x 2 partition and permits each cell to move at most once. Both swap complete cells, so
-material counts and metadata are conserved without per-cell atomics. The original CPU and WebGPU
-paths share the same parity and pair-count contract.
+each occupy one byte. The property table defines 12 materials from empty/wall through smoke, acid,
+and lava. The optional reaction Worker diffuses temperature and applies phase change, ignition,
+acid corrosion, and lava-water solidification in one SIMD pass. The movement tick consists of
+vertical, diagonal, and horizontal disjoint-pair passes. The block alternative owns a staggered
+2 x 2 partition and permits each cell to move at most once. Both swap complete cells, so movement
+conserves material counts and metadata without per-cell atomics. The original CPU and WebGPU paths
+share the same parity and pair-count contract.
 
 Open
-`?run=pixel&runtime=cpu|block|block-active|block-simd|block-active-simd|active|worker|worker-simd|webgpu&size=256|512|1024&occupancy=5|25|75&region=full|quarter|spot&load=0..8`.
+`?run=pixel&runtime=cpu|block|block-active|block-simd|block-active-simd|active|worker|worker-simd|worker-reaction-simd|block-webgpu|webgpu&size=256|512|1024&occupancy=5|25|75&region=full|quarter|spot&load=0..8`.
+When `runtime` is omitted, Pixel Lab uses the immediate per-tick reaction SIMD Worker; the WebGPU
+backends remain explicit experiment choices.
 The CPU path performs scalar in-place pair swaps and converts the resulting cells to `ImageData`.
 The block path performs seeded 2 x 2 transforms with gas rise, probabilistic diagonal toppling, and
 lateral liquid movement. Empty/wall blocks skip rule evaluation. It uses the same `ImageData`
@@ -574,10 +577,11 @@ boundary and interactive input tape:
 SIMD wins the complete-step median by more than 1.25× on all three sizes and improves p95, so it is
 retained as an explicit backend. Four neighboring blocks are lane-packed from two contiguous row
 loads with byte shuffles and scattered back with the inverse shuffles; this avoids a block-major
-scratch buffer and its phase-change transpose. After the Stage 4 range ABI, the shared kernel is
-2,283 B raw / 1.14 KiB gzip and the full-SIMD lazy transfer is about 2.33 KiB gzip. The 2,300 B raw
-gate is intentionally close to the current binary. Automatic selection still requires another
-architecture/browser.
+scratch buffer and its phase-change transpose. The initial Stage 4 kernel was 2,283 B raw. The
+12-material property-table version is 2,389 B raw under a 2,400 B gate; adding material descriptors
+does not add one comparison per material. Automatic selection still requires another
+architecture/browser. The actual 6-vs-12 material measurements and reaction limits are recorded in
+[`PIXEL_PHYSICS_PROTOTYPE.md`](./PIXEL_PHYSICS_PROTOTYPE.md#implemented-12-material-vocabulary).
 
 `block-active-simd` sends the same half-open 32 × 32 owner ranges to the Wasm kernel and receives
 one packed `i64` per range: move count in the low word and a single hot-material bit in the high
@@ -595,10 +599,8 @@ The 1024 × 640 Apple M5/Chrome locality comparison is recorded in
 | spot    |     167 / 640 |          0.600 ms |            0.240 ms |           2.50× |            1.47× |
 
 This backend is retained for localized worlds, not as the dense default. A 24 × 24 chunk A/B was
-slower in Chrome in all three regions, so the browser runtime keeps 32 × 32. Adding the range ABI
-while removing the benchmark-only full scalar export changes the Wasm kernel to 2,283 B raw / 1.14
-KiB gzip. The complete lazy transfer is about 2.33 KiB gzip for full SIMD and 3.61 KiB for active
-SIMD, under enforced 2.50 and 3.80 KiB ceilings. Neither enters the signals or Luna core entrypoint.
+slower in Chrome in all three regions, so the browser runtime keeps 32 × 32. Neither the movement
+kernel nor its active scheduler enters the signals or Luna core entrypoint.
 
 This exposes a useful boundary: at 163,840 cells, GPU queue/synchronization cost is not repaid; at
 655,360 cells, WebGPU is about 3.2× faster for the dense full-grid tick and uses half the explicitly
@@ -654,9 +656,10 @@ all existing core ceilings also remain enforced by `just test-ui-core-simd`.
 
 This is a benchmarkable material kernel, not yet a Sandustry/Noita-like engine. Disjoint pairing
 avoids races but produces lattice artifacts and cannot express long-range machines, rigid bodies,
-connected-component updates, or arbitrary material scripts. The next discriminating steps are an
-optional SIMD heat/reaction scan, multi-pass movement intents for less grid-biased GPU motion, and a
-DOM-backed stress fixture that separates simulation gains from Canvas-only gains.
+connected-component updates, or arbitrary material scripts. The next discriminating steps are a
+burning/smoke lifecycle with explicit byte ownership, multi-pass movement intents for less
+grid-biased GPU motion, and a DOM-backed stress fixture that separates simulation gains from
+Canvas-only gains.
 
 ### Browser memory and event-loop profile
 

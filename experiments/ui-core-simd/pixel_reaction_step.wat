@@ -8,6 +8,37 @@
     i32.const 255
     i32.and)
 
+  (func $chemistry_property_scalar (param $material i32) (result i32)
+    local.get $material
+    i32.const 16
+    i32.lt_u
+    if (result i32)
+      i64.const 0xa40000201000
+      local.get $material
+      i64.extend_i32_u
+      i64.const 2
+      i64.shl
+      i64.shr_u
+      i32.wrap_i64
+      i32.const 15
+      i32.and
+    else
+      i32.const 0
+    end)
+
+  (func $event_kind (param $cell i32) (result i32)
+    i64.const 0x6004312005
+    local.get $cell
+    i32.const 255
+    i32.and
+    i64.extend_i32_u
+    i64.const 2
+    i64.shl
+    i64.shr_u
+    i32.wrap_i64
+    i32.const 15
+    i32.and)
+
   (func $react_scalar
     (param $cells i32)
     (param $width i32)
@@ -23,6 +54,7 @@
     (local $cell i32)
     (local $material i32)
     (local $temperature i32)
+    (local $neighbor_flags i32)
 
     local.get $y
     local.get $width
@@ -40,60 +72,105 @@
     i32.and
     local.set $material
 
+    local.get $x
+    i32.eqz
+    if (result i32)
+      local.get $index
+    else
+      local.get $index
+      i32.const 1
+      i32.sub
+    end
+    local.set $left
+    local.get $x
+    i32.const 1
+    i32.add
+    local.get $width
+    i32.eq
+    if (result i32)
+      local.get $index
+    else
+      local.get $index
+      i32.const 1
+      i32.add
+    end
+    local.set $right
+    local.get $y
+    i32.eqz
+    if (result i32)
+      local.get $index
+    else
+      local.get $index
+      local.get $width
+      i32.sub
+    end
+    local.set $top
+    local.get $y
+    i32.const 1
+    i32.add
+    local.get $height
+    i32.eq
+    if (result i32)
+      local.get $index
+    else
+      local.get $index
+      local.get $width
+      i32.add
+    end
+    local.set $bottom
+
+    local.get $cells
+    local.get $left
+    i32.const 2
+    i32.shl
+    i32.add
+    i32.load
+    i32.const 255
+    i32.and
+    call $chemistry_property_scalar
+    local.get $cells
+    local.get $right
+    i32.const 2
+    i32.shl
+    i32.add
+    i32.load
+    i32.const 255
+    i32.and
+    call $chemistry_property_scalar
+    i32.or
+    local.get $cells
+    local.get $top
+    i32.const 2
+    i32.shl
+    i32.add
+    i32.load
+    i32.const 255
+    i32.and
+    call $chemistry_property_scalar
+    i32.or
+    local.get $cells
+    local.get $bottom
+    i32.const 2
+    i32.shl
+    i32.add
+    i32.load
+    i32.const 255
+    i32.and
+    call $chemistry_property_scalar
+    i32.or
+    local.set $neighbor_flags
+
     local.get $material
     i32.const 5
     i32.eq
+    local.get $material
+    i32.const 11
+    i32.eq
+    i32.or
     if
       i32.const 255
       local.set $temperature
     else
-      local.get $x
-      i32.eqz
-      if (result i32)
-        local.get $index
-      else
-        local.get $index
-        i32.const 1
-        i32.sub
-      end
-      local.set $left
-      local.get $x
-      i32.const 1
-      i32.add
-      local.get $width
-      i32.eq
-      if (result i32)
-        local.get $index
-      else
-        local.get $index
-        i32.const 1
-        i32.add
-      end
-      local.set $right
-      local.get $y
-      i32.eqz
-      if (result i32)
-        local.get $index
-      else
-        local.get $index
-        local.get $width
-        i32.sub
-      end
-      local.set $top
-      local.get $y
-      i32.const 1
-      i32.add
-      local.get $height
-      i32.eq
-      if (result i32)
-        local.get $index
-      else
-        local.get $index
-        local.get $width
-        i32.add
-      end
-      local.set $bottom
-
       local.get $cell
       call $temperature
       i32.const 2
@@ -138,24 +215,102 @@
     local.get $material
     i32.const 3
     i32.eq
-    local.get $temperature
-    i32.const 140
-    i32.ge_u
+    local.get $neighbor_flags
+    i32.const 8
     i32.and
+    i32.const 0
+    i32.ne
+    i32.and
+    local.get $material
+    i32.const 11
+    i32.eq
+    local.get $neighbor_flags
+    i32.const 1
+    i32.and
+    i32.const 0
+    i32.ne
+    i32.and
+    i32.or
     if
-      i32.const 4
+      i32.const 6
       local.set $material
     else
       local.get $material
-      i32.const 4
+      i32.const 5
       i32.eq
-      local.get $temperature
-      i32.const 112
-      i32.le_u
+      local.get $neighbor_flags
+      i32.const 1
+      i32.and
+      i32.const 0
+      i32.ne
       i32.and
       if
-        i32.const 3
+        i32.const 9
         local.set $material
+      else
+      local.get $material
+      i32.const 6
+      i32.eq
+      local.get $material
+      i32.const 7
+      i32.eq
+      i32.or
+      local.get $neighbor_flags
+      i32.const 4
+      i32.and
+      i32.const 0
+      i32.ne
+      i32.and
+      if
+        i32.const 0
+        local.set $material
+      else
+        local.get $material
+        i32.const 3
+        i32.eq
+        local.get $temperature
+        i32.const 140
+        i32.ge_u
+        i32.and
+        if
+          i32.const 4
+          local.set $material
+        else
+          local.get $material
+          i32.const 4
+          i32.eq
+          local.get $temperature
+          i32.const 112
+          i32.le_u
+          i32.and
+          if
+            i32.const 3
+            local.set $material
+          else
+            local.get $material
+            i32.const 7
+            i32.eq
+            local.get $material
+            i32.const 8
+            i32.eq
+            i32.or
+            local.get $temperature
+            i32.const 180
+            i32.ge_u
+            local.get $neighbor_flags
+            i32.const 2
+            i32.and
+            i32.const 0
+            i32.ne
+            i32.or
+            i32.and
+            if
+              i32.const 5
+              local.set $material
+            end
+          end
+        end
+      end
       end
     end
 
@@ -191,15 +346,7 @@
       i32.add
       local.tee $offset
       local.get $after
-      i32.const 255
-      i32.and
-      i32.const 4
-      i32.eq
-      if (result i32)
-        i32.const 1
-      else
-        i32.const 2
-      end
+      call $event_kind
       i32.store
       local.get $offset
       i32.const 4
@@ -251,9 +398,18 @@
     (local $material v128)
     (local $temperature v128)
     (local $next_material v128)
+    (local $left_cells v128)
+    (local $right_cells v128)
+    (local $top_cells v128)
+    (local $bottom_cells v128)
+    (local $neighbor_flags v128)
     (local $boil v128)
     (local $condense v128)
     (local $fire v128)
+    (local $ignite v128)
+    (local $solidify v128)
+    (local $corrode v128)
+    (local $extinguish v128)
     (local $after4 v128)
     (local $changed i32)
     (local $lane i32)
@@ -395,6 +551,10 @@
             local.tee $material
             v128.const i32x4 5 5 5 5
             i32x4.eq
+            local.get $material
+            v128.const i32x4 11 11 11 11
+            i32x4.eq
+            v128.or
             local.set $fire
 
             local.get $cell
@@ -412,6 +572,7 @@
             i32.shl
             i32.add
             v128.load
+            local.tee $left_cells
             i32.const 8
             i32x4.shr_u
             v128.const i32x4 255 255 255 255
@@ -425,6 +586,7 @@
             i32.shl
             i32.add
             v128.load
+            local.tee $right_cells
             i32.const 8
             i32x4.shr_u
             v128.const i32x4 255 255 255 255
@@ -440,6 +602,7 @@
             i32.shl
             i32.add
             v128.load
+            local.tee $top_cells
             i32.const 8
             i32x4.shr_u
             v128.const i32x4 255 255 255 255
@@ -455,6 +618,7 @@
             i32.shl
             i32.add
             v128.load
+            local.tee $bottom_cells
             i32.const 8
             i32x4.shr_u
             v128.const i32x4 255 255 255 255
@@ -463,6 +627,29 @@
             i32.const 3
             i32x4.shr_u
             local.set $temperature
+
+            v128.const i8x16 0 0 0 1 0 2 0 0 0 0 4 10 0 0 0 0
+            local.get $left_cells
+            local.get $right_cells
+            i8x16.shuffle 0 16 4 20 8 24 12 28 0 0 0 0 0 0 0 0
+            local.get $top_cells
+            local.get $bottom_cells
+            i8x16.shuffle 0 16 4 20 8 24 12 28 0 0 0 0 0 0 0 0
+            i8x16.shuffle 0 1 16 17 2 3 18 19 4 5 20 21 6 7 22 23
+            i8x16.swizzle
+            local.tee $neighbor_flags
+            local.get $neighbor_flags
+            i32.const 8
+            i32x4.shr_u
+            v128.or
+            local.tee $neighbor_flags
+            local.get $neighbor_flags
+            i32.const 16
+            i32x4.shr_u
+            v128.or
+            v128.const i32x4 255 255 255 255
+            v128.and
+            local.set $neighbor_flags
 
             v128.const i32x4 255 255 255 255
             local.get $temperature
@@ -485,6 +672,68 @@
             i32x4.le_u
             v128.and
             local.set $condense
+            local.get $material
+            v128.const i32x4 7 7 7 7
+            i32x4.eq
+            local.get $material
+            v128.const i32x4 8 8 8 8
+            i32x4.eq
+            v128.or
+            local.get $temperature
+            v128.const i32x4 180 180 180 180
+            i32x4.ge_u
+            local.get $neighbor_flags
+            v128.const i32x4 2 2 2 2
+            v128.and
+            v128.const i32x4 0 0 0 0
+            i32x4.ne
+            v128.or
+            v128.and
+            local.set $ignite
+            local.get $material
+            v128.const i32x4 3 3 3 3
+            i32x4.eq
+            local.get $neighbor_flags
+            v128.const i32x4 8 8 8 8
+            v128.and
+            v128.const i32x4 0 0 0 0
+            i32x4.ne
+            v128.and
+            local.get $material
+            v128.const i32x4 11 11 11 11
+            i32x4.eq
+            local.get $neighbor_flags
+            v128.const i32x4 1 1 1 1
+            v128.and
+            v128.const i32x4 0 0 0 0
+            i32x4.ne
+            v128.and
+            v128.or
+            local.set $solidify
+            local.get $material
+            v128.const i32x4 6 6 6 6
+            i32x4.eq
+            local.get $material
+            v128.const i32x4 7 7 7 7
+            i32x4.eq
+            v128.or
+            local.get $neighbor_flags
+            v128.const i32x4 4 4 4 4
+            v128.and
+            v128.const i32x4 0 0 0 0
+            i32x4.ne
+            v128.and
+            local.set $corrode
+            local.get $material
+            v128.const i32x4 5 5 5 5
+            i32x4.eq
+            local.get $neighbor_flags
+            v128.const i32x4 1 1 1 1
+            v128.and
+            v128.const i32x4 0 0 0 0
+            i32x4.ne
+            v128.and
+            local.set $extinguish
             v128.const i32x4 4 4 4 4
             local.get $material
             local.get $boil
@@ -493,6 +742,26 @@
             v128.const i32x4 3 3 3 3
             local.get $next_material
             local.get $condense
+            v128.bitselect
+            local.set $next_material
+            v128.const i32x4 5 5 5 5
+            local.get $next_material
+            local.get $ignite
+            v128.bitselect
+            local.set $next_material
+            v128.const i32x4 9 9 9 9
+            local.get $next_material
+            local.get $extinguish
+            v128.bitselect
+            local.set $next_material
+            v128.const i32x4 0 0 0 0
+            local.get $next_material
+            local.get $corrode
+            v128.bitselect
+            local.set $next_material
+            v128.const i32x4 6 6 6 6
+            local.get $next_material
+            local.get $solidify
             v128.bitselect
             local.set $next_material
 

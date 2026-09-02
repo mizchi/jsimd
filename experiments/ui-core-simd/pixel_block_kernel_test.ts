@@ -5,6 +5,7 @@ import {
   stepPixelWorldBlock,
 } from "./pixel_block_sim.ts";
 import { countPixelMaterials, MATERIAL, packPixel } from "./pixel_sim.ts";
+import { ALL_PIXEL_MATERIALS } from "./pixel_material.ts";
 
 function assertEquals(actual: unknown, expected: unknown, message = "values differ"): void {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -83,6 +84,18 @@ Deno.test("Wasm SIMD range owns the same half-open blocks and reports hot materi
   assertCellsEqual(simd.cells, expected, "range cells");
 });
 
+Deno.test("Wasm SIMD range does not keep static material chunks hot", async () => {
+  const cells = new Uint32Array([
+    packPixel(MATERIAL.stone),
+    packPixel(MATERIAL.wood),
+    packPixel(MATERIAL.fire),
+    packPixel(MATERIAL.wall),
+  ]);
+  const simd = await WasmSimdPixelBlock.create(2, 2);
+  simd.set(cells);
+  assertEquals(simd.stepRange(0, 0, 0, 2, 2), { moves: 0, hot: false });
+});
+
 Deno.test("Wasm SIMD block backend validates dimensions, input, tick, and seed", async () => {
   await assertRejects(() => WasmSimdPixelBlock.create(0, 4), RangeError);
   const simd = await WasmSimdPixelBlock.create(4, 4);
@@ -105,15 +118,9 @@ function createMixedWorld(width: number, height: number, initialSeed: number): U
       seed ^= seed << 13;
       seed ^= seed >>> 17;
       seed ^= seed << 5;
-      const roll = (seed >>> 0) % 20;
-      const material = roll < 2
-        ? MATERIAL.wall
-        : roll < 8
-        ? MATERIAL.sand
-        : roll < 13
-        ? MATERIAL.water
-        : roll < 15
-        ? MATERIAL.gas
+      const roll = (seed >>> 0) % (ALL_PIXEL_MATERIALS.length + 5);
+      const material = roll < ALL_PIXEL_MATERIALS.length
+        ? ALL_PIXEL_MATERIALS[roll]!
         : MATERIAL.empty;
       cells[index] = packPixel(material, roll * 7, x, y);
     }

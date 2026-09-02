@@ -1,7 +1,8 @@
 # Pixel physics prototype plan
 
-Status: Stage 0-5 and the temperature/reaction slice of Stage 6 implemented on 2026-09-02. Nothing
-in this document is a public API or a package admission decision.
+Status: Stage 0-5, bounded WebGPU event readback, and CPU/Wasm/WebGPU temperature-reaction slices
+of Stage 6 implemented on 2026-09-02. Nothing in this document is a public API or a package
+admission decision.
 
 ## Current result
 
@@ -95,15 +96,23 @@ small, odd, and SIMD-width worlds over repeated ticks.
 `pixel_event_tape.ts` is a fixed 16-byte-record SPSC `SharedArrayBuffer` ring. The Worker emits
 `kind/index/before/after`; the main thread can derive coordinates from the public width without
 retaining an `Event`, object payload, or cell snapshot. Both the bounded Wasm event prefix and a
-full SAB ring increment one observable dropped-event counter. Its isolated implementation is 994 B
-gzip. `?run=pixel&runtime=worker-reaction-simd` combines active 2 x 2 movement, dense thermal SIMD,
-compact events, Atomics input, and OffscreenCanvas behind a dedicated lazy client/Worker pair.
+full SAB ring increment one observable dropped-event counter. ABI version 2 uses the final header
+word for the newest non-empty publication timestamp, allowing the main consumer to measure
+Worker-to-main event latency without growing a record. Its isolated implementation is 1,048 B gzip.
+`?run=pixel&runtime=worker-reaction-simd` combines active 2 x 2 movement, dense thermal SIMD, compact
+events, Atomics input, and OffscreenCanvas behind a dedicated lazy client/Worker pair.
 
 `?run=pixel&runtime=block-webgpu` keeps the same conservative 2 x 2 movement state and rendering
 resident on WebGPU. One invocation owns one disjoint block; no per-cell atomics or per-frame
 readback are used. The explicit `readCells()` path is conformance-only. A browser check runs 48
 ticks over an odd 63 x 41 world containing all materials and requires all 2,583 GPU cells to match
 the scalar reference; it currently passes with zero mismatches.
+
+An explicit, separately loaded WebGPU compute path can atomically append one fixed 16-byte record
+per moved 2 x 2 block. It reuses a persistent bounded staging buffer and exposes total and dropped
+counters. Twelve ticks over an odd 31 x 21 world match the scalar cells and all 944 block-event
+records exactly; a capacity-two case also matches the expected 80 drops. The normal resident
+renderer does not import this path and still performs no readback.
 
 The first combined Apple M5/Chrome run is
 [`benchmarks/pixel-reaction-webgpu-browser.json`](./benchmarks/pixel-reaction-webgpu-browser.json):
@@ -119,9 +128,243 @@ The first combined Apple M5/Chrome run is
 
 These are different workloads: the reaction Worker performs a dense thermal pass and event
 publication that the other two do not. WebGPU wins the large movement-and-render case but loses at
-40,960 cells because queue synchronization dominates; it also cannot yet publish gameplay events.
-The Worker is the usable path when CPU-visible reactions and low main-thread work matter. The
-reported GPU tick includes `queue.onSubmittedWorkDone`; it is not a submission-only number.
+40,960 cells because queue synchronization dominates. The Worker is the usable path when
+CPU-visible reactions and low main-thread work matter. The reported GPU tick includes
+`queue.onSubmittedWorkDone`; it is not a submission-only number.
+
+The changed-block readback stress run is in
+[`benchmarks/pixel-block-webgpu-events.json`](./benchmarks/pixel-block-webgpu-events.json). At
+1024 x 640 and 25% occupancy, a synchronized compute-plus-readback tick has a 0.310 ms median and
+0.500 ms p95 while copying a fixed 4,112 B. It produces 9,980,582 events over 100 ticks, about
+99,806 per tick; capacity 256 retains 25,600 and observably drops 9,954,982. This is useful as a
+bounded diagnostic or dirty-block sample, but far too dense as a gameplay stream. A production GPU
+path should append only semantic reaction/contact/explosion events or aggregated tile summaries.
+
+That semantic path is now tested separately in
+[`benchmarks/pixel-reaction-webgpu-events.json`](./benchmarks/pixel-reaction-webgpu-events.json).
+It ping-pongs two GPU cell buffers through the same four-neighbor integer temperature diffusion as
+the scalar and Wasm implementations and appends only vaporized/condensed records. An odd 19 x 11
+conformance world matches all cells and 179 event records over 12 ticks; capacity two reports the
+same 89 drops as the scalar oracle. Atomic append order is intentionally unspecified, so
+conformance compares the event set by cell index and consumers must not use buffer order as causal
+order.
+
+The current reaction benchmark runs 400 ticks at 256 x 160, 512 x 320, and 1024 x 640 with capacity
+256. Every-tick readback copies 4,112 B and awaits it. The batched mode accumulates four ticks and
+keeps up to three 4,112 B staging maps in flight. Both modes match final Wasm cells and all 7, 33,
+and 163 semantic events without drops. Triple staging costs a fixed 12,336 B; at 1024 x 640 the GPU
+owns 5,247,008 B of resident state versus 5,308,416 B of rounded Wasm memory.
+
+| grid       | Wasm wall/tick | WebGPU sync wall/tick | WebGPU batch-4 wall/tick | batch-4 completion median |
+| ---------- | -------------: | --------------------: | -----------------------: | ------------------------: |
+| 256 x 160  |       0.052 ms |              0.400 ms |                 0.045 ms |                  0.435 ms |
+| 512 x 320  |       0.139 ms |              0.297 ms |                 0.042 ms |                  0.430 ms |
+| 1024 x 640 |       0.615 ms |              0.398 ms |                 0.058 ms |                  0.475 ms |
+
+The asynchronous numbers are throughput, not immediate event latency. Batch-4 makes events visible
+up to three simulation ticks later, and its 1024 x 640 completion p95 is 1.835 ms. Main-thread CPU
+submission remains about 0.005 ms median. An earlier short run observed one 41.93 ms GPU anomaly;
+the 400-tick rerun did not reproduce it (2.360 ms maximum for batch-4), so more adapters and longer
+tail runs remain necessary.
+
+The dedicated Worker transport run is in
+[`benchmarks/pixel-reaction-event-latency-browser.json`](./benchmarks/pixel-reaction-event-latency-browser.json).
+With no synthetic main-thread load, the final observed age of the newest non-empty event batch is
+15.635 ms at 256 x 160 and 9.075 ms at 1024 x 640; all 318 and 2,311 events arrive without drops.
+These are rAF-polled snapshots rather than latency distributions, so they establish observability
+and a frame-scale bound for this run, not a stable percentile claim.
+
+## Current branch points
+
+These are local Apple M5/Chrome observations, not portable automatic thresholds:
+
+1. **Small dense reaction with immediate CPU visibility:** choose Wasm SIMD. At 40,960 and 163,840
+   cells, every-tick synchronized WebGPU is 7.7x and 2.1x slower by wall throughput. WebGPU wins at
+   655,360 cells by 1.55x. A straight-line fit through the 512 and 1024 widths crosses near 371,000
+   cells, roughly 770 x 481, but the measured claim is only that the crossover lies between 163,840
+   and 655,360 cells.
+2. **Dense reaction where output may lag four ticks:** batched WebGPU wins throughput at all three
+   sizes, but only by 1.15x at 40,960 cells. That small win is below the experiment's 1.25x retention
+   bar and does not justify added latency or capability checks. From 163,840 cells it is 3.30x faster;
+   at 655,360 cells it is 10.60x faster.
+3. **Movement plus presentation:** existing results bracket the Wasm/WebGPU crossover between
+   40,960 and 655,360 cells. A two-point linear fit is about 447,000 cells (846 x 529), close to but
+   independent of the reaction crossover. Do not merge these thresholds: movement, Canvas upload,
+   reaction, and readback have different costs.
+4. **Sparse active area:** choose active-chunk Wasm/Worker even for a large allocation. At 1024 x
+   640, active SIMD improves quarter and spot compute to 0.335 and 0.240 ms, while the current GPU
+   reaction pass scans every cell. Allocated cell count alone is therefore insufficient; active
+   density is a first-class selector.
+5. **Main-thread contention or pointer responsiveness:** choose the Worker path when DOM/Canvas work
+   would block input. With 8 ms synthetic main work, Worker input-to-submit stayed near 0.65 ms while
+   the main path was about 15-16 ms. This can outweigh a slower simulation kernel.
+6. **Output cardinality:** never read changed blocks as gameplay events. The dense block stream was
+   about 99,806 events/tick and dropped 99.7% at capacity 256; the semantic reaction runs emitted at
+   most 163 events over 400 ticks. GPU is viable only when output is semantic, aggregated, bounded,
+   and allowed to arrive asynchronously.
+
+The practical selector is therefore a tuple of `(allocated cells, active density, output
+cardinality, visibility deadline, main-thread load, adapter)`, not one cell-count constant.
+
+## Display sizing decision
+
+The primary interactive path is the reaction SIMD Worker because semantic output must be visible
+on the next main-thread poll; the four-tick WebGPU throughput mode is not an acceptable default.
+The WebGPU implementations stay available as explicitly selected experiments.
+
+Use `512 x 320` as the normal desktop simulation surface and `256 x 160` for narrow/mobile
+surfaces. Target about `1.5-2 CSS px` per simulation cell and snap adaptive dimensions to 32-cell
+chunk boundaries. At the current maximum desktop canvas width of about 894 CSS px, those presets
+render at about 1.75 and 3.5 CSS px per cell respectively. A 1024-wide world renders below one CSS
+pixel per cell in the same layout, so it is a stress/high-density mode rather than a useful default,
+even though the Apple M5 result remains within the 120 Hz compute budget.
+
+The dedicated 512 x 320 measurement is in
+[`benchmarks/pixel-reaction-simd-sizing-browser.json`](./benchmarks/pixel-reaction-simd-sizing-browser.json).
+At 25% full-world occupancy, reaction SIMD Worker tick-plus-presentation is 0.505 ms median / 0.845
+ms p95, compute is 0.425 / 0.680 ms, and presentation is 0.080 / 0.160 ms. It owns 2,044,592 B,
+records 0.18 ms input-to-Canvas submission, and publishes all 1,129 semantic events without drops.
+The final rAF-polled event-batch age is 11.94 ms; it is not a latency distribution, but unlike the
+WebGPU batch-4 path it does not intentionally defer visibility by simulation ticks.
+
+For an adaptive production viewport, use the following policy before applying the 8:5 aspect
+ratio: `width = floor(canvasCssWidth / targetCellCssPx / 32) * 32`, with
+`targetCellCssPx = 2`, a 256-cell mobile floor, and a 512-cell normal cap. Raise the cap to 768 or
+1024 only for a fullscreen/zoomable view and after recording slower target devices. Device pixel
+ratio improves raster sharpness but does not make sub-CSS-pixel cells easier to inspect or paint,
+so it is not used to reduce the interaction-size target.
+
+## Material, rule, and buffer scaling
+
+The reproducible Deno/Apple M5 result is in
+[`benchmarks/pixel-rule-scaling.json`](./benchmarks/pixel-rule-scaling.json), produced by
+`just bench-ui-pixel-rule-scaling`. The benchmark-only 302-byte Wasm kernel compares two material
+dispatch shapes over the same u32 cells:
+
+- a scalar direct lookup in a 256-byte property table; and
+- a fused SIMD loop that applies one equality mask per known material to four cells.
+
+This is a dispatch decision experiment, not a complete material-rule implementation. It shows the
+cost of allowing the material count to lengthen a specialized comparison chain; neighbor reads and
+actual rule bodies are deliberately excluded.
+
+| materials | 512 table | 512 SIMD masks | 1024 table | 1024 SIMD masks |
+| --------: | --------: | -------------: | ---------: | --------------: |
+|         4 |  0.056 ms |       0.058 ms |   0.245 ms |        0.252 ms |
+|         8 |  0.060 ms |       0.104 ms |   0.262 ms |        0.435 ms |
+|        16 |  0.060 ms |       0.138 ms |   0.249 ms |        0.558 ms |
+|        32 |  0.060 ms |       0.233 ms |   0.243 ms |        0.939 ms |
+|        64 |  0.060 ms |       0.533 ms |   0.242 ms |        2.138 ms |
+|       128 |  0.060 ms |       1.297 ms |   0.244 ms |        5.253 ms |
+|       256 |  0.060 ms |       3.249 ms |   0.243 ms |       13.128 ms |
+
+The direct table is effectively independent of material count and becomes the preferred generic
+representation at eight materials in this model. Keep a few truly hot categories as masks if a
+profile justifies them, but do not add one SIMD comparison for every material. The u32 cell ABI
+already has an eight-bit material ID, so up to 256 material definitions do not enlarge the world.
+A 16-byte descriptor costs only 1 KiB for 64 materials and 4 KiB for all 256.
+
+Repeating the current complete temperature/reaction kernel models the conservative, unfused upper
+bound for adding independent dense rule passes:
+
+| dense passes/tick | 512 median / p95 | 1024 median / p95 |
+| ----------------: | ----------------: | -----------------: |
+|                 1 | 0.158 / 0.197 ms |  0.631 / 0.688 ms |
+|                 2 | 0.316 / 0.359 ms |  1.281 / 1.383 ms |
+|                 4 | 0.633 / 0.717 ms |  2.571 / 2.678 ms |
+|                 8 | 1.287 / 1.563 ms |  5.135 / 5.329 ms |
+
+The scaling is nearly linear. A "rule" must therefore not automatically mean a new world scan.
+Rules that read the same neighborhood and fields should be fused into one generated pass; only
+different synchronization boundaries or field topologies should create another pass. At 512 x
+320, even eight dense-equivalent passes leave useful 60/120 Hz headroom. At 1024 x 640, eight
+passes consume about 5.1 ms before movement, event transport, and presentation, making 120 Hz
+fragile on this fast CPU.
+
+`pixel_rule_scaling.ts` models explicitly owned buffers. The base 512 profile is 1.95 MiB. A
+deliberately expanded profile with 64 materials, 32 descriptors, event capacity 2,048, a
+double-buffered u8 field, a double-buffered u16 field, and a single-buffered u8 field is 3.13 MiB
+at 512 x 320 and 12.00 MiB at 1024 x 640. The extra fields alone cost 1.094 and 4.375 MiB. Material
+and rule descriptors together cost only 1.5 KiB; the three 16-byte event copies at capacity 2,048
+cost about 96 KiB.
+
+The resulting storage policy is:
+
+1. Keep `material/temperature/flags/variant` in the existing u32 cell until a field truly needs an
+   independent update topology.
+2. Store material properties in direct SoA/AoS tables indexed by the eight-bit material ID.
+3. Share one u32 scratch generation across sequential dense passes; do not allocate scratch per
+   rule.
+4. Use u8/u16 fields and double-buffer only fields that require old-generation reads.
+5. Size the 16-byte semantic event ring as `peak events/tick x maximum consumer lag x headroom`,
+   rounded to a power of two. For example, 100 events with one tick of lag and 1.5x headroom needs
+   256 records; 600 events over two ticks needs 2,048.
+6. Keep the fixed event record as `kind/index/arg0/arg1`. Rare variable payloads should use a
+   separate bounded arena rather than enlarging every record or allocating JS objects.
+
+The buffer totals exclude browser compositor memory, Canvas backing stores, allocator overhead,
+and Worker isolate memory. Those remain browser-profiler measurements rather than ABI estimates.
+
+### Implemented 12-material vocabulary
+
+The first property-table implementation keeps the original six IDs and adds six common categories:
+
+| material | movement/property role | implemented reaction                         |
+| :------- | :--------------------- | :------------------------------------------- |
+| stone    | immovable solid        | adjacent acid -> empty                       |
+| wood     | immovable combustible  | heat/fire/lava -> fire; adjacent acid wins   |
+| oil      | light liquid           | heat/fire/lava -> fire                       |
+| smoke    | gas lighter than steam | fire adjacent to water -> smoke              |
+| acid     | water-density liquid   | corrodes adjacent stone and wood             |
+| lava     | heavy liquid           | permanent heat; adjacent water -> stone      |
+
+Density, fluid, and movable properties fit in three `i8x16.swizzle` constants. Thus the SIMD
+movement hot path performs one table shuffle per property instead of adding an equality mask per
+material. Scalar code uses the same typed property contract. The 12-material local state space is
+exhaustively checked for all 20,736 possible 2 x 2 blocks, and randomized odd-sized worlds compare
+scalar and SIMD cells, move counts, metadata, hot-chunk state, reactions, and compact events.
+
+The Apple M5/Deno result in
+[`benchmarks/pixel-material-scaling.json`](./benchmarks/pixel-material-scaling.json) compares the
+original vocabulary with a 25%-occupied 12-material world. Values are resident median milliseconds
+per tick; each sample restores the same world and then runs 16 ticks.
+
+| world      | move 6 | move 12 | reaction 6 | reaction 12 |
+| :--------- | -----: | ------: | ---------: | ----------: |
+| 256 x 160  |  0.070 |   0.063 |      0.142 |       0.116 |
+| 512 x 320  |  0.245 |   0.271 |      0.523 |       0.519 |
+| 1024 x 640 |  1.036 |   1.041 |      2.205 |       2.102 |
+
+There is no monotonic 6-to-12 material penalty in this sample. The same fused instructions run for
+both vocabularies, so scene composition and the number of emitted events dominate the difference.
+The relevant cost is enabling four-neighbor chemistry at all: compared with the preceding
+phase-only result, the 1024-wide reaction median rises from roughly 1.4--1.5 ms to 2.4--2.5 ms.
+This is still below the cost of adding another complete reaction pass, but it is a fixed tax even
+for the six-material scene.
+
+The first SIMD version performed four property-table swizzles per vector and measured 2.54 ms for
+six materials and 3.11 ms for twelve at 1024 width. Packing the left/right/top/bottom material bytes
+with `i8x16.shuffle` reduces that to one `i8x16.swizzle`; after compact scalar/event lookup tables,
+the final recorded run is 2.21 and 2.10 ms. This tuning sequence changed reaction dynamics as smoke
+was added and the exact ratio is noisy, but it removes three unconditional swizzles; neighbor
+classification, not the number of descriptors, remains the scaling boundary.
+
+The movement kernel grows from 2,283 to 2,389 raw bytes and the fused reaction kernel from 1,430 to
+2,352 bytes, for 4,741 raw bytes combined. In the production-shaped Vite build the reaction Wasm is
+1,015 B gzip, the live-reaction showcase demo is 5,214 B gzip, and the complete reaction Worker route is 14,920 B
+gzip. Neither enters the signals or Luna core entrypoints.
+
+Acid corrosion, lava-water solidification, fire/lava spread, and water extinguishing fire into smoke
+are implemented as symmetric reads from the previous generation and writes to the current cell only.
+This preserves deterministic double-buffer ownership without a separate intent pass. Conflicts have
+an explicit priority: solidification, extinguishing, corrosion, phase change, then ignition. A
+time-based burning lifetime remains unimplemented; it needs an explicit contract for reusing the
+temperature, flags, or variant byte.
+
+The default reaction demo uses a labeled 5 x 2 lab. The upper row keeps all twelve ABI materials
+available as isolated references; the lower row shows density exchange, extinguishing/vaporization,
+solidification, corrosion, and ignition. Demo-only sources are restored every 90 ticks so irreversible
+reactions remain observable without changing the reaction kernel or any Luna/signals entrypoint.
 
 ## Decision
 
@@ -316,7 +559,8 @@ input-to-Canvas-submit latency without transferring a world snapshot.
 ### Stage 5: resident WebGPU
 
 Status: conservative movement and resident rendering implemented as `runtime=block-webgpu`.
-Bounded GPU event output remains pending.
+Optional bounded changed-block and semantic vaporized/condensed outputs are implemented as separate
+compute-only entrypoints; contact, explosion, and application-specific events remain pending.
 
 Keep cells, optional fields, and rendering resident on the GPU. One compute invocation owns one 2 x
 2 block. Rendering samples the resulting storage buffer directly. Do not map the world buffer per
@@ -326,10 +570,16 @@ CPU-visible results use a bounded event buffer and summary counters. Read them a
 more frequently than needed by gameplay. Overflow is observable and drops low-priority events rather
 than stalling the simulation.
 
+The prototype deliberately duplicates the compact movement WGSL in the event-enabled entrypoint.
+This keeps atomic append and mapping code out of the normal renderer's lazy chunk; browser
+conformance detects semantic drift between both shaders and the scalar oracle.
+
 ### Stage 6: coupled coarse fields
 
 Status: a deliberately dense, per-cell `u8` temperature/reference reaction pass is implemented as
-`runtime=worker-reaction-simd`. Coarse temperature, pressure, and velocity fields remain pending.
+`runtime=worker-reaction-simd`, with a compute-only ping-pong WebGPU equivalent for conformance and
+event/readback measurement. Integrating that pass into the resident movement renderer remains
+pending, as do coarse temperature, pressure, and velocity fields.
 
 Add temperature first, followed independently by pressure and velocity. Fields use their own lower
 resolution, storage type, timestep, and active-tile policy. Cell rules sample the fields; field
@@ -356,10 +606,19 @@ Candidate events include reaction, contact, explosion, chunk-awake, and chunk-sl
 pixels is not an event; it stays within the owning renderer. High-volume debug traces are disabled
 in benchmark and production-shaped builds.
 
-The CPU/Worker path can publish events through a `SharedArrayBuffer` SPSC ring. The GPU path writes
-an append buffer plus count and overflow flag, then copies only that compact prefix to a staging
-buffer. A gameplay feature that requires the CPU to inspect most cells every tick is classified as a
-CPU/Worker workload rather than forced onto WebGPU.
+The CPU/Worker path publishes events through a `SharedArrayBuffer` SPSC ring. Its batch timestamp is
+written only when reactions occur; the main thread reports the age of the newest published batch
+when it drains records. This is a transport/scheduling metric, not the age of every record: queued
+older batches can have higher latency.
+
+The optional GPU path writes an atomic append buffer plus total and dropped counters, then copies one
+fixed bounded region into staging. The changed-block implementation validates the transport and
+overflow contract, but its measured event cardinality rejects it as a production gameplay
+representation. The reaction implementation can either await every tick or accumulate a contiguous
+multi-tick batch while rotating three staging buffers. The latter removes synchronization from the
+submission hot path but trades away immediate event visibility. A gameplay feature that requires
+the CPU to inspect most cells every tick is classified as a CPU/Worker workload rather than forced
+onto WebGPU.
 
 ## Benchmark matrix
 
@@ -425,20 +684,26 @@ Provisional isolated ceilings are:
 | ------------------------------------ | -----------: |
 | block solver and cell ABI JavaScript | 2,500 B gzip |
 | complete active-block lazy entry     | 2,100 B gzip |
-| optional event-tape JavaScript       | 1,000 B gzip |
-| Wasm block kernel                    |  2,300 B raw |
+| optional event-tape JavaScript       | 1,050 B gzip |
+| Wasm block kernel                    |  2,400 B raw |
 | active-chunk addition                | 2,000 B gzip |
 | WebGPU pair adapter and shaders      | 3,700 B gzip |
 | WebGPU block adapter and shaders     | 5,600 B gzip |
+| optional WebGPU block-event path     | 5,000 B gzip |
+| optional WebGPU reaction-event path  | 5,000 B gzip |
 | Worker client                        | 2,100 B gzip |
 | scalar Worker                        | 5,450 B gzip |
 | active-SIMD Worker + client + Wasm   | 9,000 B gzip |
-| reaction Worker route and both Wasm  | 14,000 B gzip |
-| reaction Wasm kernel                 |  1,450 B raw |
+| reaction Worker route and both Wasm  | 14,930 B gzip |
+| reaction Wasm kernel                 |  1,600 B raw |
 
 Generated lookup tables do not enter JavaScript when they can live in Wasm data or GPU buffers. Each
 optional field has a separate measured entrypoint. A backend that needs a large runtime or material
 VM remains application code rather than becoming UI-core.
+
+The standalone reaction-event entry is currently 2,705 B gzip. Its Wasm-vs-WebGPU benchmark uses a
+separate HTML/esbuild graph so importing the oracle cannot perturb the Pixel Lab production-shaped
+Vite chunks. The live-reaction Pixel Lab demo is 5,214 B gzip under its 5,220 B experimental gate.
 
 ## References and implementation reading order
 

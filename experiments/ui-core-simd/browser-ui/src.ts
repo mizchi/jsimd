@@ -120,10 +120,26 @@ await mountDemos();
 const runButton = required<HTMLButtonElement>("run-all");
 benchmarkGlobal.__jsimdUiBench = { ready: true, results: null, runAll: runAndRender };
 const benchmarkParams = new URLSearchParams(location.search);
-if (benchmarkParams.get("run") === "pixel-block-webgpu-check") {
+if (benchmarkParams.get("run") === "pixel-block-webgpu-event-bench") {
   runButton.disabled = true;
-  const { checkPixelBlockWebGpu } = await import("./pixel_block_webgpu_check.ts");
-  report({ pixelBlockWebGpuCheck: await checkPixelBlockWebGpu() });
+  const { runPixelBlockWebGpuEventBenchmark } = await import(
+    "./pixel_block_webgpu_event_bench.ts"
+  );
+  report({ pixelBlockWebGpuEventBenchmark: await runPixelBlockWebGpuEventBenchmark() });
+} else if (benchmarkParams.get("run") === "pixel-block-webgpu-check") {
+  runButton.disabled = true;
+  const {
+    checkPixelBlockWebGpu,
+    checkPixelBlockWebGpuEvents,
+    checkPixelReactionWebGpuEvents,
+  } = await import(
+    "./pixel_block_webgpu_check.ts"
+  );
+  report({
+    pixelBlockWebGpuCheck: await checkPixelBlockWebGpu(),
+    pixelBlockWebGpuEventCheck: await checkPixelBlockWebGpuEvents(),
+    pixelReactionWebGpuEventCheck: await checkPixelReactionWebGpuEvents(),
+  });
 } else if (benchmarkParams.get("run") === "pixel") {
   runButton.disabled = true;
   const width = parsePixelWidth(benchmarkParams.get("size"));
