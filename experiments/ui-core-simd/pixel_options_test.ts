@@ -18,6 +18,8 @@ Deno.test("pixel benchmark parses bounded scenario options", () => {
   assertEquals(parsePixelRuntime("active"), "active");
   assertEquals(parsePixelRuntime("worker"), "worker");
   assertEquals(parsePixelRuntime("worker-simd"), "worker-simd");
+  assertEquals(parsePixelRuntime("worker-reaction-simd"), "worker-reaction-simd");
+  assertEquals(parsePixelRuntime("block-webgpu"), "block-webgpu");
   assertEquals(parsePixelRuntime("webgpu"), "webgpu");
   assertEquals(parsePixelWidth("1024"), 1_024);
   assertEquals(parsePixelOccupancy("5"), 0.05);

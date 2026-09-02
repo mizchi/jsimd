@@ -18,6 +18,8 @@ export const DEFAULT_PIXEL_RUNTIMES: readonly PixelRuntime[] = [
   "active",
   "worker",
   "worker-simd",
+  "worker-reaction-simd",
+  "block-webgpu",
   "webgpu",
 ];
 export const DEFAULT_PIXEL_REGIONS: readonly PixelRegion[] = ["full", "spot"];

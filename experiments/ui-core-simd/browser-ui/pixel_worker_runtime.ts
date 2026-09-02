@@ -24,6 +24,7 @@ export interface PixelWorkerInitMessage {
   readonly occupancy: number;
   readonly region: PixelRegion;
   readonly mainTimeOriginMillis: number;
+  readonly eventBuffer?: SharedArrayBuffer;
 }
 
 export interface PixelWorkerSimulation {
@@ -44,6 +45,7 @@ export type PixelWorkerBackendFactory = (
   height: number,
   occupancy: number,
   region: PixelRegion,
+  eventBuffer?: SharedArrayBuffer,
 ) => PixelWorkerBackend | Promise<PixelWorkerBackend>;
 
 /** Installs the shared Atomics input, simulation cadence, and OffscreenCanvas presentation loop. */
@@ -60,6 +62,7 @@ export function installPixelWorker(factory: PixelWorkerBackendFactory): void {
       event.data.occupancy,
       event.data.region,
       event.data.mainTimeOriginMillis,
+      event.data.eventBuffer,
     ).catch((error: unknown) => {
       self.postMessage({ type: "error", message: errorMessage(error) });
     });
@@ -74,8 +77,9 @@ async function initialize(
   occupancy: number,
   region: PixelRegion,
   mainTimeOriginMillis: number,
+  eventBuffer?: SharedArrayBuffer,
 ): Promise<never> {
-  const backend = await factory(control.width, control.height, occupancy, region);
+  const backend = await factory(control.width, control.height, occupancy, region, eventBuffer);
   const { cells, simulation, materialColors } = backend;
   if (cells.length !== control.width * control.height) {
     throw new RangeError("pixel worker backend returned an invalid world");
@@ -204,14 +208,12 @@ async function initialize(
     }
     if (changed) {
       const renderMicros = render();
-      const inputLatencyMicros = inputTimeMicros === undefined
-        ? undefined
-        : inputToPresentMicros(
-          mainTimeOriginMillis,
-          performance.timeOrigin,
-          performance.now(),
-          inputTimeMicros,
-        );
+      const inputLatencyMicros = inputTimeMicros === undefined ? undefined : inputToPresentMicros(
+        mainTimeOriginMillis,
+        performance.timeOrigin,
+        performance.now(),
+        inputTimeMicros,
+      );
       control.publish(
         tick,
         computeMicros,

@@ -45,10 +45,18 @@ export class WasmSimdPixelBlock {
     this.#kernel = kernel;
   }
 
-  static async create(width: number, height: number): Promise<WasmSimdPixelBlock> {
+  static async create(
+    width: number,
+    height: number,
+    minimumMemoryBytes = width * height * Uint32Array.BYTES_PER_ELEMENT,
+  ): Promise<WasmSimdPixelBlock> {
     validateDimensions(width, height);
     const cellCount = width * height;
-    const pages = Math.max(1, Math.ceil(cellCount * 4 / 65_536));
+    const cellBytes = cellCount * Uint32Array.BYTES_PER_ELEMENT;
+    if (!Number.isSafeInteger(minimumMemoryBytes) || minimumMemoryBytes < cellBytes) {
+      throw new RangeError(`pixel block memory must contain at least ${cellBytes} bytes`);
+    }
+    const pages = Math.max(1, Math.ceil(minimumMemoryBytes / 65_536));
     const memory = new WebAssembly.Memory({ initial: pages });
     modulePromise ??= compileModule(new URL("./pixel_block_step.wasm", import.meta.url));
     const instance = await WebAssembly.instantiate(await modulePromise, { jsimd: { memory } });

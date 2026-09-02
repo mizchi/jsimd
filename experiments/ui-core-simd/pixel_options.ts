@@ -7,6 +7,8 @@ export type PixelRuntime =
   | "active"
   | "worker"
   | "worker-simd"
+  | "worker-reaction-simd"
+  | "block-webgpu"
   | "webgpu";
 export type PixelWidth = 256 | 512 | 1_024;
 export type PixelOccupancyPercent = 5 | 25 | 75;
@@ -17,7 +19,8 @@ export function parsePixelRuntime(value: string | null): PixelRuntime {
   if (
     value === "block" || value === "block-active" || value === "block-simd" ||
     value === "block-active-simd" ||
-    value === "active" || value === "worker" || value === "worker-simd" || value === "webgpu"
+    value === "active" || value === "worker" || value === "worker-simd" ||
+    value === "worker-reaction-simd" || value === "block-webgpu" || value === "webgpu"
   ) {
     return value;
   }

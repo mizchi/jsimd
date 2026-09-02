@@ -29,8 +29,9 @@ export class WasmActiveSimdPixelBlock {
     height: number,
     seed = DEFAULT_WASM_PIXEL_BLOCK_SEED,
     chunkSize = 32,
+    minimumMemoryBytes?: number,
   ): Promise<WasmActiveSimdPixelBlock> {
-    const kernel = await WasmSimdPixelBlock.create(width, height);
+    const kernel = await WasmSimdPixelBlock.create(width, height, minimumMemoryBytes);
     kernel.set(cells);
     const activity = new PixelChunkActivity(width, height, chunkSize);
     for (let index = 0; index < cells.length; index++) {
@@ -70,6 +71,10 @@ export class WasmActiveSimdPixelBlock {
 
   get cells(): Uint32Array {
     return this.#kernel.cells;
+  }
+
+  get memory(): WebAssembly.Memory {
+    return this.#kernel.memory;
   }
 
   get activeChunkCount(): number {

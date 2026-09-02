@@ -110,7 +110,8 @@ fn paint(@builtin(global_invocation_id) id: vec3<u32>) {
   let deltaY = i32(localY) - i32(brush.radius);
   if (deltaX * deltaX + deltaY * deltaY > i32(brush.radius * brush.radius)) { return; }
   let index = u32(signedY) * brush.width + u32(signedX);
-  cells[index] = (brush.material & 0xffu) | (128u << 8u);
+  let temperature = select(128u, 255u, brush.material == 5u);
+  cells[index] = (brush.material & 0xffu) | (temperature << 8u);
 }
 `;
 
@@ -145,6 +146,8 @@ fn color(material: u32) -> vec4<f32> {
   if (material == 1u) { return vec4<f32>(0.31, 0.35, 0.38, 1.0); }
   if (material == 2u) { return vec4<f32>(0.94, 0.69, 0.24, 1.0); }
   if (material == 3u) { return vec4<f32>(0.18, 0.55, 0.91, 1.0); }
+  if (material == 4u) { return vec4<f32>(0.80, 0.54, 0.85, 1.0); }
+  if (material == 5u) { return vec4<f32>(1.00, 0.29, 0.16, 1.0); }
   return vec4<f32>(0.045, 0.063, 0.082, 1.0);
 }
 

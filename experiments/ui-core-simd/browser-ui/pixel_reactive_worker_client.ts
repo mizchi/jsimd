@@ -1,17 +1,21 @@
 import { ATOMIC_INPUT_KIND, AtomicInputBuffer } from "../atomic_input.ts";
 import { writeDiscretePointerEventAt, writeLatestPointerEventAt } from "../atomic_input_dom.ts";
+import { PIXEL_EVENT_RECORD_WORDS, PixelEventTape } from "../pixel_event_tape.ts";
 import type { PixelRegion } from "../pixel_options.ts";
+import { pixelReactionRequiredBytes } from "../pixel_reaction_layout.ts";
 import type { PixelMaterial } from "../pixel_sim.ts";
 import { PIXEL_WORKER_STATS_WORDS, PixelWorkerControl } from "../pixel_worker_control.ts";
 import type { PixelWorkerInitMessage } from "./pixel_worker_runtime.ts";
 
 const TARGET_ID = 2;
-export type PixelWorkerBackendKind = "active" | "active-simd";
+const EVENT_CAPACITY = 256;
 
-export class PixelWorkerClient {
+export class PixelReactiveWorkerClient {
   readonly input: AtomicInputBuffer;
   readonly control: PixelWorkerControl;
+  readonly events: PixelEventTape;
   readonly stats = new Int32Array(PIXEL_WORKER_STATS_WORDS);
+  readonly eventRecords = new Int32Array(EVENT_CAPACITY * PIXEL_EVENT_RECORD_WORDS);
   readonly chunkCount: number;
   readonly residentBytes: number;
   readonly #worker: Worker;
@@ -23,23 +27,23 @@ export class PixelWorkerClient {
     worker: Worker,
     input: AtomicInputBuffer,
     control: PixelWorkerControl,
+    events: PixelEventTape,
     resizeObserver: ResizeObserver,
-    backend: PixelWorkerBackendKind,
   ) {
     this.#canvas = canvas;
     this.#worker = worker;
     this.input = input;
     this.control = control;
+    this.events = events;
     this.#resizeObserver = resizeObserver;
     const chunksX = Math.ceil(control.width / 32);
     const chunksY = Math.ceil(control.height / 32);
     this.chunkCount = chunksX * chunksY;
     const cellBytes = control.width * control.height * Uint32Array.BYTES_PER_ELEMENT;
-    const simulationBytes = backend === "active-simd"
-      ? Math.max(65_536, Math.ceil(cellBytes / 65_536) * 65_536)
-      : cellBytes;
+    const reactionBytes = pixelReactionRequiredBytes(control.width, control.height, EVENT_CAPACITY);
+    const simulationBytes = Math.max(65_536, Math.ceil(reactionBytes / 65_536) * 65_536);
     this.residentBytes = simulationBytes + cellBytes + this.chunkCount * 3 +
-      control.buffer.byteLength + this.input.buffer.byteLength;
+      control.buffer.byteLength + input.buffer.byteLength + events.buffer.byteLength;
   }
 
   static async create(
@@ -48,18 +52,16 @@ export class PixelWorkerClient {
     height: number,
     occupancy: number,
     region: PixelRegion,
-    backend: PixelWorkerBackendKind = "active",
-  ): Promise<PixelWorkerClient> {
+  ): Promise<PixelReactiveWorkerClient> {
     if (typeof canvas.transferControlToOffscreen !== "function") {
       throw new Error("OffscreenCanvas is unavailable");
     }
     const control = PixelWorkerControl.create(width, height);
     const input = AtomicInputBuffer.create(256);
-    const worker = backend === "active-simd"
-      ? new Worker(new URL("./pixel_block_active_simd_worker.ts", import.meta.url), {
-        type: "module",
-      })
-      : new Worker(new URL("./pixel_worker.ts", import.meta.url), { type: "module" });
+    const events = PixelEventTape.create(EVENT_CAPACITY);
+    const worker = new Worker(new URL("./pixel_reactive_simd_worker.ts", import.meta.url), {
+      type: "module",
+    });
     const updateViewport = (): void => {
       control.setViewportFixed(
         0,
@@ -71,13 +73,21 @@ export class PixelWorkerClient {
     updateViewport();
     const resizeObserver = new ResizeObserver(updateViewport);
     resizeObserver.observe(canvas);
-    const client = new PixelWorkerClient(canvas, worker, input, control, resizeObserver, backend);
+    const client = new PixelReactiveWorkerClient(
+      canvas,
+      worker,
+      input,
+      control,
+      events,
+      resizeObserver,
+    );
     const offscreen = canvas.transferControlToOffscreen();
     try {
       await requestPixelWorkerReady(worker, {
         type: "init",
         inputBuffer: input.buffer,
         controlBuffer: control.buffer,
+        eventBuffer: events.buffer,
         canvas: offscreen,
         occupancy,
         region,
@@ -107,6 +117,12 @@ export class PixelWorkerClient {
 
   readStats(): boolean {
     return this.control.tryStatsInto(this.stats);
+  }
+  drainEvents(): number {
+    return this.events.drainInto(this.eventRecords);
+  }
+  get droppedEvents(): number {
+    return this.events.droppedCount;
   }
   pointerDown(event: PointerEvent): void {
     this.#writeDiscrete(ATOMIC_INPUT_KIND.pointerDown, event);

@@ -120,7 +120,11 @@ await mountDemos();
 const runButton = required<HTMLButtonElement>("run-all");
 benchmarkGlobal.__jsimdUiBench = { ready: true, results: null, runAll: runAndRender };
 const benchmarkParams = new URLSearchParams(location.search);
-if (benchmarkParams.get("run") === "pixel") {
+if (benchmarkParams.get("run") === "pixel-block-webgpu-check") {
+  runButton.disabled = true;
+  const { checkPixelBlockWebGpu } = await import("./pixel_block_webgpu_check.ts");
+  report({ pixelBlockWebGpuCheck: await checkPixelBlockWebGpu() });
+} else if (benchmarkParams.get("run") === "pixel") {
   runButton.disabled = true;
   const width = parsePixelWidth(benchmarkParams.get("size"));
   const { mountPixelDemo } = await import("./pixel_demo.ts");

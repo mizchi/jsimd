@@ -1,8 +1,7 @@
 # Pixel physics prototype plan
 
-Status: Stage 0-4 scalar, active-block, row-major SIMD, active-SIMD, and off-thread active-SIMD
-prototypes implemented on 2026-09-02. Nothing in this document is a public API or a package
-admission decision.
+Status: Stage 0-5 and the temperature/reaction slice of Stage 6 implemented on 2026-09-02. Nothing
+in this document is a public API or a package admission decision.
 
 ## Current result
 
@@ -84,6 +83,45 @@ rAF. The versioned no-load and load runs are
 [`benchmarks/pixel-block-worker-simd-browser.json`](./benchmarks/pixel-block-worker-simd-browser.json)
 and
 [`benchmarks/pixel-block-worker-simd-load8-browser.json`](./benchmarks/pixel-block-worker-simd-load8-browser.json).
+
+`pixel_reaction_step.wat` adds a second resident Wasm pass for temperature and phase changes. It
+uses the existing temperature byte in each `u32` cell, a separate full-size scratch generation,
+four-neighbor integer diffusion, permanent fire sources, and water/gas vaporization thresholds.
+The contiguous interior runs four cells per `i32x4`; borders and row tails stay scalar. Movement and
+reaction kernels share one `WebAssembly.Memory`, so a tick does not copy the world through
+JavaScript. Scalar and SIMD cells, complete metadata, event order, and overflow counts match for
+small, odd, and SIMD-width worlds over repeated ticks.
+
+`pixel_event_tape.ts` is a fixed 16-byte-record SPSC `SharedArrayBuffer` ring. The Worker emits
+`kind/index/before/after`; the main thread can derive coordinates from the public width without
+retaining an `Event`, object payload, or cell snapshot. Both the bounded Wasm event prefix and a
+full SAB ring increment one observable dropped-event counter. Its isolated implementation is 994 B
+gzip. `?run=pixel&runtime=worker-reaction-simd` combines active 2 x 2 movement, dense thermal SIMD,
+compact events, Atomics input, and OffscreenCanvas behind a dedicated lazy client/Worker pair.
+
+`?run=pixel&runtime=block-webgpu` keeps the same conservative 2 x 2 movement state and rendering
+resident on WebGPU. One invocation owns one disjoint block; no per-cell atomics or per-frame
+readback are used. The explicit `readCells()` path is conformance-only. A browser check runs 48
+ticks over an odd 63 x 41 world containing all materials and requires all 2,583 GPU cells to match
+the scalar reference; it currently passes with zero mismatches.
+
+The first combined Apple M5/Chrome run is
+[`benchmarks/pixel-reaction-webgpu-browser.json`](./benchmarks/pixel-reaction-webgpu-browser.json):
+
+| grid       | backend              | compute median | tick/present median | input median | resident | events/drops |
+| ---------- | -------------------- | -------------: | ------------------: | -----------: | -------: | -----------: |
+| 256 x 160  | active Wasm SIMD     |       0.085 ms |            0.130 ms |     5.140 ms | 352 KiB  |          0/0 |
+| 256 x 160  | reaction SIMD Worker |       0.245 ms |            0.310 ms |     0.240 ms | 556 KiB  |        299/0 |
+| 256 x 160  | resident WebGPU      |              — |            0.910 ms |    17.260 ms | 160 KiB  |          0/0 |
+| 1024 x 640 | active Wasm SIMD     |       0.825 ms |            1.365 ms |    15.695 ms | 5.00 MiB |          0/0 |
+| 1024 x 640 | reaction SIMD Worker |       2.710 ms |            3.730 ms |     1.455 ms | 7.58 MiB |      2,282/0 |
+| 1024 x 640 | resident WebGPU      |              — |            0.965 ms |    17.195 ms | 2.50 MiB |          0/0 |
+
+These are different workloads: the reaction Worker performs a dense thermal pass and event
+publication that the other two do not. WebGPU wins the large movement-and-render case but loses at
+40,960 cells because queue synchronization dominates; it also cannot yet publish gameplay events.
+The Worker is the usable path when CPU-visible reactions and low main-thread work matter. The
+reported GPU tick includes `queue.onSubmittedWorkDone`; it is not a submission-only number.
 
 ## Decision
 
@@ -277,6 +315,9 @@ input-to-Canvas-submit latency without transferring a world snapshot.
 
 ### Stage 5: resident WebGPU
 
+Status: conservative movement and resident rendering implemented as `runtime=block-webgpu`.
+Bounded GPU event output remains pending.
+
 Keep cells, optional fields, and rendering resident on the GPU. One compute invocation owns one 2 x
 2 block. Rendering samples the resulting storage buffer directly. Do not map the world buffer per
 frame.
@@ -286,6 +327,9 @@ more frequently than needed by gameplay. Overflow is observable and drops low-pr
 than stalling the simulation.
 
 ### Stage 6: coupled coarse fields
+
+Status: a deliberately dense, per-cell `u8` temperature/reference reaction pass is implemented as
+`runtime=worker-reaction-simd`. Coarse temperature, pressure, and velocity fields remain pending.
 
 Add temperature first, followed independently by pressure and velocity. Fields use their own lower
 resolution, storage type, timestep, and active-tile policy. Cell rules sample the fields; field
@@ -302,12 +346,10 @@ records, for example:
 
 ```text
 PixelEvent: 16 bytes
-  kind       u16
-  material   u16
-  x          u16
-  y          u16
-  value      u32
-  tick       u32
+  kind       i32
+  index      i32
+  before     u32
+  after      u32
 ```
 
 Candidate events include reaction, contact, explosion, chunk-awake, and chunk-sleep. Rendering dirty
@@ -386,10 +428,13 @@ Provisional isolated ceilings are:
 | optional event-tape JavaScript       | 1,000 B gzip |
 | Wasm block kernel                    |  2,300 B raw |
 | active-chunk addition                | 2,000 B gzip |
-| WebGPU adapter and shader addition   | 4,500 B gzip |
+| WebGPU pair adapter and shaders      | 3,700 B gzip |
+| WebGPU block adapter and shaders     | 5,600 B gzip |
 | Worker client                        | 2,100 B gzip |
 | scalar Worker                        | 5,450 B gzip |
 | active-SIMD Worker + client + Wasm   | 9,000 B gzip |
+| reaction Worker route and both Wasm  | 14,000 B gzip |
+| reaction Wasm kernel                 |  1,450 B raw |
 
 Generated lookup tables do not enter JavaScript when they can live in Wasm data or GPU buffers. Each
 optional field has a separate measured entrypoint. A backend that needs a large runtime or material

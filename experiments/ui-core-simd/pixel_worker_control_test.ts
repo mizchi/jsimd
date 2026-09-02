@@ -34,6 +34,7 @@ Deno.test("PixelWorkerControl shares viewport, brush, running state, and rate", 
   main.setViewportFixed(64, 128, 32_768, 20_480);
   main.brushMaterial = 3;
   main.brushMaterial = 4;
+  main.brushMaterial = 5;
   main.running = false;
   main.setRate(144);
 
@@ -43,7 +44,7 @@ Deno.test("PixelWorkerControl shares viewport, brush, running state, and rate", 
     widthFixed: 32_768,
     heightFixed: 20_480,
   });
-  assertEquals(worker.brushMaterial, 4);
+  assertEquals(worker.brushMaterial, 5);
   assertEquals(worker.running, false);
   assertEquals(worker.rate, 120);
 });
@@ -56,7 +57,7 @@ Deno.test("PixelWorkerControl validates its ABI and output storage", () => {
     RangeError,
   );
   assertThrows(() => {
-    control.brushMaterial = 5;
+    control.brushMaterial = 6;
   }, RangeError);
   assertThrows(() => PixelWorkerControl.attach(control.buffer.slice(0, 76)), TypeError);
   const malformed = control.buffer.slice(0);

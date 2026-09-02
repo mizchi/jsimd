@@ -6,6 +6,7 @@ export const MATERIAL = {
   sand: 2,
   water: 3,
   gas: 4,
+  fire: 5,
 } as const;
 
 export type PixelMaterial = (typeof MATERIAL)[keyof typeof MATERIAL];
@@ -96,7 +97,7 @@ export function paintPixelCircle(
 ): void {
   validateWorld(cells, width, height);
   if (!Number.isFinite(radius) || radius < 0) throw new RangeError("brush radius must be positive");
-  const packed = packPixel(material);
+  const packed = packPixel(material, 128);
   const integerRadius = Math.ceil(radius);
   const radiusSquared = radius * radius;
   const startX = Math.max(0, Math.floor(centerX) - integerRadius);

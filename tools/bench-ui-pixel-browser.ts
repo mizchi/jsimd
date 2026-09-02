@@ -33,6 +33,8 @@ interface PixelResult {
   readonly mainLoadMs: number;
   readonly activeChunks: number;
   readonly chunkCount: number;
+  readonly events: number;
+  readonly droppedEvents: number;
   readonly samples: {
     readonly tickMs: readonly number[];
     readonly computeMs: readonly number[];
@@ -163,6 +165,8 @@ const output = createBenchmarkResult({
       [`${prefix}.residentBytes`, result.residentBytes],
       [`${prefix}.activeChunks`, result.activeChunks],
       [`${prefix}.chunkCount`, result.chunkCount],
+      [`${prefix}.events`, result.events],
+      [`${prefix}.droppedEvents`, result.droppedEvents],
     ];
   })),
   notes: [
@@ -218,7 +222,8 @@ function parseRuntimes(value: string | undefined): readonly PixelRuntime[] {
     if (
       item !== "cpu" && item !== "block" && item !== "block-active" && item !== "block-simd" &&
       item !== "block-active-simd" &&
-      item !== "active" && item !== "worker" && item !== "worker-simd" && item !== "webgpu"
+      item !== "active" && item !== "worker" && item !== "worker-simd" &&
+      item !== "worker-reaction-simd" && item !== "block-webgpu" && item !== "webgpu"
     ) {
       throw new RangeError(`unsupported runtime: ${item}`);
     }
@@ -247,7 +252,8 @@ function validatePostedResult(value: unknown): asserts value is PostedResult {
     (pixel.runtime !== "cpu" && pixel.runtime !== "block" && pixel.runtime !== "block-active" &&
       pixel.runtime !== "block-simd" && pixel.runtime !== "block-active-simd" &&
       pixel.runtime !== "active" && pixel.runtime !== "worker" &&
-      pixel.runtime !== "worker-simd" && pixel.runtime !== "webgpu") ||
+      pixel.runtime !== "worker-simd" && pixel.runtime !== "worker-reaction-simd" &&
+      pixel.runtime !== "block-webgpu" && pixel.runtime !== "webgpu") ||
     !("tickMedianMs" in pixel) || typeof pixel.tickMedianMs !== "number" ||
     !("samples" in pixel) || typeof pixel.samples !== "object" || pixel.samples === null ||
     !("browser" in pixel) || typeof pixel.browser !== "object" || pixel.browser === null

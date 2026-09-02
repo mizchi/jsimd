@@ -34,6 +34,21 @@ Deno.test("pixel benchmark matrix accepts the off-thread active SIMD runtime", (
   ]);
 });
 
+Deno.test("pixel benchmark matrix accepts reaction SIMD and conservative WebGPU runtimes", () => {
+  assertEquals(
+    createPixelBenchmarkCases(
+      [1_024],
+      [0.25],
+      ["worker-reaction-simd", "block-webgpu"],
+      ["spot"],
+    ),
+    [
+      { runtime: "worker-reaction-simd", width: 1_024, occupancy: 0.25, region: "spot" },
+      { runtime: "block-webgpu", width: 1_024, occupancy: 0.25, region: "spot" },
+    ],
+  );
+});
+
 Deno.test("pixel benchmark matrix accepts the conservative block runtime", () => {
   assertEquals(createPixelBenchmarkCases([256], [0.25], ["block"], ["full"]), [
     { runtime: "block", width: 256, occupancy: 0.25, region: "full" },
