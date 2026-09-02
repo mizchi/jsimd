@@ -18,6 +18,10 @@ Higher-level vector-search and WebGPU work remains under [`experiments`](./exper
 public API and dispatch policy are stable. Runnable integrations remain under
 [`examples`](./examples).
 
+The pixel-physics prototype now lives in [`mizchi/pixel-lab`](https://github.com/mizchi/pixel-lab).
+The transferable SIMD, Atomics, Worker, WebGPU, and DOM-boundary conclusions remain in
+[`docs/pixel-lab-findings.md`](./docs/pixel-lab-findings.md).
+
 ## Development
 
 Node.js 24.5 or newer, Deno 2.6 or newer, pnpm, `just`, `wasm-tools`, and Vite 8 are required.

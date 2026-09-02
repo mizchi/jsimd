@@ -37,12 +37,6 @@ import {
   type LifeRuntime,
   parseLifeMainLoadMs,
 } from "../life_options.ts";
-import {
-  parsePixelOccupancy,
-  parsePixelRegion,
-  parsePixelRuntime,
-  parsePixelWidth,
-} from "../pixel_options.ts";
 
 interface Comparison {
   readonly size: number;
@@ -120,42 +114,7 @@ await mountDemos();
 const runButton = required<HTMLButtonElement>("run-all");
 benchmarkGlobal.__jsimdUiBench = { ready: true, results: null, runAll: runAndRender };
 const benchmarkParams = new URLSearchParams(location.search);
-if (benchmarkParams.get("run") === "pixel-block-webgpu-event-bench") {
-  runButton.disabled = true;
-  const { runPixelBlockWebGpuEventBenchmark } = await import(
-    "./pixel_block_webgpu_event_bench.ts"
-  );
-  report({ pixelBlockWebGpuEventBenchmark: await runPixelBlockWebGpuEventBenchmark() });
-} else if (benchmarkParams.get("run") === "pixel-block-webgpu-check") {
-  runButton.disabled = true;
-  const {
-    checkPixelBlockWebGpu,
-    checkPixelBlockWebGpuEvents,
-    checkPixelReactionWebGpuEvents,
-  } = await import(
-    "./pixel_block_webgpu_check.ts"
-  );
-  report({
-    pixelBlockWebGpuCheck: await checkPixelBlockWebGpu(),
-    pixelBlockWebGpuEventCheck: await checkPixelBlockWebGpuEvents(),
-    pixelReactionWebGpuEventCheck: await checkPixelReactionWebGpuEvents(),
-  });
-} else if (benchmarkParams.get("run") === "pixel") {
-  runButton.disabled = true;
-  const width = parsePixelWidth(benchmarkParams.get("size"));
-  const { mountPixelDemo } = await import("./pixel_demo.ts");
-  const result = await mountPixelDemo(
-    document.querySelector("main")!,
-    benchmarkParams.get("autorun") === "1",
-    parsePixelRuntime(benchmarkParams.get("runtime")),
-    width,
-    width * 5 / 8,
-    parsePixelOccupancy(benchmarkParams.get("occupancy")),
-    parsePixelRegion(benchmarkParams.get("region")),
-    parseLifeMainLoadMs(benchmarkParams.get("load")),
-  );
-  if (result !== null) report({ pixel: result });
-} else if (benchmarkParams.get("run") === "life") {
+if (benchmarkParams.get("run") === "life") {
   runButton.disabled = true;
   const width = parseLifeWidth(benchmarkParams.get("size"));
   const result = await mountLifeDemo(
