@@ -9,7 +9,17 @@ export interface PixelBenchmarkCase {
 
 export const DEFAULT_PIXEL_WIDTHS: readonly PixelWidth[] = [256, 512, 1_024];
 export const DEFAULT_PIXEL_OCCUPANCIES: readonly number[] = [0.05, 0.25, 0.75];
-export const DEFAULT_PIXEL_RUNTIMES: readonly PixelRuntime[] = ["cpu", "active", "worker", "webgpu"];
+export const DEFAULT_PIXEL_RUNTIMES: readonly PixelRuntime[] = [
+  "cpu",
+  "block",
+  "block-active",
+  "block-simd",
+  "block-active-simd",
+  "active",
+  "worker",
+  "worker-simd",
+  "webgpu",
+];
 export const DEFAULT_PIXEL_REGIONS: readonly PixelRegion[] = ["full", "spot"];
 
 export function createPixelBenchmarkCases(

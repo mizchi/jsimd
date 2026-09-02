@@ -1,7 +1,4 @@
-import {
-  PIXEL_WORKER_STATS_WORDS,
-  PixelWorkerControl,
-} from "./pixel_worker_control.ts";
+import { PIXEL_WORKER_STATS_WORDS, PixelWorkerControl } from "./pixel_worker_control.ts";
 
 function assertEquals(actual: unknown, expected: unknown): void {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -19,15 +16,15 @@ function assertThrows(operation: () => unknown, constructor: typeof Error): void
   throw new Error(`expected ${constructor.name}`);
 }
 
-Deno.test("PixelWorkerControl publishes consistent worker statistics", () => {
+Deno.test("PixelWorkerControl publishes consistent worker statistics and input latency", () => {
   const writer = PixelWorkerControl.create(1_024, 640);
   const reader = PixelWorkerControl.attach(writer.buffer);
   const stats = new Int32Array(PIXEL_WORKER_STATS_WORDS);
 
-  writer.publish(7, 1_234, 567, 19, 765_432);
+  writer.publish(7, 1_234, 567, 19, 12_345);
 
   assertEquals(reader.tryStatsInto(stats), true);
-  assertEquals(Array.from(stats), [7, 1_234, 567, 19, 1, 765_432, 1, 60]);
+  assertEquals(Array.from(stats), [7, 1_234, 567, 19, 1, 12_345, 1, 60]);
 });
 
 Deno.test("PixelWorkerControl shares viewport, brush, running state, and rate", () => {
@@ -36,6 +33,7 @@ Deno.test("PixelWorkerControl shares viewport, brush, running state, and rate", 
 
   main.setViewportFixed(64, 128, 32_768, 20_480);
   main.brushMaterial = 3;
+  main.brushMaterial = 4;
   main.running = false;
   main.setRate(144);
 
@@ -45,7 +43,7 @@ Deno.test("PixelWorkerControl shares viewport, brush, running state, and rate", 
     widthFixed: 32_768,
     heightFixed: 20_480,
   });
-  assertEquals(worker.brushMaterial, 3);
+  assertEquals(worker.brushMaterial, 4);
   assertEquals(worker.running, false);
   assertEquals(worker.rate, 120);
 });
@@ -58,7 +56,7 @@ Deno.test("PixelWorkerControl validates its ABI and output storage", () => {
     RangeError,
   );
   assertThrows(() => {
-    control.brushMaterial = 4;
+    control.brushMaterial = 5;
   }, RangeError);
   assertThrows(() => PixelWorkerControl.attach(control.buffer.slice(0, 76)), TypeError);
   const malformed = control.buffer.slice(0);

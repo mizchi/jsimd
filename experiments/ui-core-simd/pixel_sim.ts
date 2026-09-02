@@ -5,6 +5,7 @@ export const MATERIAL = {
   wall: 1,
   sand: 2,
   water: 3,
+  gas: 4,
 } as const;
 
 export type PixelMaterial = (typeof MATERIAL)[keyof typeof MATERIAL];
@@ -176,6 +177,14 @@ export function createPixelScenario(
   const shelfY = Math.floor(height * 0.62);
   for (let x = Math.floor(width * 0.2); x < Math.floor(width * 0.44); x++) {
     cells[shelfY * width + x] = wall;
+  }
+  for (let x = 0; x < width; x++) {
+    cells[x] = wall;
+    cells[(height - 1) * width + x] = wall;
+  }
+  for (let y = 0; y < height; y++) {
+    cells[y * width] = wall;
+    cells[y * width + width - 1] = wall;
   }
   return cells;
 }

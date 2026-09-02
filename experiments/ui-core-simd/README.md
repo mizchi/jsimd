@@ -480,39 +480,125 @@ solver.
 
 The optional `?run=pixel` route broadens the Canvas experiment from a uniform Life rule to a
 material cellular automaton. Its v0 cell ABI is one `u32`: material, temperature, flags, and variant
-each occupy one byte. Empty, wall, sand, and water are implemented; temperature is reserved but is
-not updated yet. A tick consists of vertical, diagonal, and horizontal disjoint-pair passes. Passes
-swap complete cells, so material counts and metadata are conserved without per-cell atomics. The
-CPU and WebGPU paths share the same parity and pair-count contract.
+each occupy one byte. Empty, wall, sand, and water are implemented by the original pair solver; the
+block solver also implements gas. Temperature is reserved but is not updated yet. The original tick
+consists of vertical, diagonal, and horizontal disjoint-pair passes. The block alternative owns a
+staggered 2 x 2 partition and permits each cell to move at most once. Both swap complete cells, so
+material counts and metadata are conserved without per-cell atomics. The original CPU and WebGPU
+paths share the same parity and pair-count contract.
 
 Open
-`?run=pixel&runtime=cpu|active|worker|webgpu&size=256|512|1024&occupancy=5|25|75&region=full|quarter|spot&load=0..8`.
+`?run=pixel&runtime=cpu|block|block-active|block-simd|block-active-simd|active|worker|worker-simd|webgpu&size=256|512|1024&occupancy=5|25|75&region=full|quarter|spot&load=0..8`.
 The CPU path performs scalar in-place pair swaps and converts the resulting cells to `ImageData`.
-The active path applies the identical rules only to hot 32 × 32 chunks and their one-chunk halo;
-chunks cool after two idle parities and pointer brushes wake their neighborhood. The WebGPU path
-keeps the cells in a storage buffer, dispatches three compute passes, and samples that buffer
-directly from the Canvas fragment shader; it performs no frame readback. Pointer input is reduced
-to a cell coordinate, material, and radius before a small brush dispatch. The autorun case injects
-11 pointer samples and reports input-to-present latency as well as synchronized GPU completion time.
+The block path performs seeded 2 x 2 transforms with gas rise, probabilistic diagonal toppling, and
+lateral liquid movement. Empty/wall blocks skip rule evaluation. It uses the same `ImageData`
+presentation boundary as the original CPU path. `block-active` applies the same seeded block rule
+only to hot 32 × 32 chunks. A block's top-left cell defines its owner, so chunk borders do not run a
+block twice. Dynamic blocks keep their owner neighborhood hot, empty regions cool after two phases,
+and pointer brushes wake their neighborhood. `block-simd` keeps the same row-major cells resident in
+Wasm memory, gathers four adjacent blocks with `i8x16.shuffle`, and evaluates every movement rule in
+four independent SIMD lanes. It does not repack or copy the world per tick. The older active path
+applies the pair rules to the same chunk representation. The WebGPU path keeps the cells in a
+storage buffer, dispatches three compute passes, and samples that buffer directly from the Canvas
+fragment shader; it performs no frame readback. Pointer input is reduced to a cell coordinate,
+material, and radius before a small brush dispatch. The autorun case injects 11 pointer samples and
+reports input-to-present latency as well as synchronized GPU completion time.
 
-The Worker path runs the active-chunk implementation and `ImageData` presentation behind a
-transferred `OffscreenCanvas`. Main-thread pointer listeners synchronously write only fixed-point
-coordinates, pointer flags, and timestamps into the existing `AtomicInputBuffer`; coalesced moves
-are reconstructed into continuous brush lines in the Worker. An independent 80-byte seqlocked
-control block publishes tick, compute/render timings, active chunks, run state, and the timestamp of
-the last presented input. No cell snapshot crosses the thread boundary.
+The Worker paths run an active-chunk implementation and `ImageData` presentation behind a
+transferred `OffscreenCanvas`: `worker` uses the original scalar pair solver, while `worker-simd`
+uses the active 2 x 2 Wasm SIMD solver. Main-thread pointer listeners synchronously write only
+fixed-point coordinates, pointer flags, and timestamps into the existing `AtomicInputBuffer`;
+coalesced moves are reconstructed into continuous brush lines in the Worker. Both lazy backends
+reuse one Worker loop. An independent 80-byte seqlocked control block publishes tick,
+compute/render timings, active chunks, run state, and input-to-Canvas-submit latency. The latency
+clock is aligned through the main and Worker time origins, so it does not include a later main-rAF
+statistics poll. No cell snapshot crosses the thread boundary.
 
-`just bench-ui-pixel-browser` runs the full 3 × 3 × 4 × 2 matrix in isolated headless Chrome
+`just bench-ui-pixel-browser` runs the full 3 × 3 × 9 × 2 matrix in isolated headless Chrome
 profiles. The axes can be narrowed with `JSIMD_PIXEL_WIDTHS`, `JSIMD_PIXEL_OCCUPANCIES`,
-`JSIMD_PIXEL_RUNTIMES`, and `JSIMD_PIXEL_REGIONS`. Representative Apple M5 results at 25%
-occupancy were:
+`JSIMD_PIXEL_RUNTIMES`, and `JSIMD_PIXEL_REGIONS`. Representative Apple M5 results at 25% occupancy
+were:
 
-| world | runtime | tick + present median | input-to-present | resident buffers |
-| ----: | :------ | --------------------: | ---------------: | ---------------: |
-| 512 × 320 | CPU | 0.710 ms | 14.20 ms | 1.25 MiB |
-| 512 × 320 | WebGPU | 0.745 ms | 17.12 ms | 640 KiB |
-| 1024 × 640 | CPU | 2.730 ms | 12.11 ms | 5.00 MiB |
-| 1024 × 640 | WebGPU | 0.865 ms | 17.12 ms | 2.50 MiB |
+|      world | runtime | tick + present median | input-to-present | resident buffers |
+| ---------: | :------ | --------------------: | ---------------: | ---------------: |
+|  512 × 320 | CPU     |              0.710 ms |         14.20 ms |         1.25 MiB |
+|  512 × 320 | WebGPU  |              0.745 ms |         17.12 ms |          640 KiB |
+| 1024 × 640 | CPU     |              2.730 ms |         12.11 ms |         5.00 MiB |
+| 1024 × 640 | WebGPU  |              0.865 ms |         17.12 ms |         2.50 MiB |
+
+The first scalar block comparison uses the same 25% full-world scenario and presentation boundary.
+The versioned result is
+[`benchmarks/pixel-block-scalar.json`](./benchmarks/pixel-block-scalar.json):
+
+|      world | old pair compute | block compute | old pair complete | block complete | block overhead |
+| ---------: | ---------------: | ------------: | ----------------: | -------------: | -------------: |
+|  256 × 160 |         0.090 ms |      0.095 ms |          0.120 ms |       0.135 ms |            13% |
+|  512 × 320 |         0.385 ms |      0.500 ms |          0.520 ms |       0.610 ms |            17% |
+| 1024 × 640 |         1.815 ms |      2.070 ms |          2.280 ms |       2.545 ms |            12% |
+
+The block solver stays within the provisional 20% scalar continuation gate while expressing gas and
+seeded local toppling. It is not an automatic dispatch choice: the largest p95 was 2.98 ms versus
+2.96 ms for the old pair solver, and only one browser/CPU has been recorded. The next useful
+comparison after the full-grid SIMD path is combining SIMD with active chunks.
+
+The active-block comparison is recorded in
+[`benchmarks/pixel-block-active.json`](./benchmarks/pixel-block-active.json). These Apple M5/Chrome
+medians use the same 1024 × 640 world, 25% occupancy, 90 ticks, 11 pointer injections, and
+`ImageData` presentation boundary:
+
+| region  | active chunks | block compute | active-block compute | compute ratio | complete ratio |
+| :------ | ------------: | ------------: | -------------------: | ------------: | -------------: |
+| full    |     576 / 640 |      2.010 ms |             2.095 ms |         0.96× |          0.97× |
+| quarter |     265 / 640 |      0.810 ms |             0.675 ms |         1.20× |          1.11× |
+| spot    |     167 / 640 |      0.480 ms |             0.275 ms |         1.75× |          1.27× |
+
+The scheduler therefore repays itself once locality is meaningful, while the dense regression is
+4.2%, inside the 20% gate. The spot case narrowly misses the literal “at most 25% awake” criterion
+at 26.1% after the cross-world input tape, but exceeds its 1.5× compute target. This is evidence for
+an explicit sparse runtime, not yet an automatic crossover. The complete standalone lazy entry is
+1.94 KiB gzip versus 1.01 KiB for full block, under a 2.10 KiB enforced ceiling; signals and Luna
+candidate entrypoints remain unchanged.
+
+The row-major SIMD result is recorded separately in
+[`benchmarks/pixel-block-row-major.json`](./benchmarks/pixel-block-row-major.json) and
+[`benchmarks/pixel-block-simd-browser.json`](./benchmarks/pixel-block-simd-browser.json). The first
+is a fixed-snapshot JS/Wasm kernel comparison; the second includes the existing Canvas presentation
+boundary and interactive input tape:
+
+| world      | block compute | SIMD compute | compute speedup | complete speedup |
+| :--------- | ------------: | -----------: | --------------: | ---------------: |
+| 256 × 160  |      0.120 ms |     0.045 ms |           2.67× |            1.65× |
+| 512 × 320  |      0.525 ms |     0.160 ms |           3.28× |            2.23× |
+| 1024 × 640 |      2.360 ms |     0.760 ms |           3.11× |            2.12× |
+
+SIMD wins the complete-step median by more than 1.25× on all three sizes and improves p95, so it is
+retained as an explicit backend. Four neighboring blocks are lane-packed from two contiguous row
+loads with byte shuffles and scattered back with the inverse shuffles; this avoids a block-major
+scratch buffer and its phase-change transpose. After the Stage 4 range ABI, the shared kernel is
+2,283 B raw / 1.14 KiB gzip and the full-SIMD lazy transfer is about 2.33 KiB gzip. The 2,300 B raw
+gate is intentionally close to the current binary. Automatic selection still requires another
+architecture/browser.
+
+`block-active-simd` sends the same half-open 32 × 32 owner ranges to the Wasm kernel and receives
+one packed `i64` per range: move count in the low word and a single hot-material bit in the high
+word. No moved-cell list crosses the JS/Wasm boundary. The active scheduler therefore stays in
+JavaScript, while density, random, diagonal, and lateral rules stay in SIMD. Its exact test matches
+full SIMD for 180 ticks across odd dimensions and chunk boundaries.
+
+The 1024 × 640 Apple M5/Chrome locality comparison is recorded in
+[`benchmarks/pixel-block-active-simd-browser.json`](./benchmarks/pixel-block-active-simd-browser.json):
+
+| region  | active chunks | full SIMD compute | active SIMD compute | compute speedup | complete speedup |
+| :------ | ------------: | ----------------: | ------------------: | --------------: | ---------------: |
+| full    |     576 / 640 |          0.590 ms |            0.680 ms |           0.87× |            0.93× |
+| quarter |     265 / 640 |          0.575 ms |            0.335 ms |           1.72× |            1.30× |
+| spot    |     167 / 640 |          0.600 ms |            0.240 ms |           2.50× |            1.47× |
+
+This backend is retained for localized worlds, not as the dense default. A 24 × 24 chunk A/B was
+slower in Chrome in all three regions, so the browser runtime keeps 32 × 32. Adding the range ABI
+while removing the benchmark-only full scalar export changes the Wasm kernel to 2,283 B raw / 1.14
+KiB gzip. The complete lazy transfer is about 2.33 KiB gzip for full SIMD and 3.61 KiB for active
+SIMD, under enforced 2.50 and 3.80 KiB ceilings. Neither enters the signals or Luna core entrypoint.
 
 This exposes a useful boundary: at 163,840 cells, GPU queue/synchronization cost is not repaid; at
 655,360 cells, WebGPU is about 3.2× faster for the dense full-grid tick and uses half the explicitly
@@ -523,36 +609,54 @@ makes the missing sparse-world optimization visible.
 
 At 1024 × 640, the locality axis separates full-world density from a localized workload:
 
-| region | runtime | compute median | tick + present | active chunks |
-| :----- | :------ | -------------: | -------------: | ------------: |
-| full | CPU | 2.30 ms | 2.84 ms | - |
-| full | Active CPU | 3.74 ms | 4.34 ms | 571 / 640 |
-| spot | CPU | 1.32 ms | 1.93 ms | - |
-| spot | Active CPU | 0.665 ms | 1.21 ms | 178 / 640 |
-| spot | WebGPU | GPU-synchronized | 1.07 ms | full dispatch |
+| region | runtime    |   compute median | tick + present | active chunks |
+| :----- | :--------- | ---------------: | -------------: | ------------: |
+| full   | CPU        |          2.30 ms |        2.84 ms |             - |
+| full   | Active CPU |          3.74 ms |        4.34 ms |     571 / 640 |
+| spot   | CPU        |          1.32 ms |        1.93 ms |             - |
+| spot   | Active CPU |         0.665 ms |        1.21 ms |     178 / 640 |
+| spot   | WebGPU     | GPU-synchronized |        1.07 ms | full dispatch |
 
-Chunk scheduling is therefore harmful when almost the whole world moves, but halves CPU compute
-time when activity covers roughly 28% of chunks. The fixed 0.55 ms `ImageData` conversion remains
-after sparse compute and is the reason WebGPU still narrowly wins the complete spot frame.
+Chunk scheduling is therefore harmful when almost the whole world moves, but halves CPU compute time
+when activity covers roughly 28% of chunks. The fixed 0.55 ms `ImageData` conversion remains after
+sparse compute and is the reason WebGPU still narrowly wins the complete spot frame.
 
-The Worker experiment changes ownership rather than making the kernel itself faster. At 1024 × 640
-with 8 ms of synthetic main-thread work, the measured main-frame work was 12.38 ms for full active
-CPU versus 8.09 ms for Worker, and 9.23 ms versus 8.09 ms for the spot case. Worker compute was
-slower in the isolated Chrome runs and sampled input-to-present was about 2–3 ms worse, so this is a
-throughput/jank trade rather than an unconditional latency win. It pays when the UI has other
-main-thread work to overlap; WebGPU remains the stronger dense-grid backend.
+The scalar Worker experiment changes ownership rather than making the kernel itself faster. Its
+earlier sampled latency included the next main-rAF statistics poll, so it remains evidence about
+main-thread overlap rather than the direct input path.
 
-The lazy chunks are 4.81 KiB gzip for the Pixel UI/CPU path, 1.60 KiB for active chunks, and 3.33
-KiB for WebGPU. Worker selection additionally loads a 1.91 KiB main-thread adapter and a 5.02 KiB
-self-contained Worker. Their byte ceilings are 5,000, 1,700, 3,700, 2,000, and 5,300 respectively.
-None enters the signals, computed, Atomics, or Patch Tape entrypoints; all existing core ceilings
-also remain enforced by `just test-ui-core-simd`.
+The active-SIMD Worker comparison records direct input-to-`putImageData` completion in
+[`benchmarks/pixel-block-worker-simd-browser.json`](./benchmarks/pixel-block-worker-simd-browser.json)
+and
+[`benchmarks/pixel-block-worker-simd-load8-browser.json`](./benchmarks/pixel-block-worker-simd-load8-browser.json).
+At 1024 × 640 and 25% occupancy:
+
+| load | region | main/Worker tick + present | main/Worker main-frame work | main/Worker input submit |
+| ---: | :----- | -------------------------: | --------------------------: | -----------------------: |
+| 0 ms | full   |             1.175/1.165 ms |               1.240/0.065 ms |          8.470/0.645 ms |
+| 0 ms | spot   |             0.705/0.685 ms |               0.740/0.070 ms |         15.325/0.620 ms |
+| 8 ms | full   |             1.155/1.160 ms |               9.210/8.060 ms |         15.230/0.650 ms |
+| 8 ms | spot   |             0.735/0.725 ms |               8.765/8.070 ms |         16.360/0.625 ms |
+
+The kernel and Canvas work stay essentially unchanged, while Worker ownership removes them from the
+main frame and lets Atomics input wake the simulation without waiting for rAF. The explicitly owned
+buffer estimate rises from 5,244,800 to 5,253,168 B (+8,368 B, 0.16%); this is the control/input
+SAB overhead, not another world copy. This is useful when low-latency Canvas feedback may proceed
+independently of DOM work. DOM-visible results still need a main-thread commit and do not inherit
+the 0.6 ms figure.
+
+The Pixel UI chunk is 4,619 B gzip and WebGPU is 3,414 B. Worker selection loads a shared 2,073 B
+main-thread adapter plus either a 5,404 B scalar Worker or a 5,734 B active-SIMD Worker; the latter
+also loads the 1,171 B Wasm kernel, for 8,978 B total. Enforced ceilings are 5,000 B for Pixel UI,
+3,700 B for WebGPU, 2,100 B for the Worker client, 5,450 B for scalar Worker, and 9,000 B for the
+complete Worker-SIMD backend. None enters the signals, computed, Atomics, or Patch Tape entrypoints;
+all existing core ceilings also remain enforced by `just test-ui-core-simd`.
 
 This is a benchmarkable material kernel, not yet a Sandustry/Noita-like engine. Disjoint pairing
 avoids races but produces lattice artifacts and cannot express long-range machines, rigid bodies,
 connected-component updates, or arbitrary material scripts. The next discriminating steps are an
-optional SIMD heat/reaction scan, multi-pass movement intents for less grid-biased GPU motion, and
-a DOM-backed stress fixture that separates simulation gains from Canvas-only gains.
+optional SIMD heat/reaction scan, multi-pass movement intents for less grid-biased GPU motion, and a
+DOM-backed stress fixture that separates simulation gains from Canvas-only gains.
 
 ### Browser memory and event-loop profile
 

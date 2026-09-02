@@ -1,7 +1,7 @@
 import type { FixedRect } from "./life_game.ts";
 
 const MAGIC = 0x5058_574b;
-const VERSION = 1;
+const VERSION = 2;
 const HEADER_WORDS = 20;
 const HEADER_BYTES = HEADER_WORDS * Int32Array.BYTES_PER_ELEMENT;
 
@@ -21,7 +21,7 @@ const HEADER = {
   viewportWidth: 12,
   viewportHeight: 13,
   brushMaterial: 14,
-  inputTimeMicros: 15,
+  inputLatencyMicros: 15,
   inputSequence: 16,
   rate: 17,
   reserved0: 18,
@@ -106,8 +106,8 @@ export class PixelWorkerControl {
   }
 
   set brushMaterial(material: number) {
-    if (!Number.isInteger(material) || material < 0 || material > 3) {
-      throw new RangeError("pixel brush material must be between 0 and 3");
+    if (!Number.isInteger(material) || material < 0 || material > 4) {
+      throw new RangeError("pixel brush material must be between 0 and 4");
     }
     Atomics.store(this.#header, HEADER.brushMaterial, material);
   }
@@ -138,15 +138,19 @@ export class PixelWorkerControl {
     computeMicros: number,
     renderMicros: number,
     activeChunks: number,
-    inputTimeMicros?: number,
+    inputLatencyMicros?: number,
   ): void {
     Atomics.add(this.#header, HEADER.sequence, 1);
     Atomics.store(this.#header, HEADER.tick, tick | 0);
     Atomics.store(this.#header, HEADER.computeMicros, clampMicros(computeMicros));
     Atomics.store(this.#header, HEADER.renderMicros, clampMicros(renderMicros));
     Atomics.store(this.#header, HEADER.activeChunks, Math.max(0, activeChunks | 0));
-    if (inputTimeMicros !== undefined) {
-      Atomics.store(this.#header, HEADER.inputTimeMicros, inputTimeMicros | 0);
+    if (inputLatencyMicros !== undefined) {
+      Atomics.store(
+        this.#header,
+        HEADER.inputLatencyMicros,
+        clampMicros(inputLatencyMicros),
+      );
       Atomics.add(this.#header, HEADER.inputSequence, 1);
     }
     Atomics.add(this.#header, HEADER.sequence, 1);
@@ -163,7 +167,7 @@ export class PixelWorkerControl {
     destination[2] = Atomics.load(this.#header, HEADER.renderMicros);
     destination[3] = Atomics.load(this.#header, HEADER.activeChunks);
     destination[4] = Atomics.load(this.#header, HEADER.running);
-    destination[5] = Atomics.load(this.#header, HEADER.inputTimeMicros);
+    destination[5] = Atomics.load(this.#header, HEADER.inputLatencyMicros);
     destination[6] = Atomics.load(this.#header, HEADER.inputSequence);
     destination[7] = Atomics.load(this.#header, HEADER.rate);
     const after = Atomics.load(this.#header, HEADER.sequence);

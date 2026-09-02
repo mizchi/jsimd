@@ -1,11 +1,26 @@
-export type PixelRuntime = "cpu" | "active" | "worker" | "webgpu";
+export type PixelRuntime =
+  | "cpu"
+  | "block"
+  | "block-active"
+  | "block-simd"
+  | "block-active-simd"
+  | "active"
+  | "worker"
+  | "worker-simd"
+  | "webgpu";
 export type PixelWidth = 256 | 512 | 1_024;
 export type PixelOccupancyPercent = 5 | 25 | 75;
 export type PixelRegion = "full" | "quarter" | "spot";
 
 export function parsePixelRuntime(value: string | null): PixelRuntime {
   if (value === null || value === "cpu") return "cpu";
-  if (value === "active" || value === "worker" || value === "webgpu") return value;
+  if (
+    value === "block" || value === "block-active" || value === "block-simd" ||
+    value === "block-active-simd" ||
+    value === "active" || value === "worker" || value === "worker-simd" || value === "webgpu"
+  ) {
+    return value;
+  }
   throw new TypeError(`unknown pixel runtime: ${value}`);
 }
 

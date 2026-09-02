@@ -11,9 +11,19 @@ import {
 import { SimdUi, type UiContainer, type UiDocument } from "../signals.ts";
 import type { WebGpuPixelSimulation } from "./pixel_webgpu.ts";
 import type { ActivePixelSimulation } from "./pixel_active_runtime.ts";
+import type { BlockActivePixelSimulation } from "./pixel_block_active_runtime.ts";
+import type { ActiveSimdBlockPixelSimulation } from "./pixel_block_active_simd_runtime.ts";
+import type { BlockPixelSimulation } from "./pixel_block_runtime.ts";
+import type { SimdBlockPixelSimulation } from "./pixel_block_simd_runtime.ts";
 import type { PixelWorkerClient } from "./pixel_worker_client.ts";
 
-const MATERIAL_COLORS = [0xff15100c, 0xff615950, 0xff3db0f0, 0xffe88c2e] as const;
+const MATERIAL_COLORS = [
+  0xff15100c,
+  0xff615950,
+  0xff3db0f0,
+  0xffe88c2e,
+  0xffd98acb,
+] as const;
 
 export interface PixelDemoResult {
   readonly runtime: PixelRuntime;
@@ -34,6 +44,17 @@ export interface PixelDemoResult {
   readonly mainLoadMs: number;
   readonly activeChunks: number;
   readonly chunkCount: number;
+  readonly samples: {
+    readonly tickMs: readonly number[];
+    readonly computeMs: readonly number[];
+    readonly renderMs: readonly number[];
+  };
+  readonly browser: {
+    readonly userAgent: string;
+    readonly platform: string;
+    readonly logicalCpus: number;
+    readonly crossOriginIsolated: boolean;
+  };
 }
 
 interface PendingBrush {
@@ -70,8 +91,16 @@ export async function mountPixelDemo(
   const backend = ui.signal(
     runtime === "webgpu"
       ? "initializing WebGPU…"
-      : runtime === "worker"
+      : isWorkerRuntime(runtime)
       ? "initializing Worker…"
+      : runtime === "block"
+      ? "2×2 block CPU"
+      : runtime === "block-active"
+      ? "active 2×2 block CPU"
+      : runtime === "block-simd"
+      ? "Wasm SIMD 2×2 block"
+      : runtime === "block-active-simd"
+      ? "active Wasm SIMD 2×2 block"
       : runtime === "active"
       ? "active-chunk CPU"
       : "scalar CPU",
@@ -84,7 +113,7 @@ export async function mountPixelDemo(
         ui.element("p", { className: "eyebrow" }, ["jsimd × material cellular automata"]),
         ui.element("h1", {}, ["Pixel Lab"]),
         ui.element("p", { className: "life-lead" }, [
-          "The same conservative material rules run as full CPU, sparse active chunks, off-thread canvas, or disjoint WebGPU passes.",
+          "Compare pair passes with a seeded 2×2 conservative block solver, active chunks, an off-thread canvas, and resident WebGPU.",
         ]),
       ]),
       ui.element("div", { className: "life-badge pixel-badge" }, [
@@ -94,6 +123,16 @@ export async function mountPixelDemo(
             ? "WEBGPU"
             : runtime === "worker"
             ? "WORKER CPU"
+            : runtime === "worker-simd"
+            ? "WORKER SIMD"
+            : runtime === "block"
+            ? "BLOCK CPU"
+            : runtime === "block-active"
+            ? "ACTIVE BLOCK"
+            : runtime === "block-simd"
+            ? "SIMD BLOCK"
+            : runtime === "block-active-simd"
+            ? "SPARSE SIMD"
             : runtime === "active"
             ? "ACTIVE CPU"
             : "CPU",
@@ -127,6 +166,22 @@ export async function mountPixelDemo(
             className: runtime === "cpu" ? "active" : "",
           }, ["Scalar CPU"]),
           ui.element("a", {
+            href: pixelHref("block", width, occupancyPercent, region),
+            className: runtime === "block" ? "active" : "",
+          }, ["2×2 Block"]),
+          ui.element("a", {
+            href: pixelHref("block-active", width, occupancyPercent, region),
+            className: runtime === "block-active" ? "active" : "",
+          }, ["Sparse Block"]),
+          ui.element("a", {
+            href: pixelHref("block-simd", width, occupancyPercent, region),
+            className: runtime === "block-simd" ? "active" : "",
+          }, ["SIMD Block"]),
+          ui.element("a", {
+            href: pixelHref("block-active-simd", width, occupancyPercent, region),
+            className: runtime === "block-active-simd" ? "active" : "",
+          }, ["Sparse SIMD"]),
+          ui.element("a", {
             href: pixelHref("active", width, occupancyPercent, region),
             className: runtime === "active" ? "active" : "",
           }, ["Active CPU"]),
@@ -134,6 +189,10 @@ export async function mountPixelDemo(
             href: pixelHref("worker", width, occupancyPercent, region),
             className: runtime === "worker" ? "active" : "",
           }, ["Worker CPU"]),
+          ui.element("a", {
+            href: pixelHref("worker-simd", width, occupancyPercent, region),
+            className: runtime === "worker-simd" ? "active" : "",
+          }, ["Worker SIMD"]),
           ui.element("a", {
             href: pixelHref("webgpu", width, occupancyPercent, region),
             className: runtime === "webgpu" ? "active" : "",
@@ -193,7 +252,7 @@ export async function mountPixelDemo(
           ),
           stat(
             ui,
-            "input → present",
+            "input → canvas",
             ui.text([inputLatency], () => `${inputLatency.value.toFixed(1)} ms`),
           ),
           stat(ui, "main load", ui.text([], () => `${mainLoadMs} ms/rAF`)),
@@ -207,6 +266,7 @@ export async function mountPixelDemo(
         ui.element("div", { className: "life-controls pixel-materials" }, [
           ui.element("button", { id: "pixel-sand", className: "life-primary" }, ["Sand"]),
           ui.element("button", { id: "pixel-water" }, ["Water"]),
+          ...(isBlockRuntime(runtime) ? [ui.element("button", { id: "pixel-gas" }, ["Gas"])] : []),
           ui.element("button", { id: "pixel-wall" }, ["Wall"]),
           ui.element("button", { id: "pixel-erase" }, ["Erase"]),
         ]),
@@ -223,10 +283,8 @@ export async function mountPixelDemo(
           ui.text(
             [selectedMaterial],
             () =>
-              `Brush: ${
-                materialName(selectedMaterial.value)
-              }. Drag on the world; ${
-                runtime === "worker"
+              `Brush: ${materialName(selectedMaterial.value)}. Drag on the world; ${
+                isWorkerRuntime(runtime)
                   ? "Atomics coalesces moves and the Worker reconstructs the stroke."
                   : "input is coalesced to one GPU/CPU brush per presented frame."
               }`,
@@ -236,12 +294,18 @@ export async function mountPixelDemo(
     ]),
     ui.element("footer", { className: "life-footer" }, [
       ui.element("span", {}, ["u32 material ABI"]),
-      ui.element("span", {}, ["conservative pair swaps"]),
-      ui.element("span", {}, ["vertical / diagonal / horizontal"]),
+      ui.element("span", {}, [
+        isBlockRuntime(runtime) ? "conservative 2×2 transforms" : "conservative pair swaps",
+      ]),
+      ui.element("span", {}, [
+        isBlockRuntime(runtime)
+          ? "seeded / staggered / single-move"
+          : "vertical / diagonal / horizontal",
+      ]),
       ui.element("span", {}, [
         runtime === "webgpu"
           ? "zero readback"
-          : runtime === "worker"
+          : isWorkerRuntime(runtime)
           ? "Atomics + OffscreenCanvas"
           : "ImageData present",
       ]),
@@ -251,7 +315,7 @@ export async function mountPixelDemo(
   await ui.mount(host as unknown as UiContainer, root);
 
   const canvas = required<HTMLCanvasElement>(host, "pixel-canvas");
-  const cells = runtime === "worker"
+  let cells = isWorkerRuntime(runtime)
     ? null
     : createPixelScenario(width, height, occupancy, 0x51f1_5e5d, region);
   let active: ActivePixelSimulation | null = null;
@@ -260,12 +324,36 @@ export async function mountPixelDemo(
     active = module.ActivePixelSimulation.create(cells!, width, height);
     activeChunkCount.value = active.activeChunkCount;
   }
+  let block: BlockPixelSimulation | null = null;
+  if (runtime === "block") {
+    const module = await import("./pixel_block_runtime.ts");
+    block = module.BlockPixelSimulation.create(cells!, width, height);
+  }
+  let blockActive: BlockActivePixelSimulation | null = null;
+  if (runtime === "block-active") {
+    const module = await import("./pixel_block_active_runtime.ts");
+    blockActive = module.BlockActivePixelSimulation.create(cells!, width, height);
+    activeChunkCount.value = blockActive.activeChunkCount;
+  }
+  let blockSimd: SimdBlockPixelSimulation | null = null;
+  if (runtime === "block-simd") {
+    const module = await import("./pixel_block_simd_runtime.ts");
+    blockSimd = await module.SimdBlockPixelSimulation.create(cells!, width, height);
+    cells = blockSimd.cells;
+  }
+  let blockActiveSimd: ActiveSimdBlockPixelSimulation | null = null;
+  if (runtime === "block-active-simd") {
+    const module = await import("./pixel_block_active_simd_runtime.ts");
+    blockActiveSimd = await module.ActiveSimdBlockPixelSimulation.create(cells!, width, height);
+    cells = blockActiveSimd.cells;
+    activeChunkCount.value = blockActiveSimd.activeChunkCount;
+  }
   let gpu: WebGpuPixelSimulation | null = null;
   let context: CanvasRenderingContext2D | null = null;
   let image: ImageData | null = null;
   let pixels: Uint32Array | null = null;
   let workerClient: PixelWorkerClient | null = null;
-  if (runtime === "worker") {
+  if (isWorkerRuntime(runtime)) {
     const module = await import("./pixel_worker_client.ts");
     workerClient = await module.PixelWorkerClient.create(
       canvas,
@@ -273,8 +361,9 @@ export async function mountPixelDemo(
       height,
       occupancy,
       region,
+      runtime === "worker-simd" ? "active-simd" : "active",
     );
-    backend.value = "active-chunk Worker";
+    backend.value = runtime === "worker-simd" ? "active Wasm SIMD Worker" : "active-chunk Worker";
     activeChunkCount.value = workerClient.stats[3]! >>> 0;
   } else if (runtime === "webgpu") {
     const module = await import("./pixel_webgpu.ts");
@@ -288,9 +377,10 @@ export async function mountPixelDemo(
     renderCpu(cells!, context, image, pixels);
   }
 
-  const materialButtons: readonly [string, PixelMaterial][] = [
+  const materialButtons: ReadonlyArray<readonly [string, PixelMaterial]> = [
     ["pixel-sand", MATERIAL.sand],
     ["pixel-water", MATERIAL.water],
+    ...(isBlockRuntime(runtime) ? [["pixel-gas", MATERIAL.gas] as const] : []),
     ["pixel-wall", MATERIAL.wall],
     ["pixel-erase", MATERIAL.empty],
   ];
@@ -382,8 +472,7 @@ export async function mountPixelDemo(
           }
           if (inputChanged) {
             renderedWorkerInputSequence = nextInputSequence;
-            const nowMicros = Math.round(performance.now() * 1_000) >>> 0;
-            appendSample(inputSamples, ((nowMicros - (stats[5]! >>> 0)) >>> 0) / 1_000);
+            appendSample(inputSamples, (stats[5]! >>> 0) / 1_000);
             inputLatency.value = median(inputSamples);
           }
           activeChunkCount.value = stats[3]! >>> 0;
@@ -404,6 +493,18 @@ export async function mountPixelDemo(
             brush.x + brushRadius,
             brush.y + brushRadius,
           );
+          blockActive?.activateRect(
+            brush.x - brushRadius,
+            brush.y - brushRadius,
+            brush.x + brushRadius,
+            brush.y + brushRadius,
+          );
+          blockActiveSimd?.activateRect(
+            brush.x - brushRadius,
+            brush.y - brushRadius,
+            brush.x + brushRadius,
+            brush.y + brushRadius,
+          );
           const renderStarted = performance.now();
           renderCpu(cells!, context!, image!, pixels!);
           appendSample(renderSamples, performance.now() - renderStarted);
@@ -417,7 +518,15 @@ export async function mountPixelDemo(
         } else {
           const started = performance.now();
           const computeStarted = performance.now();
-          if (active === null) {
+          if (block !== null) {
+            block.step(phase);
+          } else if (blockActive !== null) {
+            activeChunkCount.value = blockActive.step(phase);
+          } else if (blockSimd !== null) {
+            blockSimd.step(phase);
+          } else if (blockActiveSimd !== null) {
+            activeChunkCount.value = blockActiveSimd.step(phase);
+          } else if (active === null) {
             stepPixelWorld(cells!, width, height, phase);
           } else {
             activeChunkCount.value = active.step(phase);
@@ -490,11 +599,27 @@ export async function mountPixelDemo(
     mainFrameMedianMs: mainFrameMedian.value,
     paintFps: fps.value,
     residentBytes: gpu?.residentBytes ?? workerClient?.residentBytes ??
-      cells!.byteLength + (image?.data.byteLength ?? 0) + (active?.residentBytes ?? 0),
+      (blockActiveSimd?.residentBytes ?? blockSimd?.residentBytes ?? cells!.byteLength) +
+        (image?.data.byteLength ?? 0) +
+        (active?.residentBytes ?? 0) + (blockActive?.residentBytes ?? 0),
     adapter: backend.value,
     mainLoadMs,
-    activeChunks: active?.activeChunkCount ?? workerClient?.stats[3] ?? 0,
-    chunkCount: active?.chunkCount ?? workerClient?.chunkCount ?? 0,
+    activeChunks: active?.activeChunkCount ?? blockActive?.activeChunkCount ??
+      blockActiveSimd?.activeChunkCount ??
+      workerClient?.stats[3] ?? 0,
+    chunkCount: active?.chunkCount ?? blockActive?.chunkCount ?? blockActiveSimd?.chunkCount ??
+      workerClient?.chunkCount ?? 0,
+    samples: {
+      tickMs: [...tickSamples],
+      computeMs: [...computeSamples],
+      renderMs: [...renderSamples],
+    },
+    browser: {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      logicalCpus: navigator.hardwareConcurrency,
+      crossOriginIsolated: globalThis.crossOriginIsolated,
+    },
   };
 }
 
@@ -505,7 +630,7 @@ function renderCpu(
   pixels: Uint32Array,
 ): void {
   for (let index = 0; index < cells.length; index++) {
-    pixels[index] = MATERIAL_COLORS[pixelMaterial(cells[index]!) as 0 | 1 | 2 | 3];
+    pixels[index] = MATERIAL_COLORS[pixelMaterial(cells[index]!) as 0 | 1 | 2 | 3 | 4];
   }
   context.putImageData(image, 0, 0);
 }
@@ -519,10 +644,20 @@ function pixelHref(
   return `?run=pixel&runtime=${runtime}&size=${width}&occupancy=${occupancy}&region=${region}`;
 }
 
+function isBlockRuntime(runtime: PixelRuntime): boolean {
+  return runtime === "block" || runtime === "block-active" || runtime === "block-simd" ||
+    runtime === "block-active-simd" || runtime === "worker-simd";
+}
+
+function isWorkerRuntime(runtime: PixelRuntime): boolean {
+  return runtime === "worker" || runtime === "worker-simd";
+}
+
 function materialName(material: PixelMaterial): string {
   if (material === MATERIAL.wall) return "wall";
   if (material === MATERIAL.sand) return "sand";
   if (material === MATERIAL.water) return "water";
+  if (material === MATERIAL.gas) return "gas";
   return "eraser";
 }
 

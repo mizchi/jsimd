@@ -39,6 +39,7 @@ build:
     wasm-tools strip -a experiments/ui-core-simd/signals.wat -o experiments/ui-core-simd/signals.wasm
     wasm-tools strip -a experiments/ui-core-simd/patch_tape.wat -o experiments/ui-core-simd/patch_tape.wasm
     wasm-tools strip -a experiments/ui-core-simd/life_step.wat -o experiments/ui-core-simd/life_step.wasm
+    wasm-tools strip -a experiments/ui-core-simd/pixel_block_step.wat -o experiments/ui-core-simd/pixel_block_step.wasm
     wasm-tools strip -a experiments/radix-sort-block/kernels.wat -o experiments/radix-sort-block/kernels.wasm
     wasm-tools strip -a experiments/ultra-log-log/kernels.wat -o experiments/ultra-log-log/kernels.wasm
     wasm-tools validate --features simd packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm
@@ -81,6 +82,7 @@ build:
     wasm-tools validate --features simd experiments/ui-core-simd/signals.wasm
     wasm-tools validate --features simd experiments/ui-core-simd/patch_tape.wasm
     wasm-tools validate --features simd experiments/ui-core-simd/life_step.wasm
+    wasm-tools validate --features simd experiments/ui-core-simd/pixel_block_step.wasm
     wasm-tools validate --features simd experiments/radix-sort-block/kernels.wasm
     wasm-tools validate --features simd experiments/ultra-log-log/kernels.wasm
     wasm-tools print packages/jsimd/src/adaptive-simd-page-i32/kernels.wasm | rg -q 'scan_between_for|scan_between_raw|scan_between_rle|scan_between_dictionary|scan_between_sparse|gather_sparse|sum_sparse|mask_count'
@@ -145,6 +147,7 @@ build:
     ! wasm-tools print experiments/ui-core-simd/signals.wasm | rg -q 'classify_nodes|i32x4.ne'
     wasm-tools print experiments/ui-core-simd/patch_tape.wasm | rg -q 'collect_changed|i32x4.ne|i32x4.bitmask'
     wasm-tools print experiments/ui-core-simd/life_step.wasm | rg -q 'i8x16.add|i8x16.eq|i8x16.bitmask'
+    wasm-tools print experiments/ui-core-simd/pixel_block_step.wasm | rg -q 'i32x4.gt_s|i32x4.bitmask|v128.bitselect'
 
 test-olap-package: build
     deno test -A packages/olap/src
@@ -199,6 +202,8 @@ check-ui-core-entrypoints:
     test "$(wc -c < experiments/ui-core-simd/signals.wasm | tr -d ' ')" -le 220
     test "$(wc -c < experiments/ui-core-simd/patch_tape.wasm | tr -d ' ')" -le 420
     test "$(wc -c < experiments/ui-core-simd/life_step.wasm | tr -d ' ')" -le 700
+    test "$(wc -c < experiments/ui-core-simd/pixel_block_step.wasm | tr -d ' ')" -le 2300
+    wasm-tools print experiments/ui-core-simd/pixel_block_step.wasm | rg -q 'i8x16.shuffle'
     test ! -e experiments/ui-core-simd/reconciler.ts
     test ! -e experiments/ui-core-simd/reconciler.wasm
     test ! -e experiments/ui-core-simd/packed_list.ts
@@ -212,6 +217,9 @@ bench-ui-core-segments: build
 
 bench-ui-core-patch-tape: build
     deno bench -A experiments/ui-core-simd/patch_tape_bench.ts
+
+bench-ui-pixel-block-simd: build
+    deno run -A experiments/ui-core-simd/pixel_block_kernel_bench.ts
 
 bench-ui-core-atomics: build
     deno run -A experiments/ui-core-simd/atomic_worker_bench.ts
@@ -230,11 +238,21 @@ build-ui-comparison:
     pnpm --config.verify-deps-before-run=false exec vite build experiments/ui-core-simd/browser-ui
 
 check-ui-pixel-bundles: build-ui-comparison
+    pnpm --config.verify-deps-before-run=false exec esbuild experiments/ui-core-simd/browser-ui/pixel_block_active_runtime.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=experiments/ui-core-simd/fixtures/dist/pixel-block-active-runtime.js
     test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_demo-*.js | wc -c | tr -d ' ')" -le 5000
     test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_active_runtime-*.js | wc -c | tr -d ' ')" -le 1700
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_runtime-*.js | wc -c | tr -d ' ')" -le 2500
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_active_runtime-*.js | wc -c | tr -d ' ')" -le 1200
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_simd_runtime-*.js | wc -c | tr -d ' ')" -le 1700
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_active_simd_runtime-*.js | wc -c | tr -d ' ')" -le 900
+    test "$(( $(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_simd_runtime-*.js | wc -c) + $(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_kernel-*.js | wc -c) + $(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_step-*.wasm | wc -c) ))" -le 2500
+    test "$(( $(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_active_simd_runtime-*.js | wc -c) + $(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_kernel-*.js | wc -c) + $(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_chunk_activity-*.js | wc -c) + $(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_step-*.wasm | wc -c) ))" -le 3800
+    test "$(gzip -9 -c experiments/ui-core-simd/fixtures/dist/pixel-block-active-runtime.js | wc -c | tr -d ' ')" -le 2100
     test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_webgpu-*.js | wc -c | tr -d ' ')" -le 3700
-    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_worker_client-*.js | wc -c | tr -d ' ')" -le 2000
-    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_worker-*.js | wc -c | tr -d ' ')" -le 5300
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_worker_client-*.js | wc -c | tr -d ' ')" -le 2100
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_worker-*.js | wc -c | tr -d ' ')" -le 5450
+    test "$(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_active_simd_worker-*.js | wc -c | tr -d ' ')" -le 5750
+    test "$(( $(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_worker_client-*.js | wc -c) + $(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_active_simd_worker-*.js | wc -c) + $(gzip -9 -c experiments/ui-core-simd/browser-ui/dist/assets/pixel_block_step-*.wasm | wc -c) ))" -le 9000
 
 dev-ui-comparison:
     pnpm --config.verify-deps-before-run=false exec vite --host 127.0.0.1 experiments/ui-core-simd/browser-ui

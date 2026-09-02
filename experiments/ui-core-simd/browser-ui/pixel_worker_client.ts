@@ -2,13 +2,11 @@ import { ATOMIC_INPUT_KIND, AtomicInputBuffer } from "../atomic_input.ts";
 import { writeDiscretePointerEventAt, writeLatestPointerEventAt } from "../atomic_input_dom.ts";
 import type { PixelRegion } from "../pixel_options.ts";
 import type { PixelMaterial } from "../pixel_sim.ts";
-import {
-  PIXEL_WORKER_STATS_WORDS,
-  PixelWorkerControl,
-} from "../pixel_worker_control.ts";
-import type { PixelWorkerInitMessage } from "./pixel_worker.ts";
+import { PIXEL_WORKER_STATS_WORDS, PixelWorkerControl } from "../pixel_worker_control.ts";
+import type { PixelWorkerInitMessage } from "./pixel_worker_runtime.ts";
 
 const TARGET_ID = 2;
+export type PixelWorkerBackendKind = "active" | "active-simd";
 
 export class PixelWorkerClient {
   readonly input: AtomicInputBuffer;
@@ -26,6 +24,7 @@ export class PixelWorkerClient {
     input: AtomicInputBuffer,
     control: PixelWorkerControl,
     resizeObserver: ResizeObserver,
+    backend: PixelWorkerBackendKind,
   ) {
     this.#canvas = canvas;
     this.#worker = worker;
@@ -35,7 +34,11 @@ export class PixelWorkerClient {
     const chunksX = Math.ceil(control.width / 32);
     const chunksY = Math.ceil(control.height / 32);
     this.chunkCount = chunksX * chunksY;
-    this.residentBytes = control.width * control.height * 8 + this.chunkCount * 3 +
+    const cellBytes = control.width * control.height * Uint32Array.BYTES_PER_ELEMENT;
+    const simulationBytes = backend === "active-simd"
+      ? Math.max(65_536, Math.ceil(cellBytes / 65_536) * 65_536)
+      : cellBytes;
+    this.residentBytes = simulationBytes + cellBytes + this.chunkCount * 3 +
       control.buffer.byteLength + this.input.buffer.byteLength;
   }
 
@@ -45,13 +48,18 @@ export class PixelWorkerClient {
     height: number,
     occupancy: number,
     region: PixelRegion,
+    backend: PixelWorkerBackendKind = "active",
   ): Promise<PixelWorkerClient> {
     if (typeof canvas.transferControlToOffscreen !== "function") {
       throw new Error("OffscreenCanvas is unavailable");
     }
     const control = PixelWorkerControl.create(width, height);
     const input = AtomicInputBuffer.create(256);
-    const worker = new Worker(new URL("./pixel_worker.ts", import.meta.url), { type: "module" });
+    const worker = backend === "active-simd"
+      ? new Worker(new URL("./pixel_block_active_simd_worker.ts", import.meta.url), {
+        type: "module",
+      })
+      : new Worker(new URL("./pixel_worker.ts", import.meta.url), { type: "module" });
     const updateViewport = (): void => {
       control.setViewportFixed(
         0,
@@ -63,7 +71,7 @@ export class PixelWorkerClient {
     updateViewport();
     const resizeObserver = new ResizeObserver(updateViewport);
     resizeObserver.observe(canvas);
-    const client = new PixelWorkerClient(canvas, worker, input, control, resizeObserver);
+    const client = new PixelWorkerClient(canvas, worker, input, control, resizeObserver, backend);
     const offscreen = canvas.transferControlToOffscreen();
     try {
       await requestReady(worker, {
@@ -73,6 +81,7 @@ export class PixelWorkerClient {
         canvas: offscreen,
         occupancy,
         region,
+        mainTimeOriginMillis: performance.timeOrigin,
       }, offscreen);
       return client;
     } catch (error) {

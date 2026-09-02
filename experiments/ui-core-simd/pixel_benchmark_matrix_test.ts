@@ -28,6 +28,36 @@ Deno.test("pixel benchmark matrix accepts the off-thread active runtime", () => 
   ]);
 });
 
+Deno.test("pixel benchmark matrix accepts the off-thread active SIMD runtime", () => {
+  assertEquals(createPixelBenchmarkCases([1_024], [0.25], ["worker-simd"], ["spot"]), [
+    { runtime: "worker-simd", width: 1_024, occupancy: 0.25, region: "spot" },
+  ]);
+});
+
+Deno.test("pixel benchmark matrix accepts the conservative block runtime", () => {
+  assertEquals(createPixelBenchmarkCases([256], [0.25], ["block"], ["full"]), [
+    { runtime: "block", width: 256, occupancy: 0.25, region: "full" },
+  ]);
+});
+
+Deno.test("pixel benchmark matrix accepts the sparse conservative block runtime", () => {
+  assertEquals(createPixelBenchmarkCases([1_024], [0.25], ["block-active"], ["spot"]), [
+    { runtime: "block-active", width: 1_024, occupancy: 0.25, region: "spot" },
+  ]);
+});
+
+Deno.test("pixel benchmark matrix accepts the SIMD conservative block runtime", () => {
+  assertEquals(createPixelBenchmarkCases([512], [0.25], ["block-simd"], ["full"]), [
+    { runtime: "block-simd", width: 512, occupancy: 0.25, region: "full" },
+  ]);
+});
+
+Deno.test("pixel benchmark matrix accepts the sparse SIMD block runtime", () => {
+  assertEquals(createPixelBenchmarkCases([1_024], [0.25], ["block-active-simd"], ["spot"]), [
+    { runtime: "block-active-simd", width: 1_024, occupancy: 0.25, region: "spot" },
+  ]);
+});
+
 Deno.test("pixel benchmark matrix rejects unsupported dimensions", () => {
   let errors = 0;
   for (

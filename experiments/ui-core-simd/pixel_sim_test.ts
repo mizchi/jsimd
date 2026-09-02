@@ -37,6 +37,21 @@ Deno.test("pixel scenarios separate occupancy from active-region locality", () =
   assertEquals(spot.length, full.length);
 });
 
+Deno.test("pixel scenarios seal the complete perimeter with walls", () => {
+  const width = 17;
+  const height = 11;
+  const cells = createPixelScenario(width, height, 0.75, 123, "full");
+
+  for (let x = 0; x < width; x++) {
+    assertEquals(pixelMaterial(cells[x]!), MATERIAL.wall);
+    assertEquals(pixelMaterial(cells[(height - 1) * width + x]!), MATERIAL.wall);
+  }
+  for (let y = 0; y < height; y++) {
+    assertEquals(pixelMaterial(cells[y * width]!), MATERIAL.wall);
+    assertEquals(pixelMaterial(cells[y * width + width - 1]!), MATERIAL.wall);
+  }
+});
+
 Deno.test("a vertical material pair sinks sand through water", () => {
   const cells = new Uint32Array([
     packPixel(MATERIAL.sand),

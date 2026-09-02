@@ -54,3 +54,13 @@ Deno.test("a brush can wake a sleeping chunk neighborhood", () => {
   activity.activateRect(200, 200, 220, 220);
   assertEquals(activity.activeChunkCount > 0, true);
 });
+
+Deno.test("a kernel can retain one hot owner chunk without publishing cell coordinates", () => {
+  const activity = new PixelChunkActivity(96, 64, 32);
+
+  activity.beginStep();
+  activity.markChunkHot(0);
+  activity.finishStep();
+
+  assertEquals(activity.activeChunkCount, 4);
+});

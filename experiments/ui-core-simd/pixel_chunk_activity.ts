@@ -69,6 +69,16 @@ export class PixelChunkActivity {
     this.#activateIndex(this.#next, secondIndex);
   }
 
+  /** Keeps an owner chunk and its one-chunk halo hot without exposing moved cell coordinates. */
+  markChunkHot(index: number): void {
+    if (!Number.isSafeInteger(index) || index < 0 || index >= this.chunkCount) {
+      throw new RangeError("pixel chunk index is outside the activity grid");
+    }
+    if (this.#expandedNext[index] !== 0) return;
+    this.#expandedNext[index] = 1;
+    this.#activateNeighborhood(this.#next, index % this.chunksX, Math.floor(index / this.chunksX));
+  }
+
   finishStep(): void {
     for (let index = 0; index < this.#current.length; index++) {
       if (this.#next[index] === 0 && this.#current[index]! > 1) {
