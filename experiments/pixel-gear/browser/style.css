@@ -1,0 +1,70 @@
+@import "../../ui-core-simd/browser-ui/style.css";
+
+#gear-canvas {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 8 / 5;
+  border: 1px solid #315347;
+  border-radius: 12px;
+  background: #111a17;
+  image-rendering: pixelated;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+#gear-canvas:focus-visible {
+  outline: 2px solid #9dff73;
+  outline-offset: 3px;
+}
+
+.gear-mode {
+  background:
+    radial-gradient(circle at 18% 0%, rgb(240 176 61 / 22%), transparent 35rem),
+    radial-gradient(circle at 90% 72%, rgb(46 140 232 / 12%), transparent 34rem),
+    #0a0d10;
+}
+
+.gear-mode .life-stage {
+  box-shadow: 0 32px 100px rgb(0 0 0 / 55%), 0 0 70px rgb(214 148 45 / 7%);
+}
+
+.gear-badge strong {
+  color: #ffd371;
+}
+
+.gear-overlay {
+  border-color: rgb(255 205 105 / 25%);
+}
+
+.gear-overlay .life-status-dot {
+  background: #ffc857;
+  box-shadow: 0 0 12px #ffc857;
+}
+
+.gear-kicker {
+  margin-bottom: 14px;
+  color: #d99c39;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.gear-stats {
+  margin-bottom: 4px;
+}
+
+.gear-materials {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.life-controls .gear-reverse {
+  border-color: #9e6d27;
+  color: #ffd88b;
+}
+
+.life-controls .gear-gel-button {
+  border-color: #4ebc98;
+  color: #8fffd7;
+  background: rgb(39 104 83 / 28%);
+}

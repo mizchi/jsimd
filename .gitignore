@@ -37,6 +37,7 @@ experiments/parallel-columnar-query/browser-physical-pipeline/dist/
 experiments/parallel-columnar-query/browser-adaptive-pipeline/dist/
 experiments/dynamic-wasm-fusion/browser-gemm-tiles/dist/
 experiments/dynamic-wasm-fusion/fixtures/dist/
+experiments/pixel-gear/browser/dist/
 experiments/parallel-hybrid-query/kernels.wasm
 experiments/parallel-columnar-selection/kernels.wasm
 experiments/parallel-bloom-filter/kernels.wasm

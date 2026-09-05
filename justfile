@@ -239,6 +239,17 @@ check-ui-pixel-bundles: build-ui-comparison
 dev-ui-comparison:
     pnpm --config.verify-deps-before-run=false exec vite --host 127.0.0.1 experiments/ui-core-simd/browser-ui
 
+build-pixel-gear-experiment:
+    pnpm --config.verify-deps-before-run=false exec tsc -p experiments/pixel-gear/browser/tsconfig.json
+    pnpm --config.verify-deps-before-run=false exec vite build experiments/pixel-gear/browser
+
+test-pixel-gear-experiment: build-pixel-gear-experiment
+    test "$(gzip -9 -c experiments/pixel-gear/browser/dist/assets/*.js | wc -c | tr -d ' ')" -le 10000
+    deno test -A experiments/pixel-gear
+
+dev-pixel-gear-experiment:
+    pnpm --config.verify-deps-before-run=false exec vite --host 127.0.0.1 experiments/pixel-gear/browser
+
 bench-ultra-log-log: build
     deno run -A experiments/ultra-log-log/bench.ts
 

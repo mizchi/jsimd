@@ -1,0 +1,11 @@
+{
+  "extends": "../../ui-core-simd/browser-ui/tsconfig.json",
+  "include": [
+    "../gear.ts",
+    "../gel.ts",
+    "../../ui-core-simd/pixel_sim.ts",
+    "../../ui-core-simd/signals.ts",
+    "demo.ts",
+    "src.ts"
+  ]
+}
