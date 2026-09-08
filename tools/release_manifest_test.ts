@@ -23,6 +23,48 @@ Deno.test("jsimd public source directories match npm and Deno exports", async ()
   assertArrayEquals(sourceEntries.sort(), npmEntries, "public source directories and exports");
 });
 
+Deno.test("jsimd uses Zig kernels except for the hand-written bytes WAT", async () => {
+  const npm = await readJson<{ exports: Record<string, string> }>(
+    new URL("package.json", packageRoot),
+  );
+  const entries = entriesFromExports(npm.exports, /^\.\/dist\/([^/]+)\/mod\.js$/);
+  if (entries.includes("json")) throw new Error("removed json export is still public");
+  let zigKernelCount = 0;
+  let watKernelCount = 0;
+
+  for (const entry of entries) {
+    if (!await isFile(new URL(`src/${entry}/kernels.wasm`, packageRoot))) continue;
+    if (entry === "bytes") {
+      watKernelCount++;
+      if (!await isFile(new URL(`src/${entry}/kernels.wat`, packageRoot))) {
+        throw new Error(`${entry}: missing hand-written WAT kernel source`);
+      }
+      if (await isFile(new URL(`src/${entry}/kernels.zig`, packageRoot))) {
+        throw new Error(`${entry}: Zig source must not shadow the hand-written WAT`);
+      }
+      continue;
+    }
+    zigKernelCount++;
+    if (!await isFile(new URL(`src/${entry}/kernels.zig`, packageRoot))) {
+      throw new Error(`${entry}: missing Zig kernel source`);
+    }
+    if (await isFile(new URL(`src/${entry}/kernels.wat`, packageRoot))) {
+      throw new Error(`${entry}: obsolete WAT kernel source remains`);
+    }
+  }
+  if (zigKernelCount !== 30 || watKernelCount !== 1) {
+    throw new Error(
+      `expected 30 Zig kernels and 1 WAT kernel, found ${zigKernelCount} and ${watKernelCount}`,
+    );
+  }
+
+  for (const helper of ["wavelet_exports.zig", "wavelet_kernel.zig"]) {
+    if (!await isFile(new URL(`src/internal/${helper}`, packageRoot))) {
+      throw new Error(`missing shared Zig source: ${helper}`);
+    }
+  }
+});
+
 Deno.test("every jsimd export emits its complete release payload", async () => {
   const npm = await readJson<{ exports: Record<string, string> }>(
     new URL("package.json", packageRoot),
@@ -41,14 +83,17 @@ Deno.test("every jsimd export emits its complete release payload", async () => {
       `dist/${entry}/mod.d.ts`,
       `dist/${entry}/README.md`,
     ];
-    if (await isFile(new URL(`src/${entry}/kernels.wat`, packageRoot))) {
+    if (await isFile(new URL(`src/${entry}/kernels.wasm`, packageRoot))) {
       paths.push(
-        `src/${entry}/kernels.wat`,
         `src/${entry}/kernels.wasm`,
         `src/${entry}/kernels.d.wasm.ts`,
-        `dist/${entry}/kernels.wat`,
         `dist/${entry}/kernels.wasm`,
       );
+      if (entry === "bytes") {
+        paths.push(`src/${entry}/kernels.wat`, `dist/${entry}/kernels.wat`);
+      } else {
+        paths.push(`src/${entry}/kernels.zig`, `dist/${entry}/kernels.zig`);
+      }
     }
     if (await isFile(new URL(`src/${entry}/THIRD_PARTY_LICENSES.txt`, packageRoot))) {
       paths.push(`dist/${entry}/THIRD_PARTY_LICENSES.txt`);
@@ -57,6 +102,15 @@ Deno.test("every jsimd export emits its complete release payload", async () => {
       if (!await isFile(new URL(path, packageRoot))) {
         throw new Error(`${entry}: missing release file ${path}`);
       }
+    }
+    if (entry !== "bytes" && await isFile(new URL(`dist/${entry}/kernels.wat`, packageRoot))) {
+      throw new Error(`${entry}: obsolete WAT source emitted in release payload`);
+    }
+  }
+
+  for (const helper of ["wavelet_exports.zig", "wavelet_kernel.zig"]) {
+    if (!await isFile(new URL(`dist/internal/${helper}`, packageRoot))) {
+      throw new Error(`missing shared Zig release source: ${helper}`);
     }
   }
 });

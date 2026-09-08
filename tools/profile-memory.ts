@@ -47,8 +47,6 @@ import {
 } from "../packages/jsimd/src/fingerprint-group16/mod.ts";
 import { FmIndexBytes } from "../packages/jsimd/src/fm-index-bytes/mod.ts";
 import { SimdInt32Array } from "../packages/jsimd/src/i32-array/mod.ts";
-import { memory as jsonMemory } from "../packages/jsimd/src/json/kernels.wasm";
-import { jsonTokenStarts } from "../packages/jsimd/src/json/mod.ts";
 import { SimdMatrix2D } from "../packages/jsimd/src/matrix2d/mod.ts";
 import { SimdMatrix3D } from "../packages/jsimd/src/matrix3d/mod.ts";
 import { PackedDeltaUint32List } from "../packages/jsimd/src/packed-delta-uint32-list/mod.ts";
@@ -285,9 +283,6 @@ const fmPattern = fmText.slice(200, 208);
 const scratchBytes = Uint8Array.from(
   { length: 128 * 1024 },
   (_, index) => index & 0xff,
-);
-const jsonBytes = encoder.encode(
-  `[${Array.from({ length: 4096 }, (_, index) => `{"id":${index},"ok":true}`).join(",")}]`,
 );
 const sparseEdges = Array.from(
   { length: U32_LENGTH },
@@ -542,14 +537,6 @@ const scenarios: readonly Scenario[] = [
       sink += decodeUint32BE(scratchBytes)[0]!;
     },
     stats: () => scratchStats(endianMemory),
-  },
-  {
-    name: "json-scratch",
-    iterations: 100,
-    run() {
-      sink += jsonTokenStarts(jsonBytes).length;
-    },
-    stats: () => scratchStats(jsonMemory),
   },
   {
     name: "f32-vector",
@@ -1142,7 +1129,7 @@ if (scenarioArgument >= 0) {
   for (const scenario of scenarios) {
     const child = spawnSync(
       process.execPath,
-      ["--no-warnings", "--expose-gc", import.meta.filename, "--scenario", scenario.name],
+      ["--no-warnings", "--expose-gc", import.meta.filename!, "--scenario", scenario.name],
       { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
     );
     if (child.status !== 0) {

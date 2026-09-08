@@ -43,7 +43,13 @@ for await (const entry of Deno.readDir(sourceRoot)) {
   const sourceDirectory = `${sourceRoot}/${entry.name}`;
   const targetDirectory = `${outputDirectory}/${entry.name}`;
   for (
-    const filename of ["kernels.wasm", "kernels.wat", "README.md", "THIRD_PARTY_LICENSES.txt"]
+    const filename of [
+      "kernels.wasm",
+      "kernels.wat",
+      "kernels.zig",
+      "README.md",
+      "THIRD_PARTY_LICENSES.txt",
+    ]
   ) {
     try {
       await Deno.copyFile(`${sourceDirectory}/${filename}`, `${targetDirectory}/${filename}`);
@@ -51,6 +57,13 @@ for await (const entry of Deno.readDir(sourceRoot)) {
       if (!(error instanceof Deno.errors.NotFound)) throw error;
     }
   }
+}
+
+for (const filename of ["wavelet_exports.zig", "wavelet_kernel.zig"]) {
+  await Deno.copyFile(
+    `${sourceRoot}/internal/${filename}`,
+    `${outputDirectory}/internal/${filename}`,
+  );
 }
 
 for (const path of await collectFiles(outputDirectory)) {

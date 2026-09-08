@@ -54,6 +54,6 @@ pnpm bench:compare:matrix2d
 Files:
 
 - `mod.ts`: shape, indexing, ownership, and high-level operations
-- `kernels.wat`: row-padded elementwise and matrix multiplication kernels
+- `kernels.zig`: Zig 0.16 row-padded elementwise and matrix multiplication kernels
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated 372-byte binary; stripped, validated, and Git-ignored

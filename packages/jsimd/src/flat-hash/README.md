@@ -102,6 +102,6 @@ committed baseline.
 Files:
 
 - `mod.ts`: typed public contracts, growth, bulk boundary handling, and ownership
-- `kernels.wat`: hashing, SIMD control-group probing, tombstones, bulk operations, and rehashing
+- `kernels.zig`: hashing, SIMD control-group probing, tombstones, bulk operations, and rehashing
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated 2,129-byte binary; stripped, validated, and Git-ignored

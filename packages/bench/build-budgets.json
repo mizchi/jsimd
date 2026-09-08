@@ -128,12 +128,6 @@
       "wasmMaxGzipBytes": 500
     },
     {
-      "name": "json",
-      "path": "examples/tree-shake-json/dist/assets",
-      "jsMaxGzipBytes": 1300,
-      "wasmMaxGzipBytes": 400
-    },
-    {
       "name": "matrix2d",
       "path": "examples/tree-shake-matrix2d/dist/assets",
       "jsMaxGzipBytes": 3000,

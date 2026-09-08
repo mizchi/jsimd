@@ -75,6 +75,6 @@ These are generic JavaScript-loop comparisons, not claims against optimized BLAS
 Files:
 
 - `mod.ts`: shape, indexing, ownership, and high-level operations
-- `kernels.wat`: row-padded elementwise and batched multiplication kernels
+- `kernels.zig`: row-padded elementwise and batched multiplication kernels
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated 455-byte binary; stripped, validated, and Git-ignored

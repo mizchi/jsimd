@@ -40,6 +40,6 @@ pnpm bench:endian
 Files:
 
 - `mod.ts`: public API, native fallback, and scratch-memory policy
-- `kernels.wat`: SIMD 32-bit byte shuffle
+- `kernels.zig`: Zig 0.16 implementation of the SIMD 32-bit byte shuffle
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated, stripped, and validated by `just build`; Git-ignored

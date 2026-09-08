@@ -2,7 +2,6 @@ import { compare, equals, indexOf, indexOfNonAscii, lastIndexOf } from "./src/by
 import { decodeUint32BE } from "./src/endian/mod.ts";
 import { DenseBitmap } from "./src/bitmap/mod.ts";
 import { SimdFloat32Vector } from "./src/f32-vector/mod.ts";
-import { jsonTokenStarts } from "./src/json/mod.ts";
 
 let sink = 0;
 let _bigSink = 0n;
@@ -149,40 +148,6 @@ for (const capacity of [1024, 16_384, 262_144, 4_194_304]) {
   });
 }
 
-function scalarJsonTokenStarts(input: Uint8Array): Uint32Array {
-  const starts: number[] = [];
-  let inString = false;
-  let escaped = false;
-  let previousIsAtom = false;
-  for (let offset = 0; offset < input.length; offset++) {
-    const byte = input[offset]!;
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (byte === 92) escaped = true;
-      else if (byte === 34) {
-        starts.push(offset);
-        inString = false;
-      }
-      previousIsAtom = false;
-    } else if (byte === 34) {
-      starts.push(offset);
-      inString = true;
-      previousIsAtom = false;
-    } else if (
-      byte === 123 || byte === 125 || byte === 91 || byte === 93 || byte === 58 || byte === 44
-    ) {
-      starts.push(offset);
-      previousIsAtom = false;
-    } else if (byte === 32 || byte === 9 || byte === 10 || byte === 13) {
-      previousIsAtom = false;
-    } else {
-      if (!previousIsAtom) starts.push(offset);
-      previousIsAtom = true;
-    }
-  }
-  return new Uint32Array(starts);
-}
-
 function scalarFindNonAscii(input: Uint8Array): number {
   for (let index = 0; index < input.length; index++) if (input[index]! >= 0x80) return index;
   return -1;
@@ -252,22 +217,5 @@ for (const length of [256, 4096, 65_536]) {
   });
   Deno.bench(`scalar indexOf(Uint8Array) miss n=${length}`, () => {
     sink ^= scalarIndexOfSubarray(left, pattern);
-  });
-}
-
-const encoder = new TextEncoder();
-for (
-  const [name, source] of [
-    ["mixed", new Array(1000).fill('{"id":123,"ok":true,"name":"moonbit"}').join(",")],
-    ["dense", new Array(10_000).fill("[0,1]").join(",")],
-    ["strings", JSON.stringify(new Array(1000).fill("a".repeat(64) + '\\"tail'))],
-  ] as const
-) {
-  const input = encoder.encode(`[${source}]`);
-  Deno.bench(`jsimd jsonTokenStarts ${name} n=${input.length}`, () => {
-    sink ^= jsonTokenStarts(input).length;
-  });
-  Deno.bench(`scalar jsonTokenStarts ${name} n=${input.length}`, () => {
-    sink ^= scalarJsonTokenStarts(input).length;
   });
 }

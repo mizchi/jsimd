@@ -76,6 +76,6 @@ Vitest baseline JSON and the complete benchmark source live in
 Files:
 
 - `mod.ts`: public API, ownership contract, and allocator integration
-- `kernels.wat`: `v128` set operations and SIMD popcount
+- `kernels.zig`: Zig 0.16 `v128` set operations and SIMD popcount
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated, stripped, and validated by `just build`; Git-ignored

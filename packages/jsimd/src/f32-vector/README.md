@@ -72,6 +72,6 @@ wrapper (2.12 kB gzip). It emits no other jsimd Wasm module.
 Files:
 
 - `mod.ts`: public API and ownership contract
-- `kernels.wat`: SIMD dot, distance, norm, cosine, and AXPY kernels
+- `kernels.zig`: Zig 0.16 SIMD dot, distance, norm, cosine, and AXPY kernels
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated, stripped, and validated by `just build`; Git-ignored

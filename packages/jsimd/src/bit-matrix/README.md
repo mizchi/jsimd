@@ -83,6 +83,6 @@ committed baseline.
 Files:
 
 - `mod.ts`: shape contract, mutation, row views, ownership, transpose, and multiplication
-- `kernels.wat`: row popcount, transpose, and SIMD Boolean multiplication
+- `kernels.zig`: row popcount, transpose, and SIMD Boolean multiplication
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated stripped and validated binary; Git-ignored

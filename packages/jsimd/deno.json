@@ -20,7 +20,6 @@
     "./flat-hash-fixed16": "./src/flat-hash-fixed16/mod.ts",
     "./fingerprint-group16": "./src/fingerprint-group16/mod.ts",
     "./i32-array": "./src/i32-array/mod.ts",
-    "./json": "./src/json/mod.ts",
     "./matrix2d": "./src/matrix2d/mod.ts",
     "./matrix3d": "./src/matrix3d/mod.ts",
     "./roaring-bitmap": "./src/roaring-bitmap/mod.ts",

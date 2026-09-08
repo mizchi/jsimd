@@ -60,8 +60,8 @@ The benchmark source and committed baseline are under
 
 ## Standalone build size
 
-The isolated Vite 8.2 production fixture emits 11.80 kB minified JavaScript (4.26 kB gzip) and one
-2.10 kB Wasm asset (0.97 kB gzip). It emits no other entrypoint's Wasm.
+The isolated Vite 8.2 production fixture emits 11.87 kB minified JavaScript (4.30 kB gzip) and one
+2.28 kB Wasm asset (1.11 kB gzip). It emits no other entrypoint's Wasm.
 
 The binary layout follows the wavelet matrix family and uses the same 512-bit rank blocks as this
 package's Uint8 and Uint32 variants. See
@@ -71,6 +71,6 @@ package's Uint8 and Uint32 variants. See
 Files:
 
 - `mod.ts`: TypeScript API, validation, snapshots, and ownership
-- `kernels.wat`: 16-level build and query kernels using SIMD rank scans
+- `kernels.zig`: 16-level build and query kernels using SIMD rank scans
 - `kernels.d.wasm.ts`: typed Wasm contract
 - `kernels.wasm`: generated, stripped, validated, and Git-ignored

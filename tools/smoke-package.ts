@@ -49,6 +49,7 @@ try {
       "rank-select-bitmap",
       "roaring-uint32-set",
       "static-mphf-bytes",
+      "json",
     ]
   ) {
     await assertImportFails(`${metadata.name}/${removedSubpath}`, temporaryDirectory);

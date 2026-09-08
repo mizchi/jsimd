@@ -96,6 +96,6 @@ for the benchmark source and committed baseline.
 Files:
 
 - `mod.ts`: builder, encoding, public queries, and ownership
-- `kernels.wat`: shuffle-table decode, checkpoint queries, and SIMD group intersection
+- `kernels.zig`: shuffle-table decode, checkpoint queries, and SIMD group intersection
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated 1,500-byte binary; stripped, validated, and Git-ignored

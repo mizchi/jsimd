@@ -101,7 +101,7 @@ so each structure has one public name.
 | [`flat-hash`](./src/flat-hash/README.md)                               | Batched `u32`/`u64` hash set/map             | 6.8–12.0x        | Individual `has` and `get` calls are slower           | 3.35 kB + 0.95 kB        |
 | [`flat-hash-fixed16`](./src/flat-hash-fixed16/README.md)               | UUID/hash-keyed map and set                  | 25.6–27.9x bulk  | Numeric and point-key workloads can be slower         | 3.02 kB + 0.62 kB        |
 | [`fingerprint-group16`](./src/fingerprint-group16/README.md)           | SwissTable control groups and tables         | 1.6–4.9x bulk    | Individual probes are slower                          | 2.33 kB + 0.27 kB        |
-| [`fm-index-bytes`](./src/fm-index-bytes/README.md)                     | Frozen full-text byte search                 | 6.86x count      | Construction, locate, and mutable text can be slower  | 4.95 kB + 1.31 kB        |
+| [`fm-index-bytes`](./src/fm-index-bytes/README.md)                     | Frozen full-text byte search                 | 6.86x count      | Construction, locate, and mutable text can be slower  | 4.99 kB + 1.46 kB        |
 | [`i32-array`](./src/i32-array/README.md)                               | Resident fixed `i32` arrays                  | 3–7x             | One-shot and sub-1K cases were not measured           | 2.21 kB + 0.34 kB        |
 | [`matrix2d`](./src/matrix2d/README.md)                                 | Resident Float32 matrix multiplication       | ~1–9.5x          | 4×4 was near parity; BLAS/GPU were not compared       | 2.51 kB + 0.23 kB        |
 | [`matrix3d`](./src/matrix3d/README.md)                                 | Resident batched matrix multiplication       | 5.0–7.3x         | Compared only with resident generic JS loops          | 2.67 kB + 0.27 kB        |
@@ -112,17 +112,16 @@ so each structure has one public name.
 | [`static-mphf-u32`](./src/static-mphf-u32/README.md)                   | Frozen perfect hash for known `u32` keys     | 1.75x bulk       | Individual lookup and construction are slower         | 4.09 kB + 0.39 kB        |
 | [`ultra-log-log`](./src/ultra-log-log/README.md)                       | Mergeable approximate `u32` distinct count   | 2.16–22.53x      | Small batches select scalar JavaScript                | 4.08 kB + 0.57 kB        |
 | [`ultra-log-log-parallel`](./src/ultra-log-log-parallel/README.md)     | Persistent-Worker bulk distinct count        | 2.39–5.38x E2E   | Forced 4K Worker path was 3.45x slower                | 9.43 kB + 0.57 kB        |
-| [`wavelet-matrix-uint8`](./src/wavelet-matrix-uint8/README.md)         | Rank/range queries over frozen bytes         | 4.8x vs u32      | Direct byte access is slower                          | 4.25 kB + 0.97 kB        |
-| [`wavelet-matrix-uint16`](./src/wavelet-matrix-uint16/README.md)       | Range queries over frozen `u16` sequences    | 2.3–329x         | Direct access and exact rank are slower               | 4.26 kB + 0.97 kB        |
-| [`wavelet-matrix-uint32`](./src/wavelet-matrix-uint32/README.md)       | Range statistics over frozen `u32` sequences | 2.2–100x+        | Direct access and exact rank are slower               | 4.19 kB + 0.97 kB        |
+| [`wavelet-matrix-uint8`](./src/wavelet-matrix-uint8/README.md)         | Rank/range queries over frozen bytes         | 4.8x vs u32      | Direct byte access is slower                          | 4.30 kB + 1.11 kB        |
+| [`wavelet-matrix-uint16`](./src/wavelet-matrix-uint16/README.md)       | Range queries over frozen `u16` sequences    | 2.3–329x         | Direct access and exact rank are slower               | 4.30 kB + 1.11 kB        |
+| [`wavelet-matrix-uint32`](./src/wavelet-matrix-uint32/README.md)       | Range statistics over frozen `u32` sequences | 2.2–100x+        | Direct access and exact rank are slower               | 4.24 kB + 1.09 kB        |
 
 ### Stateless and copy-inclusive kernels
 
-| export                             | purpose                  | observed speedup | trade-off                     | minified JS + Wasm, gzip |
-| :--------------------------------- | :----------------------- | :--------------- | :---------------------------- | :----------------------- |
-| [`bytes`](./src/bytes/README.md)   | General byte operations  | 4.9–18.1x        | Small inputs use JS fallbacks | 1.40 kB + 0.50 kB        |
-| [`endian`](./src/endian/README.md) | Batched `u32` decoding   | 1.0–2.2x         | Small inputs were at parity   | 1.11 kB + 0.18 kB        |
-| [`json`](./src/json/README.md)     | JSON token-start scanner | 1.1–3.5x         | Long strings were near parity | 1.00 kB + 0.28 kB        |
+| export                             | purpose                 | observed speedup | trade-off                     | minified JS + Wasm, gzip |
+| :--------------------------------- | :---------------------- | :--------------- | :---------------------------- | :----------------------- |
+| [`bytes`](./src/bytes/README.md)   | General byte operations | 4.9–18.1x        | Small inputs use JS fallbacks | 1.40 kB + 0.77 kB        |
+| [`endian`](./src/endian/README.md) | Batched `u32` decoding  | 1.0–2.2x         | Small inputs were at parity   | 1.11 kB + 0.18 kB        |
 
 ### Dynamic kernels
 
@@ -182,12 +181,13 @@ just bench
 just memory-profile
 ```
 
-`just build` compiles each `src/<name>/kernels.wat` into its adjacent `kernels.wasm`. Generated Wasm
-files have custom sections removed with `wasm-tools strip -a`, are checked with
-`wasm-tools validate --features simd`, and are ignored by Git. `just build-package` emits the npm
-payload into `packages/jsimd/dist/`: compiled JavaScript, declarations, feature documentation, WAT
-sources, and the corresponding stripped Wasm binaries. The hand-written kernels do not require
-Binaryen; development only requires `wasm-tools` on `PATH`.
+`just build` compiles 30 Zig 0.16 `src/<name>/kernels.zig` sources and the deliberately hand-written
+`bytes/kernels.wat` source with SIMD128 and `wasm-opt -Oz`. Generated Wasm files are checked for
+their public exports, expected SIMD instructions, and per-module size limits, then validated with
+`wasm-tools`. `just build-package` emits the npm payload into `packages/jsimd/dist/`: compiled
+JavaScript, declarations, feature documentation, kernel sources, shared Zig source modules, and the
+corresponding optimized Wasm binaries. Development requires Zig 0.16, `wasm-opt`, and `wasm-tools`
+on `PATH`.
 
 `just memory-profile` runs every owning data structure in an isolated Node process with explicit GC.
 It fails if live Wasm allocations do not return to baseline, allocator capacity keeps growing after

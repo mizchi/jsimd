@@ -113,5 +113,5 @@ pnpm bench:compare:blocked-vector-array
 ```
 
 The isolated Vite fixture emits one 2.28 kB Wasm asset (0.92 kB gzip) and a 7.61 kB minified JS
-wrapper (2.87 kB gzip). It emits no other entrypoint's Wasm. `kernels.wat` is the source; generated
+wrapper (2.87 kB gzip). It emits no other entrypoint's Wasm. `kernels.zig` is the source; generated
 `kernels.wasm` is stripped, SIMD-validated, and Git-ignored.

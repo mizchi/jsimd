@@ -36,8 +36,8 @@ also costs slightly more than the raw bytes and has a nontrivial frozen build.
 
 ## Standalone build size
 
-The isolated Vite 8.2 production fixture emits 11.77 kB minified JavaScript (4.25 kB gzip) and one
-2.10 kB Wasm asset (0.97 kB gzip).
+The isolated Vite 8.2 production fixture emits 11.86 kB minified JavaScript (4.30 kB gzip) and one
+2.28 kB Wasm asset (1.11 kB gzip).
 
 Sources: the
 [JSAI succinct-data-structure overview](https://www.ai-gakkai.or.jp/resource/my-bookmark/my-bookmark_vol26-no6/),

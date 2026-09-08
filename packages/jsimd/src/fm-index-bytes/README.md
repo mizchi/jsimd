@@ -53,8 +53,8 @@ needing text-ordered results favor native strings or another index.
 
 ## Standalone build size
 
-The isolated Vite 8.2 production fixture emits 13.34 kB minified JavaScript (4.95 kB gzip) and one
-2.91 kB Wasm asset (1.31 kB gzip).
+The isolated Vite 8.2 production fixture emits 13.43 kB minified JavaScript (4.99 kB gzip) and one
+3.03 kB Wasm asset (1.46 kB gzip).
 
 Sources: the [FM-index authors' project page](https://people.unipmn.it/manzini/fmindex/), the
 [JSAI succinct-data-structure overview](https://www.ai-gakkai.or.jp/resource/my-bookmark/my-bookmark_vol26-no6/),

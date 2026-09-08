@@ -93,9 +93,14 @@ export function instantiateSharedModule<T extends WebAssembly.Exports>(
   if (namespace !== undefined && (namespace === null || typeof namespace !== "object")) {
     throw new TypeError("imports.jsimd must be an object");
   }
+  const environment = imports.env;
+  if (environment !== undefined && (environment === null || typeof environment !== "object")) {
+    throw new TypeError("imports.env must be an object");
+  }
   const instance = new WebAssembly.Instance(module, {
     ...imports,
     jsimd: { ...namespace as WebAssembly.ModuleImports | undefined, memory },
+    env: { ...environment as WebAssembly.ModuleImports | undefined, memory },
   });
   return instance.exports as T;
 }

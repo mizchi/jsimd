@@ -131,6 +131,6 @@ results are in [`experiments/snapshots`](../../experiments/snapshots/README.md).
 Files:
 
 - `mod.ts`: builder, encoding, public queries, and allocator ownership
-- `kernels.wat`: SIMD rank-index build, upper select, lower extraction, batch queries, and decode
+- `kernels.zig`: SIMD rank-index build, upper select, lower extraction, batch queries, and decode
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated, stripped, validated, and Git-ignored

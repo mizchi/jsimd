@@ -100,4 +100,4 @@ Files:
 - `parallel.ts`: size-aware persistent-Worker orchestration
 - `worker.ts`: Worker-local build loop
 - `estimator.ts`: optimal FGRA estimator
-- `kernels.wat`: bulk hashing and exact SIMD state merge
+- `kernels.zig`: bulk hashing and exact SIMD state merge

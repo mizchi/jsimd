@@ -102,6 +102,6 @@ See [`experiments/roaring-bitmap`](../../experiments/roaring-bitmap/README.md) f
 Files:
 
 - `mod.ts`: public API, high-key metadata, container conversion, and ownership
-- `kernels.wat`: SIMD bitmap set algebra and array/bitmap intersection kernels
+- `kernels.zig`: SIMD bitmap set algebra and array/bitmap intersection kernels
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated binary; stripped, validated, and Git-ignored

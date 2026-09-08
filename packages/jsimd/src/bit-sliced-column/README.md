@@ -100,6 +100,6 @@ source and the committed baseline.
 Files:
 
 - `mod.ts`: column construction, nullable contract, resident mask API, and ownership
-- `kernels.wat`: bit-sliced predicates, mask composition, and SIMD popcount
+- `kernels.zig`: bit-sliced predicates, mask composition, and SIMD popcount
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated 898-byte binary; stripped, validated, and Git-ignored

@@ -123,6 +123,6 @@ the recorded results.
 Files:
 
 - `mod.ts`: immutable API, builder, ownership, and index construction
-- `kernels.wat`: SIMD index construction/rank plus one- and zero-bit select/neighbor queries
+- `kernels.zig`: SIMD index construction/rank plus one- and zero-bit select/neighbor queries
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated binary; stripped, validated, and Git-ignored

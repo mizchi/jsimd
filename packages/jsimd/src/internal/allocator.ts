@@ -11,6 +11,9 @@ export interface Allocation {
   readonly byteLength: number;
 }
 
+/** The first Wasm page is reserved for Zig's stack and static runtime state. */
+export const ZIG_RUNTIME_RESERVED_BYTES = 65_536;
+
 export class LinearMemoryAllocator {
   readonly #memory: WebAssembly.Memory;
   readonly #baseOffset: number;
@@ -19,7 +22,7 @@ export class LinearMemoryAllocator {
   #liveBytes = 0;
   #liveAllocations = 0;
 
-  constructor(memory: WebAssembly.Memory, baseOffset = 0) {
+  constructor(memory: WebAssembly.Memory, baseOffset = ZIG_RUNTIME_RESERVED_BYTES) {
     if (!Number.isSafeInteger(baseOffset) || baseOffset < 0 || (baseOffset & 15) !== 0) {
       throw new RangeError("allocator base offset must be a non-negative multiple of 16");
     }

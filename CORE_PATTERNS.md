@@ -10,7 +10,7 @@ Source audit: 2026-08-25.
 | `builtin/bytes.mbt` intrinsic and byte views | equal byte ranges                                       | `equals`                                    |
 | `encoding/utf16/decode.mbt`                  | surrogate detection and endian byte shuffle             | candidate; compare with `TextDecoder` first |
 | `json/lex_string.mbt`                        | quote/backslash/control scan                            | candidate for UTF-8 bytes API               |
-| `json/simd_lexer_utf8.mbt`                   | JSON classification and token-start extraction          | `jsonTokenStarts`                           |
+| `json/simd_lexer_utf8.mbt`                   | JSON classification and token-start extraction          | removed; use native parser                  |
 
 The package intentionally exports algorithms rather than raw `v128` values. JavaScript cannot pass
 `v128` across the Wasm boundary, and copying is only worthwhile when one call performs enough work.

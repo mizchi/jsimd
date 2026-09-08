@@ -82,7 +82,7 @@ pnpm bench:compare:binary-vector-index
 ```
 
 The isolated Vite fixture using binary and PDX scans emits one 0.85 kB Wasm asset (0.43 kB gzip) and
-an 11.74 kB minified JS wrapper (4.17 kB gzip). It emits no other entrypoint's Wasm. `kernels.wat`
+an 11.74 kB minified JS wrapper (4.17 kB gzip). It emits no other entrypoint's Wasm. `kernels.zig`
 is the source; the stripped and validated `kernels.wasm` remains Git-ignored.
 
 Cross-structure snapshot and transport results are in

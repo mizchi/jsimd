@@ -55,6 +55,6 @@ pnpm bench:compare:i32-array
 Files:
 
 - `mod.ts`: public API and `using` ownership contract
-- `kernels.wat`: SIMD reductions, equality, and in-place addition
+- `kernels.zig`: SIMD reductions, equality, and in-place addition
 - `kernels.d.wasm.ts`: typed Wasm module contract
 - `kernels.wasm`: generated 767-byte binary; stripped, validated, and Git-ignored

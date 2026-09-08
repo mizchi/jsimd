@@ -10,6 +10,7 @@ import {
   type Allocation,
   type AllocatorStats,
   LinearMemoryAllocator,
+  ZIG_RUNTIME_RESERVED_BYTES,
 } from "../internal/allocator.ts";
 import {
   copyMonotoneSource,
@@ -22,7 +23,10 @@ export type { MonotoneUint32Source };
 
 const SHUFFLE_TABLE_BYTES = 4_096;
 wasmInitShuffleTable(0);
-const allocator = new LinearMemoryAllocator(memory, SHUFFLE_TABLE_BYTES);
+const allocator = new LinearMemoryAllocator(
+  memory,
+  Math.max(SHUFFLE_TABLE_BYTES, ZIG_RUNTIME_RESERVED_BYTES),
+);
 
 interface EncodedStream {
   readonly controls: Uint8Array;

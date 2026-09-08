@@ -518,6 +518,6 @@ Files:
 - `versioned-buffer.ts`: guarded double-buffer publication and safe slot reuse
 - `work-stealing-deque.ts`: fixed-capacity u32 Chase-Lev task deque
 - `*_test.ts`: colocated ABI, synchronization, allocator, and queue tests
-- `kernels.wat`: imported shared memory and owner-only SIMD fill/copy kernels
+- `kernels.zig`: imported shared memory and owner-only SIMD fill/copy kernels
 - `kernels.d.wasm.ts`: typed Wasm asset contract
 - `kernels.wasm`: generated, stripped, validated with threads/SIMD, and Git-ignored
