@@ -98,6 +98,9 @@ jobs:
         with:
           just-version: 1.58.0
 
+      - name: Set up ripgrep
+        run: sudo apt-get install --no-install-recommends --yes ripgrep
+
       - name: Set up wasm-tools
         shell: bash
         run: |
