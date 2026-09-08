@@ -2,6 +2,8 @@ node_modules/
 /dist/
 packages/**/dist/
 coverage/
+.playwright-mcp/
+pixel-worker-simd-spot.png
 examples/vite/dist/
 examples/multithread-vector-search/dist/
 examples/tree-shake-adaptive-simd-page-i32/dist/
