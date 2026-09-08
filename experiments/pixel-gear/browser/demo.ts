@@ -1,12 +1,12 @@
 import { advancePixelGear, type PixelGearState } from "../gear.ts";
 import { createPixelGelBlob, type PixelGelCluster, stepPixelGel } from "../gel.ts";
+import type { PixelGearKernel } from "../kernel.ts";
 import {
   createPixelScenario,
   MATERIAL,
   paintPixelCircle,
   type PixelMaterial,
   pixelMaterial,
-  stepPixelWorld,
 } from "../../ui-core-simd/pixel_sim.ts";
 import { SimdUi, type UiContainer, type UiDocument } from "../../ui-core-simd/signals.ts";
 
@@ -14,7 +14,7 @@ const WIDTH = 512;
 const HEIGHT = 320;
 const COLORS = [0xff15100c, 0xff615950, 0xff3db0f0, 0xffe88c2e] as const;
 
-export function mountPixelGearDemo(host: HTMLElement): void {
+export function mountPixelGearDemo(host: HTMLElement, kernel: PixelGearKernel): void {
   document.title = "Pixel × Gear — jsimd";
   document.body.classList.add("life-mode", "pixel-mode", "gear-mode");
   const ui = new SimdUi({ document: document as unknown as UiDocument });
@@ -109,6 +109,7 @@ export function mountPixelGearDemo(host: HTMLElement): void {
   void ui.mount(host as unknown as UiContainer, root).then(() =>
     runDemo(
       host,
+      kernel,
       running,
       ticks,
       pushed,
@@ -123,6 +124,7 @@ export function mountPixelGearDemo(host: HTMLElement): void {
 
 function runDemo(
   host: HTMLElement,
+  kernel: PixelGearKernel,
   running: { value: boolean },
   ticks: { value: number },
   pushed: { value: number },
@@ -137,7 +139,7 @@ function runDemo(
   if (context === null) throw new Error("2D canvas is unavailable");
   const image = context.createImageData(WIDTH, HEIGHT);
   const pixels = new Uint32Array(image.data.buffer);
-  let cells = createScenario();
+  let cells = kernel.createWorld(createScenario());
   let gear = initialGear();
   let gel = createGelScenario();
   const gelSprites = new Map<number, GelSprite>();
@@ -166,7 +168,7 @@ function runDemo(
     direction.value = gear.angularVelocity > 0 ? "clockwise" : "counterclockwise";
   });
   required(host, "gear-reset").addEventListener("click", () => {
-    cells = createScenario();
+    cells = kernel.createWorld(createScenario());
     gear = initialGear();
     gel = createGelScenario();
     gelSprites.clear();
@@ -220,11 +222,11 @@ function runDemo(
       pendingBrush = null;
     }
     if (running.value) {
-      stepPixelWorld(cells, WIDTH, HEIGHT, phase);
-      const result = advancePixelGear(cells, WIDTH, HEIGHT, gear);
+      kernel.stepWorld(cells, WIDTH, HEIGHT, phase);
+      const result = advancePixelGear(kernel, cells, WIDTH, HEIGHT, gear);
       gear = result.gear;
       pushed.value += result.moves;
-      const gelResult = stepPixelGel(gel, WIDTH, HEIGHT, gear, {
+      const gelResult = stepPixelGel(kernel, gel, WIDTH, HEIGHT, gear, {
         minimumFragmentCells: 320,
       });
       gel = gelResult.clusters;

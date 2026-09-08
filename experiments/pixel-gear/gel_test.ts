@@ -5,6 +5,7 @@ import {
   stepPixelGel,
 } from "./gel.ts";
 import type { PixelGearState } from "./gear.ts";
+import { createPixelGearKernel } from "./kernel.ts";
 
 function assertEquals(actual: unknown, expected: unknown): void {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -49,13 +50,18 @@ const gear: PixelGearState = {
   angularVelocity: 0.3,
 };
 
-Deno.test("a gel block precomputes only its boundary for steady-state collision work", () => {
+const wasmBytes = await Deno.readFile(new URL("./zig/kernel.wasm", import.meta.url));
+const kernelPromise = createPixelGearKernel({ wasmBytes });
+
+Deno.test("a gel block precomputes only its boundary for steady-state collision work", async () => {
+  const kernel = await kernelPromise;
   const gel = createPixelGelBlock(20, 10, 8, 6, { strength: 10 });
 
   assertEquals(gel.cells.length / 2, 48);
-  assertEquals(gel.boundary.length / 2, 24);
+  assertEquals(gel.boundaryX.length, 24);
+  assertEquals(gel.boundaryY.length, 24);
 
-  const result = stepPixelGel([gel], 64, 48, null, { gravity: 0 });
+  const result = stepPixelGel(kernel, [gel], 64, 48, null, { gravity: 0 });
 
   assertEquals(result.boundaryChecks, 24);
   assertEquals(result.fractures, 0);
@@ -64,30 +70,32 @@ Deno.test("a gel block precomputes only its boundary for steady-state collision 
 Deno.test("a cohesive blob stores fewer boundary cells than bonded cells", () => {
   const gel = createPixelGelBlob(20, 10, 9, 6);
 
-  assertEquals(gel.cells.length > gel.boundary.length, true);
+  assertEquals(gel.cells.length / 2 > gel.boundaryX.length, true);
   assertEquals(gel.cells.length / 2 > 100, true);
 });
 
-Deno.test("a weak bonded gel fractures locally under a rotating gear", () => {
+Deno.test("a weak bonded gel fractures locally under a rotating gear", async () => {
+  const kernel = await kernelPromise;
   const gel = createPixelGelBlock(29, 20, 10, 8, { strength: 0.1 });
   const initialCells = cellCount([gel]);
 
-  const result = stepPixelGel([gel], 64, 48, gear, { gravity: 0 });
+  const result = stepPixelGel(kernel, [gel], 64, 48, gear, { gravity: 0 });
 
   assertEquals(result.contacts > 0, true);
   assertEquals(result.fractures, 1);
   assertEquals(result.clusters.length, 2);
   assertEquals(cellCount(result.clusters), initialCells);
   assertEquals(
-    result.clusters.reduce((sum, cluster) => sum + cluster.boundary.length / 2, 0) < initialCells,
+    result.clusters.reduce((sum, cluster) => sum + cluster.boundaryX.length, 0) < initialCells,
     true,
   );
 });
 
-Deno.test("a strong bonded gel absorbs the same gear impulse without fracturing", () => {
+Deno.test("a strong bonded gel absorbs the same gear impulse without fracturing", async () => {
+  const kernel = await kernelPromise;
   const gel = createPixelGelBlock(29, 20, 10, 8, { strength: 10_000 });
 
-  const result = stepPixelGel([gel], 64, 48, gear, { gravity: 0 });
+  const result = stepPixelGel(kernel, [gel], 64, 48, gear, { gravity: 0 });
 
   assertEquals(result.contacts > 0, true);
   assertEquals(result.fractures, 0);
@@ -95,7 +103,8 @@ Deno.test("a strong bonded gel absorbs the same gear impulse without fracturing"
   assertEquals(cellCount(result.clusters), 80);
 });
 
-Deno.test("repeated fractures retain compact boundary caches after Float32 recentering", () => {
+Deno.test("repeated fractures retain compact boundary caches after Float32 recentering", async () => {
+  const kernel = await kernelPromise;
   let clusters = [createPixelGelBlob(29, 20, 18, 12, { strength: 0.1 })];
   const initialCells = cellCount(clusters);
   for (let round = 0; round < 2; round++) {
@@ -106,14 +115,14 @@ Deno.test("repeated fractures retain compact boundary caches after Float32 recen
       cluster.stress = 10;
       cluster.fractureCooldown = 0;
     }
-    clusters = stepPixelGel(clusters, 64, 48, gear, {
+    clusters = stepPixelGel(kernel, clusters, 64, 48, gear, {
       gravity: 0,
       minimumFragmentCells: 20,
     }).clusters;
   }
 
   const boundaryCells = clusters.reduce(
-    (sum, cluster) => sum + cluster.boundary.length / 2,
+    (sum, cluster) => sum + cluster.boundaryX.length,
     0,
   );
   assertEquals(cellCount(clusters), initialCells);
@@ -122,10 +131,11 @@ Deno.test("repeated fractures retain compact boundary caches after Float32 recen
   assertEquals(clusters.every((cluster) => cluster.cells.length / 2 >= 4), true);
 });
 
-Deno.test("fracture follows a ragged lattice crack instead of a straight center cut", () => {
+Deno.test("fracture follows a ragged lattice crack instead of a straight center cut", async () => {
+  const kernel = await kernelPromise;
   const gel = createPixelGelBlock(29, 20, 24, 18, { strength: 0.1 });
 
-  const result = stepPixelGel([gel], 64, 48, gear, { gravity: 0 });
+  const result = stepPixelGel(kernel, [gel], 64, 48, gear, { gravity: 0 });
 
   assertEquals(result.fractures, 1);
   const left = result.clusters.toSorted((a, b) => a.centerX - b.centerX)[0]!;

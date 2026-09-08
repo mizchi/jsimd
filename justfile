@@ -239,16 +239,34 @@ check-ui-pixel-bundles: build-ui-comparison
 dev-ui-comparison:
     pnpm --config.verify-deps-before-run=false exec vite --host 127.0.0.1 experiments/ui-core-simd/browser-ui
 
-build-pixel-gear-experiment:
+build-pixel-gear-zig:
+    zig test experiments/pixel-gear/zig/kernel.zig
+    zig build-exe experiments/pixel-gear/zig/kernel.zig -target wasm32-freestanding -mcpu=baseline+simd128 -O ReleaseSmall -fno-entry --import-memory --stack 65536 --initial-memory=131072 --export=gear_contains --export=advance_gear --export=step_pixel_world --export=scan_gel_boundary --export=classify_gel_fracture -femit-bin=experiments/pixel-gear/zig/kernel.raw.wasm
+    wasm-tools validate --features simd,saturating-float-to-int experiments/pixel-gear/zig/kernel.raw.wasm
+    wasm-tools print experiments/pixel-gear/zig/kernel.raw.wasm | rg -q 'scan_gel_boundary|classify_gel_fracture|advance_gear|step_pixel_world'
+    wasm-tools print experiments/pixel-gear/zig/kernel.raw.wasm | rg -q 'v128.load|f32x4.mul|f32x4.le'
+    wasm-tools print experiments/pixel-gear/zig/kernel.raw.wasm | rg -q 'i32x4.bitmask|v128.bitselect'
+    ! wasm-tools validate --features=-simd experiments/pixel-gear/zig/kernel.raw.wasm
+    wasm-tools strip -a experiments/pixel-gear/zig/kernel.raw.wasm -o experiments/pixel-gear/zig/kernel.stripped.wasm
+    wasm-opt experiments/pixel-gear/zig/kernel.stripped.wasm -Oz --enable-simd --enable-nontrapping-float-to-int -o experiments/pixel-gear/zig/kernel.wasm
+    wasm-tools validate --features simd,saturating-float-to-int experiments/pixel-gear/zig/kernel.wasm
+    test "$(wc -c < experiments/pixel-gear/zig/kernel.raw.wasm | tr -d ' ')" -le 12800
+    test "$(wc -c < experiments/pixel-gear/zig/kernel.wasm | tr -d ' ')" -le 11500
+    test "$(gzip -9 -n -c experiments/pixel-gear/zig/kernel.wasm | wc -c | tr -d ' ')" -le 7500
+
+build-pixel-gear-experiment: build-pixel-gear-zig
     pnpm --config.verify-deps-before-run=false exec tsc -p experiments/pixel-gear/browser/tsconfig.json
     pnpm --config.verify-deps-before-run=false exec vite build experiments/pixel-gear/browser
 
 test-pixel-gear-experiment: build-pixel-gear-experiment
-    test "$(gzip -9 -c experiments/pixel-gear/browser/dist/assets/*.js | wc -c | tr -d ' ')" -le 10000
+    test "$(gzip -9 -n -c experiments/pixel-gear/browser/dist/assets/*.js | wc -c | tr -d ' ')" -le 10700
     deno test -A experiments/pixel-gear
 
 dev-pixel-gear-experiment:
     pnpm --config.verify-deps-before-run=false exec vite --host 127.0.0.1 experiments/pixel-gear/browser
+
+bench-pixel-gear-experiment: build-pixel-gear-zig
+    deno bench -A experiments/pixel-gear/bench.ts
 
 bench-ultra-log-log: build
     deno run -A experiments/ultra-log-log/bench.ts

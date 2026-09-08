@@ -3,6 +3,7 @@
   "include": [
     "../gear.ts",
     "../gel.ts",
+    "../kernel.ts",
     "../../ui-core-simd/pixel_sim.ts",
     "../../ui-core-simd/signals.ts",
     "demo.ts",

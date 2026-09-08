@@ -1,11 +1,13 @@
-import { isPixelGearCell, type PixelGearState } from "./gear.ts";
+import type { PixelGearState } from "./gear.ts";
+import type { PixelGearKernel } from "./kernel.ts";
 
 export interface PixelGelCluster {
   readonly id: number;
   /** Local cell centers stored as x/y pairs. Rebuilt only when the cluster fractures. */
   readonly cells: Float32Array;
-  /** Local boundary cell centers used by the steady-state collision loop. */
-  readonly boundary: Float32Array;
+  /** SoA boundary coordinates consumed directly by the Zig SIMD loop. */
+  readonly boundaryX: Float32Array;
+  readonly boundaryY: Float32Array;
   centerX: number;
   centerY: number;
   angle: number;
@@ -80,6 +82,7 @@ export function createPixelGelBlob(
  * cells; the complete cell set is visited only by the fracture path.
  */
 export function stepPixelGel(
+  kernel: PixelGearKernel,
   clusters: readonly PixelGelCluster[],
   width: number,
   height: number,
@@ -114,47 +117,25 @@ export function stepPixelGel(
 
     const cosine = Math.cos(cluster.angle);
     const sine = Math.sin(cluster.angle);
-    let correctionX = 0;
-    let correctionY = 0;
-    let contactNormalX = 0;
-    let contactNormalY = -1;
-    let contactLocalX = 0;
-    let contactLocalY = 0;
-    let clusterContacts = 0;
-    let maximumX = -Infinity;
-    let minimumX = Infinity;
-    let maximumY = -Infinity;
-    boundaryChecks += cluster.boundary.length / 2;
-    for (let index = 0; index < cluster.boundary.length; index += 2) {
-      const localX = cluster.boundary[index]!;
-      const localY = cluster.boundary[index + 1]!;
-      const worldX = cluster.centerX + localX * cosine - localY * sine;
-      const worldY = cluster.centerY + localX * sine + localY * cosine;
-      minimumX = Math.min(minimumX, worldX);
-      maximumX = Math.max(maximumX, worldX);
-      maximumY = Math.max(maximumY, worldY);
-      if (gear === null || !isPixelGearCell(gear, Math.floor(worldX), Math.floor(worldY))) continue;
-
-      const deltaX = worldX - gear.centerX;
-      const deltaY = worldY - gear.centerY;
-      const distance = Math.max(0.001, Math.hypot(deltaX, deltaY));
-      const normalX = deltaX / distance;
-      const normalY = deltaY / distance;
-      const rotation = Math.sign(gear.angularVelocity) || 1;
-      const tangentX = -normalY * rotation;
-      const tangentY = normalX * rotation;
-      const surfaceSpeed = Math.abs(gear.angularVelocity) * distance;
-      const impulse = 0.12 + surfaceSpeed * 0.18;
-      correctionX += normalX * 0.85 + tangentX * surfaceSpeed * 0.08;
-      correctionY += normalY * 0.85 + tangentY * surfaceSpeed * 0.08;
-      contactNormalX += normalX;
-      contactNormalY += normalY;
-      contactLocalX += localX;
-      contactLocalY += localY;
-      cluster.stress += impulse;
-      clusterContacts++;
-      contacts++;
-    }
+    const scan = kernel.scanGelBoundary(
+      cluster.boundaryX,
+      cluster.boundaryY,
+      { centerX: cluster.centerX, centerY: cluster.centerY, cosine, sine },
+      gear,
+    );
+    boundaryChecks += scan.checks;
+    contacts += scan.contacts;
+    cluster.stress += scan.stressDelta;
+    const clusterContacts = scan.contacts;
+    const correctionX = scan.correctionX;
+    const correctionY = scan.correctionY;
+    let contactNormalX = scan.contactNormalX;
+    let contactNormalY = scan.contactNormalY;
+    let contactLocalX = scan.contactLocalX;
+    let contactLocalY = scan.contactLocalY;
+    const minimumX = scan.minimumX;
+    const maximumX = scan.maximumX;
+    const maximumY = scan.maximumY;
 
     if (clusterContacts > 0 && gear !== null) {
       const inverseContacts = 1 / clusterContacts;
@@ -194,6 +175,7 @@ export function stepPixelGel(
       cluster.cells.length / 2 >= minimumFragmentCells * 2
     ) {
       const fragments = fractureCluster(
+        kernel,
         cluster,
         contactNormalX,
         contactNormalY,
@@ -213,6 +195,7 @@ export function stepPixelGel(
 }
 
 function fractureCluster(
+  kernel: PixelGearKernel,
   cluster: PixelGelCluster,
   worldNormalX: number,
   worldNormalY: number,
@@ -229,20 +212,27 @@ function fractureCluster(
   const contactProjection = contactLocalX * localNormalX + contactLocalY * localNormalY;
   const maximumOffset = Math.sqrt(cluster.cells.length / 2) * 0.22;
   const crackOffset = clamp(contactProjection * 0.28, -maximumOffset, maximumOffset);
+  const classification = kernel.classifyGelFracture(cluster.cells, {
+    normalX: localNormalX,
+    normalY: localNormalY,
+    tangentX,
+    tangentY,
+    offset: crackOffset,
+    clusterId: cluster.id,
+  });
+  const cellCount = cluster.cells.length / 2;
+  if (
+    classification.negativeCount < minimumFragmentCells ||
+    cellCount - classification.negativeCount < minimumFragmentCells
+  ) return null;
   const negative: number[] = [];
   const positive: number[] = [];
   for (let index = 0; index < cluster.cells.length; index += 2) {
     const x = cluster.cells[index]!;
     const y = cluster.cells[index + 1]!;
-    const tangentPosition = x * tangentX + y * tangentY;
-    const signedDistance = x * localNormalX + y * localNormalY - crackOffset +
-      crackNoise(tangentPosition, cluster.id);
-    const target = signedDistance < 0 ? negative : positive;
+    const target = classification.sides[index / 2] === 1 ? negative : positive;
     target.push(x, y);
   }
-  if (
-    negative.length / 2 < minimumFragmentCells || positive.length / 2 < minimumFragmentCells
-  ) return null;
   const [negativeComponents, positiveComponents] = normalizeCrackComponents(negative, positive);
   const fragments: PixelGelCluster[] = [];
   for (const component of negativeComponents) {
@@ -372,10 +362,12 @@ function createCluster(
   if (!Number.isFinite(strength) || strength <= 0) {
     throw new RangeError("pixel gel strength must be positive");
   }
+  const [boundaryX, boundaryY] = collectBoundary(cells);
   return {
     id: nextClusterId++,
     cells,
-    boundary: collectBoundary(cells),
+    boundaryX,
+    boundaryY,
     centerX,
     centerY,
     angle: 0,
@@ -388,35 +380,31 @@ function createCluster(
   };
 }
 
-function collectBoundary(cells: Float32Array): Float32Array {
+function collectBoundary(cells: Float32Array): readonly [Float32Array, Float32Array] {
   const occupied = new Set<string>();
   for (let index = 0; index < cells.length; index += 2) {
     occupied.add(cellKey(cells[index]!, cells[index + 1]!));
   }
-  const boundary: number[] = [];
+  const boundaryX: number[] = [];
+  const boundaryY: number[] = [];
   for (let index = 0; index < cells.length; index += 2) {
     const x = cells[index]!;
     const y = cells[index + 1]!;
     if (
       !occupied.has(cellKey(x - 1, y)) || !occupied.has(cellKey(x + 1, y)) ||
       !occupied.has(cellKey(x, y - 1)) || !occupied.has(cellKey(x, y + 1))
-    ) boundary.push(x, y);
+    ) {
+      boundaryX.push(x);
+      boundaryY.push(y);
+    }
   }
-  return new Float32Array(boundary);
+  return [new Float32Array(boundaryX), new Float32Array(boundaryY)];
 }
 
 function cellKey(x: number, y: number): string {
   // Fragments are recentered in Float32 storage. Quantization removes the
   // sub-ULP drift while preserving the unit-spaced bonded lattice.
   return `${Math.round(x * 1_024)}:${Math.round(y * 1_024)}`;
-}
-
-function crackNoise(tangentPosition: number, clusterId: number): number {
-  const seed = clusterId * 0.731;
-  // Keep the derivative below roughly one cell per cell so both sides of the
-  // crack remain 4-connected instead of leaving detached one-cell islands.
-  return Math.sin(tangentPosition * 0.32 + seed) * 1.55 +
-    Math.sin(tangentPosition * 0.13 - seed * 0.7) * 0.8;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

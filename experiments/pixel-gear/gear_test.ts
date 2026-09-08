@@ -1,4 +1,5 @@
 import { advancePixelGear, isPixelGearCell } from "./gear.ts";
+import { createPixelGearKernel } from "./kernel.ts";
 import {
   countPixelMaterials,
   MATERIAL,
@@ -15,10 +16,13 @@ function assertEquals(actual: unknown, expected: unknown): void {
   }
 }
 
-Deno.test("a rotating gear displaces particles without consuming them", () => {
+const wasmBytes = await Deno.readFile(new URL("./zig/kernel.wasm", import.meta.url));
+
+Deno.test("a rotating gear displaces particles without consuming them", async () => {
+  const kernel = await createPixelGearKernel({ wasmBytes });
   const width = 40;
   const height = 32;
-  const cells = new Uint32Array(width * height);
+  const cells = kernel.createWorld(new Uint32Array(width * height));
   const gear = {
     centerX: 20,
     centerY: 17,
@@ -33,8 +37,8 @@ Deno.test("a rotating gear displaces particles without consuming them", () => {
   for (let y = 0; y < height && source < 0; y++) {
     for (let x = 0; x < width; x++) {
       if (
-        !isPixelGearCell(gear, x, y, gear.angle) &&
-        isPixelGearCell(gear, x, y, nextAngle)
+        !isPixelGearCell(kernel, gear, x, y, gear.angle) &&
+        isPixelGearCell(kernel, gear, x, y, nextAngle)
       ) {
         source = y * width + x;
         break;
@@ -44,7 +48,7 @@ Deno.test("a rotating gear displaces particles without consuming them", () => {
   if (source < 0) throw new Error("test gear must expose a leading tooth cell");
   cells[source] = packPixel(MATERIAL.sand, 200, 7, 11);
 
-  const result = advancePixelGear(cells, width, height, gear);
+  const result = advancePixelGear(kernel, cells, width, height, gear);
 
   assertEquals(result.moves, 1);
   assertEquals(result.gear.angle, nextAngle);
@@ -52,7 +56,12 @@ Deno.test("a rotating gear displaces particles without consuming them", () => {
   assertEquals(countPixelMaterials(cells)[MATERIAL.sand], 1);
   const destination = cells.findIndex((cell) => pixelMaterial(cell) === MATERIAL.sand);
   assertEquals(
-    isPixelGearCell(result.gear, destination % width, Math.floor(destination / width)),
+    isPixelGearCell(
+      kernel,
+      result.gear,
+      destination % width,
+      Math.floor(destination / width),
+    ),
     false,
   );
   assertEquals(pixelTemperature(cells[destination]!), 200);
@@ -60,10 +69,11 @@ Deno.test("a rotating gear displaces particles without consuming them", () => {
   assertEquals(pixelVariant(cells[destination]!), 11);
 });
 
-Deno.test("a rotating gear leaves structural walls fixed", () => {
+Deno.test("a rotating gear leaves structural walls fixed", async () => {
+  const kernel = await createPixelGearKernel({ wasmBytes });
   const width = 24;
   const height = 24;
-  const cells = new Uint32Array(width * height);
+  const cells = kernel.createWorld(new Uint32Array(width * height));
   const gear = {
     centerX: 12,
     centerY: 12,
@@ -76,7 +86,7 @@ Deno.test("a rotating gear leaves structural walls fixed", () => {
   const wall = 12 * width + 12;
   cells[wall] = packPixel(MATERIAL.wall);
 
-  const result = advancePixelGear(cells, width, height, gear);
+  const result = advancePixelGear(kernel, cells, width, height, gear);
 
   assertEquals(result.moves, 0);
   assertEquals(pixelMaterial(cells[wall]!), MATERIAL.wall);
