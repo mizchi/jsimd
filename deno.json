@@ -18,6 +18,7 @@
   "fmt": {
     "exclude": [
       "pnpm-lock.yaml",
+      "packages/*/CHANGELOG.md",
       "examples/validator-compiler-zod/generated/",
       "examples/validator-compiler-zod-wasm/generated/"
     ],

@@ -8,19 +8,13 @@ interface PackageMetadata {
   readonly engines?: { readonly node?: string };
   readonly files?: readonly string[];
   readonly keywords?: readonly string[];
-}
-
-interface ReleasePleaseConfig {
-  readonly "bootstrap-sha": string;
-  readonly packages: Record<
-    string,
-    {
-      readonly component: string;
-      readonly "package-name": string;
-      readonly "changelog-path": string;
-      readonly "extra-files": readonly string[];
-    }
-  >;
+  readonly license?: string;
+  readonly publishConfig?: { readonly access?: string };
+  readonly repository?: {
+    readonly type: string;
+    readonly url: string;
+    readonly directory?: string;
+  };
 }
 
 Deno.test("validator packages expose a Wasm-first release contract", async () => {
@@ -141,61 +135,85 @@ Deno.test("validator packages expose a Wasm-first release contract", async () =>
   assertMatch(runtimeSmoke, /from "@mizchi\/jsimd-validator"/);
 });
 
-Deno.test("release-please owns only the two validator packages", async () => {
-  const config = await readJson<ReleasePleaseConfig>("release-please-config.json");
-  const manifest = await readJson<Record<string, string>>(".release-please-manifest.json");
-  const expected = ["packages/validator", "packages/validator-compiler"];
-  assertEquals(Object.keys(config.packages).sort(), expected);
-  assertEquals(Object.keys(manifest).sort(), expected);
-
-  for (const path of expected) {
+Deno.test("validator packages carry the metadata tag releases depend on", async () => {
+  for (const directory of ["validator", "validator-compiler"]) {
+    const path = `packages/${directory}`;
     const metadata = await readJson<PackageMetadata>(`${path}/package.json`);
-    assertEquals(config.packages[path]?.["package-name"], metadata.name);
-    assertEquals(config.packages[path]?.["changelog-path"], "CHANGELOG.md");
-    assertEquals(config.packages[path]?.["extra-files"], ["deno.json"]);
-    assertEquals(manifest[path], metadata.version);
     const denoMetadata = await readJson<PackageMetadata>(`${path}/deno.json`);
+    assertEquals(denoMetadata.name, metadata.name);
     assertEquals(denoMetadata.version, metadata.version);
+    assertEquals(metadata.license, "MIT");
+    assertEquals(metadata.publishConfig?.access, "public");
+    assertEquals(metadata.repository, {
+      type: "git",
+      url: "git+https://github.com/mizchi/jsimd.git",
+      directory: path,
+    });
+    assert(metadata.files?.includes("dist/"), `${path} must publish dist/`);
   }
-  assertEquals(config.packages["packages/validator"]?.component, "validator");
-  assertEquals(
-    config.packages["packages/validator-compiler"]?.component,
-    "validator-compiler",
-  );
-
-  assertMatch(config["bootstrap-sha"], /^[0-9a-f]{40}$/);
-  const bootstrapExists = await new Deno.Command("git", {
-    args: ["cat-file", "-e", `${config["bootstrap-sha"]}^{commit}`],
-    cwd: root,
-    stdout: "null",
-    stderr: "null",
-  }).output();
-  assert(bootstrapExists.success, "release-please bootstrap-sha must name an existing commit");
 });
 
-Deno.test("release workflows use an isolated OIDC publish path", async () => {
-  const releasePlease = await readText(".github/workflows/release-please.yml");
-  assertMatch(releasePlease, /workflow_dispatch:/);
-  assertMatch(releasePlease, /pull_request:/);
-  assertMatch(releasePlease, /release-please-action@[0-9a-f]{40}/);
-  assertMatch(releasePlease, /create-github-app-token@[0-9a-f]{40}/);
-  assertMatch(releasePlease, /config-file: release-please-config\.json/);
+Deno.test("release-please is retired", async () => {
+  for (
+    const path of [
+      ".github/workflows/release-please.yml",
+      "release-please-config.json",
+      ".release-please-manifest.json",
+    ]
+  ) {
+    assert(!await exists(path), `${path} must stay removed`);
+  }
+  for (const path of [".github/workflows/validator.yml", "docs/validator-release.md", "justfile"]) {
+    assert(
+      !/release-please|RELEASE_PLEASE/.test(await readText(path)),
+      `${path} still refers to release-please`,
+    );
+  }
+});
 
+Deno.test("tag pushes publish through an isolated OIDC path", async () => {
   const publish = await readText(".github/workflows/publish-validator.yml");
-  assertMatch(publish, /release:\s*\n\s+types: \[published\]/);
-  assertMatch(publish, /id-token: write/);
-  assertMatch(publish, /validator-v\*/);
-  assertMatch(publish, /validator-compiler-v\*/);
+  assertMatch(publish, /\non:\n  push:\n    tags:\n/);
+  assertMatch(publish, /- "validator-v\*"/);
+  assertMatch(publish, /- "validator-compiler-v\*"/);
+  assert(
+    !/\n  (release|workflow_dispatch|pull_request|schedule):/.test(publish),
+    "tag pushes must be the only publish trigger",
+  );
+  assertMatch(publish, /\n    permissions:\n      contents: write.*\n      id-token: write/);
+  assertMatch(publish, /registry-url: "https:\/\/registry\.npmjs\.org"/);
   assertMatch(publish, /pnpm install --frozen-lockfile/);
   assertMatch(publish, /wasm-tools-1\.245\.1-x86_64-linux\.tar\.gz/);
+  assertMatch(publish, /apt-get install .*ripgrep/);
   assertMatch(publish, /just release-check-validator-packages/);
-  assertMatch(publish, /npm publish/);
-  assert(!/NPM_TOKEN|NODE_AUTH_TOKEN/.test(publish), "OIDC publish must not use an npm token");
+  assertMatch(publish, /npm install --global npm@11/);
+  assertMatch(publish, /pnpm pack --pack-destination/);
+  assertMatch(publish, /npm publish "\$1" --access public --tag next/);
+  assertMatch(publish, /npm publish "\$1" --access public ;;/);
+  assertMatch(publish, /gh release create .* --notes-file /);
+  assertMatch(publish, /gh release create .* --generate-notes/);
+  assert(
+    !/NPM_TOKEN|NODE_AUTH_TOKEN|secrets\.|create-github-app-token/.test(publish),
+    "OIDC publish must not use an npm token, repository secret, or GitHub App token",
+  );
+  for (const [, reference] of publish.matchAll(/uses: (\S+)/g)) {
+    assertMatch(reference!, /@[0-9a-f]{40}$/);
+  }
+
+  const cliff = await readText("cliff.toml");
+  assertMatch(cliff, /tag_pattern = "\^validator\(-compiler\)\?-v\[0-9\]"/);
+
+  const recipes = await readText("justfile");
+  assertMatch(recipes, /\nrelease-prepare-validator-package component version:\n/);
+  assertMatch(recipes, /--tag-pattern '\^\{\{ component \}\}-v\[0-9\]'/);
+  assertMatch(recipes, /--include-path 'packages\/\{\{ component \}\}\/\*\*'/);
 
   const releaseGuide = await readText("docs/validator-release.md");
-  assertMatch(releaseGuide, /Initial npm publication/);
   assertMatch(releaseGuide, /Trusted Publisher/);
-  assertMatch(releaseGuide, /gh workflow run release-please\.yml/);
+  assertMatch(releaseGuide, /publish-validator\.yml/);
+  assertMatch(releaseGuide, /just release-prepare-validator-package/);
+  assertMatch(releaseGuide, /git push origin main validator-v/);
+  assertMatch(releaseGuide, /git push origin main validator-compiler-v/);
 });
 
 async function readJson<Value>(path: string): Promise<Value> {
@@ -204,6 +222,16 @@ async function readJson<Value>(path: string): Promise<Value> {
 
 function readText(path: string): Promise<string> {
   return Deno.readTextFile(new URL(path, root));
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await Deno.stat(new URL(path, root));
+    return true;
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return false;
+    throw error;
+  }
 }
 
 function assert(condition: unknown, message: string): asserts condition {
