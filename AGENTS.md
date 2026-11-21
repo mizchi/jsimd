@@ -10,4 +10,4 @@ The release flow moved from release-please to tag-triggered npm publishing in ht
 - [ ] Delete the `RELEASE_PLEASE_APP_PRIVATE_KEY` secret if it exists
 - [ ] Push the first release tag and confirm the workflow publishes to npm and creates the GitHub Release (it has never run)
 
-this repository has no tags and neither workflow has ever run, so 0.1.1 / 0.1.3 were published by hand and the first tag push is the first run of this pipeline. With no baseline tag, the first generated changelog section covers the whole history.
+This repository has no tags and neither workflow has ever run, so 0.1.1 / 0.1.3 were published by hand and the first tag push is the first run of this pipeline. With no baseline tag, the first generated changelog section covers the whole history.
