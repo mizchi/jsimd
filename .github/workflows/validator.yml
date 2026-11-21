@@ -4,10 +4,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/validator.yml"
-      - ".github/workflows/release-please.yml"
       - ".github/workflows/publish-validator.yml"
-      - ".release-please-manifest.json"
-      - "release-please-config.json"
+      - "cliff.toml"
       - "docs/validator-release.md"
       - "packages/validator/**"
       - "packages/validator-compiler/**"
@@ -30,10 +28,8 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/validator.yml"
-      - ".github/workflows/release-please.yml"
       - ".github/workflows/publish-validator.yml"
-      - ".release-please-manifest.json"
-      - "release-please-config.json"
+      - "cliff.toml"
       - "docs/validator-release.md"
       - "packages/validator/**"
       - "packages/validator-compiler/**"

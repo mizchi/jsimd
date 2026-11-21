@@ -639,6 +639,12 @@ test-validator-compiler:
 test-validator-release:
     deno test -A tools/validator_release_contract_test.ts
 
+# Bump packages/<component> to <version> and prepend the new CHANGELOG.md section (docs/validator-release.md)
+release-prepare-validator-package component version:
+    node -e 'const fs = process.getBuiltinModule("node:fs"); const [directory, version] = process.argv.slice(1); for (const name of ["package.json", "deno.json"]) { const path = directory + "/" + name; const text = fs.readFileSync(path, "utf8"); const next = text.replace(/"version": "[^"]*"/, () => "\"version\": \"" + version + "\""); if (next === text) throw new Error(path + ": version did not change"); fs.writeFileSync(path, next); }' packages/{{ component }} {{ version }}
+    touch packages/{{ component }}/CHANGELOG.md
+    GITHUB_TOKEN="${GITHUB_TOKEN:-$(gh auth token)}" npx -y git-cliff@2.14.2 --unreleased --tag {{ component }}-v{{ version }} --tag-pattern '^{{ component }}-v[0-9]' --include-path 'packages/{{ component }}/**' --prepend packages/{{ component }}/CHANGELOG.md
+
 release-check-validator-packages: build-validator-package build-validator-compiler-package
     just test-validator
     just test-validator-compiler

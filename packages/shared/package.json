@@ -13,5 +13,10 @@
   },
   "dependencies": { "@mizchi/jsimd": "workspace:^" },
   "license": "MIT",
-  "publishConfig": { "access": "public" }
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mizchi/jsimd.git",
+    "directory": "packages/shared"
+  }
 }
